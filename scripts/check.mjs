@@ -45,6 +45,7 @@ for (const marker of ["workLogActionMenu", "worklog-content-action", "syncModalC
   if (!js.includes(marker)) throw new Error(`Correction V1 flow missing: ${marker}`);
 }
 if (js.includes("preview_site_upsert") || js.includes("preview_site_delete")) throw new Error("Preview-only site CRUD operation remains");
+if (js.includes("updateMaterialCustomers(false);updateSiteCustomers(false)")) throw new Error("Removed site-data page is still invoked from master-data rendering");
 if (!js.includes("state.siteData.assets=assets.map")) throw new Error("NAS attachment hydration is missing");
 if (js.includes("preview_bulk_inventory") || js.includes("selectedInventoryIds")) throw new Error("Bulk edit JavaScript was not removed");
 
