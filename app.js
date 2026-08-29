@@ -2,7 +2,7 @@ const API_ENDPOINT = "/api/inventory";
 const NAS_API_ENDPOINT = "/api/nas";
 const SESSION_KEY = "GUC_ERP_ACCESS_TOKEN";
 const PRODUCTION_HOST = "guc-erp-vercel-rebuild.vercel.app";
-const SITE_SYSTEM_TARGET_URL = "";
+const SITE_SYSTEM_TARGET_URL = globalThis.GUC_PUBLIC_CONFIG?.siteDataUrl || "";
 const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST;
 const CUSTOMER_CATEGORIES = [["school", "學校機關"], ["government", "政府機關"]];
 const DEFAULT_CONTRACT_SERVICES = ["電話系統","監控系統","辦公室佈線","音響","柵欄機","緊急求救系統","籃球場投幣機"];
