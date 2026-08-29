@@ -54,3 +54,11 @@ test("案場網站使用集中設定且正式環境缺少變數時仍有安全�
   assert.match(publicConfig, /DEFAULT_SITE_DATA_URL = "https:\/\/guc-site-data-system\.vercel\.app"/);
   assert.match(publicConfig, /configured \|\| DEFAULT_SITE_DATA_URL/);
 });
+
+test("ERP 內部案場資料模組已移除但獨立網站入口仍保留", () => {
+  assert.doesNotMatch(html, /data-page="sites"/);
+  assert.doesNotMatch(html, /id="siteCustomerCategory"/);
+  assert.doesNotMatch(html, /data-site-module="floors"/);
+  assert.match(html, /data-system-choice="sites"/);
+  assert.match(html, /開啟獨立的案場承攬資料系統/);
+});
