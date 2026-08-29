@@ -8,13 +8,15 @@
 |---|---|
 | 正式網站 | `https://guc-erp-vercel-rebuild.vercel.app/` |
 | Vercel Project | `guc-erp-vercel-rebuild`（`prj_iKqgI59W9UUL0AcpSCn0ASRzKZi1`） |
-| 最新 Production | `dpl_2JGcVK3kSvg86pVFR2EoVqEBR1pB`，`READY` |
-| 本地 Git | 專案目錄沒有 `.git`，無法確認 remote、branch 或歷史 |
-| 最近部署來源 | 最近 20 筆部署均未提供 Git commit／branch metadata，現況不能證明 Git 自動部署已生效 |
-| GitHub 工具／登入 | 工作環境沒有 GitHub CLI，也沒有可用的 GitHub 寫入憑證 |
+| GitHub Repository | `Williams-CHEN0401/GUC-ERP`，Private，預設分支 `main` |
+| Baseline PR | `#1`，已以 squash merge 合併 |
+| `main` commit | `7d0645731de25fe7c0a6bf42936c732505f02f40` |
+| Vercel Preview | `dpl_EQFbzGy4cC6VjFT5mpC2ooZT2gtW`，`READY`，來源 Git |
+| 最新 Production | `dpl_DmpVYfx3cYHgZJYVPuv3abYVEEAW`，`READY`，來源 Git `main` |
+| GitHub 權限 | 登入帳號 `Williams-CHEN0401`，具有 Admin 與 Push 權限 |
 | Vercel CLI | 工作環境未安裝；Vercel 專案狀態已透過已連線的專案介面核對 |
 
-基於「不得覆蓋或破壞既有 Repository 歷史」原則，目前未執行 `git init`、未建立新 Repository、未 force push，也未修改正式 Vercel Git Integration。
+既有 Initial commit `06b3ccf6488323caffa22cd2a1fc195523f03983` 已保留。完整程式由 `chore/version-control-baseline` 分支經 PR 合併，沒有 force push、沒有 unrelated-history，也沒有重建 Repository。
 
 ## 二、已完成項目
 
@@ -26,7 +28,13 @@
 - 更新 README 的正式 NAS 路徑、附件關聯規則與已套用 migration 狀態。
 - 完成檔案盤點：前端、Vercel API、Supabase Edge Function、migration、scripts、package 與設定檔均已包含在封存版本。
 - 敏感資訊掃描未發現硬編碼的 Token、密碼或 Supabase service-role key。
+- 歷史 Preview 報告中的 Vercel 臨時分享 Token 已移除。
+- `.vercelignore` 已排除 migration、GitHub 設定、測試與 Markdown 報告，避免 Git 自動部署時成為公開靜態檔案。
 - `npm run check`：22／22 通過。
+- GitHub Actions「品質檢查」：成功。
+- Vercel Preview：HTTP 200、Build errors 0、Runtime error／fatal 0。
+- PR #1 已 squash merge；Vercel 已由 `main` 自動建立 Production deployment。
+- 正式網站：HTTP 200，`app.js` HTTP 200，Build errors 0、Runtime error／fatal 0。
 
 ## 三、建議 Git 分支架構
 
@@ -65,12 +73,9 @@
 - GitHub：建立 `revert/*` 分支，對合併 commit 執行 `git revert`，經 PR 合併，讓 `main` 與正式站重新一致。
 - Supabase：已執行的 migration 不刪除、不改名；使用新的 forward-fix migration。程式回滾前先確認舊版仍相容目前 Schema。
 
-## 七、尚待完成與所需資料
+## 七、尚待人工設定
 
-要完成首次安全 commit、push、Pull Request、merge、Vercel Git 自動部署與 Branch Protection，仍需：
+完整 Git／GitHub／Vercel 自動部署流程已完成。因目前 GitHub 連線未提供 Repository Ruleset／Branch Protection 與 Release Tag 寫入介面，以下兩項需由 Repository 管理者在 GitHub 設定頁完成：
 
-1. Vercel 實際綁定的 GitHub Repository URL（`https://github.com/<owner>/<repo>`）。
-2. 對該 Repository 的 GitHub 寫入與建立 Pull Request 權限。
-3. 若 Repository 為私有，需在目前工作階段連接可存取該 Repository 的 GitHub 帳號。
-
-取得後的安全作法是先 clone 現有 Repository、確認預設分支與完整歷史，再建立 `chore/version-control-baseline` 分支並疊加本封存內容；不得以 unrelated-history push 或 force push 取代遠端。
+1. 依第五節對 `main` 啟用 Branch Protection／Ruleset，並將 `程式與自動化測試` 與 Vercel 設為必要檢查。
+2. 建立首個正式 Tag／Release，例如 `v1.0.0`，指向 `7d0645731de25fe7c0a6bf42936c732505f02f40`。
