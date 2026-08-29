@@ -42,7 +42,8 @@ test("登入成功後先顯示系統選擇且案場網址未設定時不跳轉",
   assert.match(html, /id="systemChooser"/);
   assert.match(html, /data-system-choice="erp"/);
   assert.match(html, /data-system-choice="sites"/);
-  assert.match(js, /const SITE_SYSTEM_TARGET_URL = ""/);
+  assert.match(js, /GUC_PUBLIC_CONFIG\?\.siteDataUrl/);
+  assert.match(html, /\/api\/public-config/);
   assert.match(js, /showSystemChooser\(\)/);
   assert.match(js, /if\(!SITE_SYSTEM_TARGET_URL\)/);
 });
