@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const js = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const nas = readFileSync(new URL("../api/nas.mjs", import.meta.url), "utf8");
+const publicConfig = readFileSync(new URL("../api/public-config.js", import.meta.url), "utf8");
 const edge = readFileSync(new URL("../supabase/functions/inventory-gateway/index.ts", import.meta.url), "utf8");
 const migration = readFileSync(new URL("../supabase/migrations/20260829000100_contract_attachment_project_path.sql", import.meta.url), "utf8");
 
@@ -46,4 +47,10 @@ test("登入成功後先顯示系統選擇且案場網址未設定時不跳轉",
   assert.match(html, /\/api\/public-config/);
   assert.match(js, /showSystemChooser\(\)/);
   assert.match(js, /if\(!SITE_SYSTEM_TARGET_URL\)/);
+});
+
+test("案場網站使用集中設定且正式環境缺少變數時仍有安全預設網址", () => {
+  assert.match(publicConfig, /NEXT_PUBLIC_SITE_DATA_URL/);
+  assert.match(publicConfig, /DEFAULT_SITE_DATA_URL = "https:\/\/guc-site-data-system\.vercel\.app"/);
+  assert.match(publicConfig, /configured \|\| DEFAULT_SITE_DATA_URL/);
 });
