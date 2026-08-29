@@ -1,8 +1,8 @@
-const PREVIEW_FALLBACK_URL = "https://guc-site-data-system.vercel.app";
+const DEFAULT_SITE_DATA_URL = "https://guc-site-data-system.vercel.app";
 
 function normalizedSiteDataUrl() {
   const configured = String(process.env.NEXT_PUBLIC_SITE_DATA_URL || "").trim();
-  const value = configured || (process.env.VERCEL_ENV === "preview" ? PREVIEW_FALLBACK_URL : "");
+  const value = configured || DEFAULT_SITE_DATA_URL;
   if (!value) return "";
   try {
     const url = new URL(value);
