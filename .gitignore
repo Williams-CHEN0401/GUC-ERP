@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials*.json
+service-account*.json
+
+# Vercel local metadata
+.vercel/
+
+# Build, test and cache output
+dist/
+build/
+coverage/
+.cache/
+.turbo/
+.next/
+*.tsbuildinfo
+
+# Logs and local temporary files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+tmp/
+temp/
+*.tmp
+
+# IDE and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#0c4f3e" />
+    <title>GUC ERP｜專案與庫存管理</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <span class="brand-mark">G</span>
+          <div><strong>GUC ERP</strong><small>專案與庫存管理</small></div>
+        </div>
+        <div class="preview-chip" id="environmentChip"><span></span>環境判定中</div>
+        <nav class="nav" aria-label="主導覽">
+          <button class="nav-item active" data-page="dashboard"><b>▦</b><span>首頁 Dashboard</span></button>
+          <button class="nav-item" data-page="transactions"><b>⇄</b><span>交易管理</span></button>
+          <button class="nav-item" data-page="inventory"><b>□</b><span>商品與庫存</span></button>
+          <button class="nav-item" data-page="crm"><b>♙</b><span>客戶與專案</span></button>
+          <button class="nav-item" data-page="sites"><b>⌂</b><span>案場資料</span></button>
+          <button class="nav-item" data-page="worklogs"><b>▤</b><span>工作日誌</span></button>
+          <button class="nav-item" data-page="materials"><b>≣</b><span>專案用料</span></button>
+          <button class="nav-item" data-page="backup"><b>⇩</b><span>Excel 備份／復原</span></button>
+          <button class="nav-item" data-page="settings"><b>⚙</b><span>系統設定</span></button>
+        </nav>
+        <div class="sidebar-foot">
+          <div class="avatar" id="userAvatar">使</div>
+          <div><strong id="userDisplayName">尚未登入</strong><small id="userRole">—</small></div>
+          <button class="icon-button" id="logoutButton" title="登出">↪</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <button class="menu-button" id="menuButton" aria-label="開啟導覽">☰</button>
+          <div><h1 id="pageTitle">首頁 Dashboard</h1><p id="pageSubtitle">掌握專案、庫存與交易現況</p></div>
+          <div class="top-actions">
+            <span class="sync-state" id="syncState"><i></i>等待登入</span>
+            <button class="secondary" id="refreshButton">↻ 重新整理</button>
+          </div>
+        </header>
+
+        <div class="content">
+          <section class="page active" id="dashboard" data-page="dashboard">
+            <div class="kpi-grid">
+              <article class="kpi"><span class="kpi-icon green">♙</span><div><small>客戶總數</small><strong id="kpiCustomers">—</strong><em>正式資料統計</em></div></article>
+              <article class="kpi"><span class="kpi-icon blue">▣</span><div><small>進行中專案</small><strong id="kpiActiveProjects">—</strong><em id="kpiProjectsHint">等待登入</em></div></article>
+              <article class="kpi"><span class="kpi-icon amber">□</span><div><small>庫存品項</small><strong id="kpiInventory">—</strong><em id="kpiCategoryHint">等待登入</em></div></article>
+              <article class="kpi"><span class="kpi-icon violet">⇄</span><div><small>交易紀錄</small><strong id="kpiTransactions">—</strong><em>取貨、進貨與盤點</em></div></article>
+            </div>
+            <div class="dashboard-grid">
+              <article class="panel project-panel">
+                <div class="panel-head"><div><h2>專案檢視</h2><p>顯示尚未完成的專案，最多 15 筆</p></div><button class="text-button" data-goto="crm">查看全部 →</button></div>
+                <div class="project-list" id="activeProjectList"></div>
+              </article>
+              <article class="panel">
+                <div class="panel-head"><div><h2>庫存概況</h2><p>依貨品狀態分類</p></div></div>
+                <div class="donut-wrap"><div class="donut"><span><strong id="donutTotal">—</strong><small>品項</small></span></div><div class="legend"><span><i class="lg-green"></i>庫存正常 <b id="stockNormal">—</b></span><span><i class="lg-amber"></i>庫存偏低 <b id="stockLow">—</b></span><span><i class="lg-red"></i>需補貨 <b id="stockDanger">—</b></span></div></div>
+                <div class="quick-actions"><button data-goto="transactions">＋ 登錄取貨</button><button data-goto="transactions">＋ 登錄進貨</button><button data-goto="inventory">盤點校正</button></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="page" id="transactions" data-page="transactions">
+            <div class="section-tabs" data-tabs="transaction"><button class="active" data-tab="pickups">取貨</button><button data-tab="receipts">進貨</button></div>
+            <div class="tab-pane active" data-pane="pickups">
+              <div class="page-actions"><div><h2>取貨管理</h2><p>每筆資料先選客戶，再選擇該客戶的專案</p></div><button class="primary" data-open="pickupModal">＋ 新增取貨</button></div>
+              <div class="filterbar"><label class="search">⌕<input id="pickupSearch" placeholder="搜尋日期、客戶、專案、品項或取貨帳號" /></label><select id="pickupSort"><option value="date:desc">日期：由新到舊</option><option value="date:asc">日期：由舊到新</option><option value="project:asc">專案：升冪</option></select></div>
+              <div class="table-card"><table><thead><tr><th data-table-sort="pickup" data-key="date">取貨日期</th><th data-table-sort="pickup" data-key="customer">客戶</th><th data-table-sort="pickup" data-key="project">專案</th><th data-table-sort="pickup" data-key="item">品項</th><th data-table-sort="pickup" data-key="quantity">數量</th><th data-table-sort="pickup" data-key="account">取貨帳號</th><th>操作</th></tr></thead><tbody id="pickupTable"></tbody></table></div><div id="pickupPagination"></div>
+            </div>
+            <div class="tab-pane" data-pane="receipts">
+              <div class="page-actions"><div><h2>進貨管理</h2><p>供應商須由主檔下拉選擇，支援多筆登錄</p></div><button class="primary" data-open="receiptModal">＋ 新增進貨</button></div>
+              <div class="filterbar"><label class="search">⌕<input id="receiptSearch" placeholder="搜尋供應商、日期、品項或備註" /></label><select id="receiptSort"><option value="date:desc">日期：由新到舊</option><option value="date:asc">日期：由舊到新</option><option value="supplier:asc">供應商：升冪</option></select></div>
+              <div class="table-card"><table><thead><tr><th data-table-sort="receipt" data-key="date">進貨日期</th><th data-table-sort="receipt" data-key="supplier">供應商</th><th data-table-sort="receipt" data-key="item">品項</th><th data-table-sort="receipt" data-key="quantity">數量</th><th data-table-sort="receipt" data-key="note">備註</th><th>操作</th></tr></thead><tbody id="receiptTable"></tbody></table></div><div id="receiptPagination"></div>
+            </div>
+          </section>
+
+          <section class="page" id="inventory" data-page="inventory">
+            <div class="section-tabs" data-tabs="inventory"><button class="active" data-tab="stock">即時庫存</button><button data-tab="items">新增品項</button><button data-tab="adjust">盤點校正</button></div>
+            <div class="tab-pane active" data-pane="stock">
+              <div class="page-actions"><div><h2>即時庫存</h2><p>期初數量＋進貨－取貨＋盤點差異</p></div><button class="outline" id="exportInventory">⇩ 匯出清單</button></div>
+              <div class="filterbar"><label class="search">⌕<input id="inventorySearch" placeholder="搜尋編號、品名、品牌或型號" /></label><select id="categoryFilter"><option value="">所有貨品種類</option></select><select id="inventorySort"><option value="code:asc">編號：升冪</option><option value="code:desc">編號：降冪</option><option value="name:asc">名稱：升冪</option><option value="quantity:asc">庫存：由低到高</option><option value="quantity:desc">庫存：由高到低</option></select></div>
+              <div class="table-card"><table><thead><tr><th data-table-sort="inventory" data-key="code">編號</th><th data-table-sort="inventory" data-key="category">貨品種類</th><th data-table-sort="inventory" data-key="name">品名</th><th data-table-sort="inventory" data-key="brand">品牌／型號</th><th data-table-sort="inventory" data-key="unit">單位</th><th data-table-sort="inventory" data-key="quantity">目前庫存</th><th data-table-sort="inventory" data-key="status">狀態</th><th>操作</th></tr></thead><tbody id="inventoryTable"></tbody></table></div><div id="inventoryPagination"></div>
+            </div>
+            <div class="tab-pane" data-pane="items"><article class="panel batch-panel"><div class="panel-head"><div><h2>多筆新增品項</h2><p>每次可建立 1–20 筆；品項編號仍由資料庫依分類字首原子產生。</p></div><button class="outline" type="button" data-add-item-row>＋ 新增一列</button></div><form id="itemBatchForm"><div class="batch-table inventory-batch"><div class="batch-head"><span>貨品種類</span><span>品項名稱</span><span>品牌</span><span>型號</span><span>單位</span><span>期初庫存</span><span>操作</span></div><div id="itemBatchRows"></div></div><div class="form-submit batch-submit"><small>同一批次及既有品項均會檢查重複。</small><button class="primary" type="submit">建立全部品項</button></div></form></article></div>
+            <div class="tab-pane" data-pane="adjust"><article class="panel form-panel"><h2>盤點校正</h2><p>校正會保存調整前後數量、差異、原因與操作人員。</p><form id="adjustForm" class="form-grid"><label>選擇品項<select name="item" id="adjustItem"></select></label><label>校正後數量<input name="quantity" type="number" min="0" required /></label><label class="span-2">校正原因<textarea name="reason" placeholder="例如：年度庫存盤點"></textarea></label><div class="form-submit"><button class="primary" type="submit">儲存庫存校正</button></div></form></article></div>
+          </section>
+
+          <section class="page" id="crm" data-page="crm">
+            <div class="section-tabs" data-tabs="crm"><button class="active" data-tab="customers">客戶</button><button data-tab="projects">專案</button><button data-tab="suppliers">供應商</button></div>
+            <div class="tab-pane active" data-pane="customers"><div class="page-actions"><div><h2>客戶管理</h2><p>顯示短編號、客戶分類及可複選的承攬內容，底層 UUID 與關聯保持不變</p></div><button class="primary" data-open="customerModal">＋ 新增客戶</button></div><div class="filterbar"><label class="search">⌕<input id="customerSearch" placeholder="搜尋客戶編號、名稱、電話、地址或承攬內容" /></label><select id="customerCategoryFilter"><option value="">所有客戶分類</option><option value="school">學校機關</option><option value="government">政府機關</option></select><select id="customerSort"><option value="code:asc">編號：升冪</option><option value="code:desc">編號：降冪</option><option value="name:asc">名稱：升冪</option><option value="updated:desc">更新：由新到舊</option></select></div><div class="table-card"><table><thead><tr><th data-table-sort="customer" data-key="code">客戶編號</th><th data-table-sort="customer" data-key="category">客戶分類</th><th data-table-sort="customer" data-key="name">客戶名稱</th><th>承攬內容</th><th data-table-sort="customer" data-key="phone">電話</th><th data-table-sort="customer" data-key="address">地址</th><th data-table-sort="customer" data-key="updated">更新時間</th><th>操作</th></tr></thead><tbody id="customerTable"></tbody></table></div><div id="customerPagination"></div></div>
+            <div class="tab-pane" data-pane="projects"><div class="page-actions"><div><h2>專案管理</h2><p>專案編號依 YYMMNNN 規則由資料庫產生</p></div><button class="primary" data-open="projectModal">＋ 新增專案</button></div><div class="filterbar"><label class="search">⌕<input id="projectSearch" placeholder="搜尋專案編號、名稱、客戶、狀態或負責人" /></label><select id="projectSort"><option value="code:asc">編號：升冪</option><option value="code:desc">編號：降冪</option><option value="name:asc">名稱：升冪</option><option value="status:asc">狀態：升冪</option></select></div><div class="table-card"><table><thead><tr><th data-table-sort="project" data-key="code">專案編號</th><th data-table-sort="project" data-key="name">專案名稱</th><th data-table-sort="project" data-key="customer">客戶</th><th data-table-sort="project" data-key="type">類型</th><th data-table-sort="project" data-key="status">狀態</th><th data-table-sort="project" data-key="owner">負責人</th><th>操作</th></tr></thead><tbody id="projectTable"></tbody></table></div><div id="projectPagination"></div></div>
+            <div class="tab-pane" data-pane="suppliers"><div class="page-actions"><div><h2>供應商管理</h2><p>進貨時只能選擇啟用中的供應商</p></div><button class="primary" data-open="supplierModal">＋ 新增供應商</button></div><div class="filterbar"><label class="search">⌕<input id="supplierSearch" placeholder="搜尋供應商、聯絡人、電話或 Email" /></label><select id="supplierSort"><option value="name:asc">名稱：升冪</option><option value="name:desc">名稱：降冪</option><option value="contact:asc">聯絡人：升冪</option></select></div><div class="table-card"><table><thead><tr><th data-table-sort="supplier" data-key="name">供應商名稱</th><th data-table-sort="supplier" data-key="contact">聯絡人</th><th data-table-sort="supplier" data-key="phone">電話</th><th data-table-sort="supplier" data-key="email">Email</th><th>狀態</th><th>操作</th></tr></thead><tbody id="supplierTable"></tbody></table></div><div id="supplierPagination"></div></div>
+          </section>
+
+          <section class="page" id="sites" data-page="sites">
+            <div class="page-actions"><div><h2>案場資料</h2><p>依客戶承攬內容管理案場；未歸類的歷史專案資料保留唯讀查詢</p></div></div>
+            <div class="site-selector panel"><div class="site-selector-fields"><label>客戶分類<select id="siteCustomerCategory"><option value="">請選擇分類</option><option value="school">學校機關</option><option value="government">政府機關</option></select></label><label>選擇客戶<select id="siteCustomerSelector" disabled><option>請先選擇分類</option></select></label><label>選擇承攬內容<select id="siteContractSelector" disabled><option>請先選擇客戶</option></select></label></div><div><span class="status active" id="siteContractStatus">—</span><small>與客戶承攬內容同步</small></div></div>
+            <div class="section-tabs scroll-tabs" data-tabs="site"><button class="active" data-tab="site-overview">總覽</button><button data-tab="floor">平面與架構</button><button data-tab="routes">管道走線</button><button data-tab="devices">設備點位</button><button data-tab="notes">施工備忘</button><button data-tab="assets">附件</button></div>
+            <div class="tab-pane active" data-pane="site-overview"><div class="site-grid"><article class="panel"><div class="panel-head"><h3>承攬內容資訊</h3><button class="outline" id="editSiteCustomer">修改客戶承攬內容</button></div><dl class="details"><div><dt>客戶</dt><dd id="siteCustomer">—</dd></div><div><dt>客戶分類</dt><dd id="siteCustomerCategoryLabel">—</dd></div><div><dt>承攬內容</dt><dd id="siteContractService">—</dd></div><div><dt>資料狀態</dt><dd id="siteDataBindingStatus">—</dd></div><div><dt>歷史來源專案</dt><dd id="siteLegacyProject">—</dd></div><div><dt>客戶地址</dt><dd id="siteAddress">—</dd></div><div><dt>聯絡電話</dt><dd id="sitePhone">—</dd></div></dl></article><article class="panel"><h3>施工摘要</h3><div class="site-stats"><span><b id="siteFloorCount">0</b>樓層</span><span><b id="siteDeviceCount">0</b>設備點位</span><span><b id="siteRouteCount">0</b>管道路徑</span></div><div class="empty-inline" id="siteContextHint">請先選擇承攬內容</div></article></div></div>
+            <div class="tab-pane" data-pane="floor"><div class="site-module" data-site-module="floors"></div></div>
+            <div class="tab-pane" data-pane="routes"><div class="site-module" data-site-module="routes"></div></div>
+            <div class="tab-pane" data-pane="devices"><div class="site-module" data-site-module="devices"></div></div>
+            <div class="tab-pane" data-pane="notes"><div class="site-module" data-site-module="notes"></div></div>
+            <div class="tab-pane" data-pane="assets"><div class="site-module" data-site-module="assets"></div></div>
+          </section>
+
+          <section class="page" id="worklogs" data-page="worklogs">
+            <div class="page-actions"><div><h2>工作日誌</h2><p>獨立管理所有客戶與專案的工作紀錄；既有日誌、施工人員、取貨及附件關聯完整保留。</p></div><button class="primary" data-open="workLogModal">＋ 新增工作日誌</button></div>
+            <div class="filterbar worklog-filterbar"><label class="search">⌕<input id="worklogSearch" placeholder="搜尋日期、客戶、專案、工作類型、施工人員或內容" /></label><select id="worklogCustomerCategoryFilter"><option value="">所有客戶分類</option><option value="school">學校機關</option><option value="government">政府機關</option></select><select id="worklogCustomerFilter" disabled><option value="">請先選擇客戶分類</option></select><select id="worklogProjectFilter"><option value="">所有專案</option></select><select id="worklogTypeFilter"><option value="">所有工作類型</option><option value="工程施工">工程施工</option><option value="維修紀錄">維修紀錄</option><option value="維護保養">維護保養</option></select><select id="worklogSort"><option value="log_date:desc">日期：由新到舊</option><option value="log_date:asc">日期：由舊到新</option><option value="project:asc">專案：升冪</option></select></div>
+            <div class="table-card"><table class="worklog-table"><thead><tr><th data-table-sort="worklog" data-key="log_date">日期</th><th>客戶</th><th data-table-sort="worklog" data-key="project">專案／標題</th><th data-table-sort="worklog" data-key="work_type">工作類型</th><th>施工人員</th><th>取貨</th><th>操作</th></tr></thead><tbody id="worklogTable"></tbody></table></div><div id="worklogPagination"></div>
+          </section>
+
+          <section class="page" id="materials" data-page="materials">
+            <div class="page-actions"><div><h2>專案用料</h2><p>先選擇客戶，再查看該客戶所屬專案的用料</p></div><button class="outline" id="exportMaterials">⇩ 匯出用料</button></div>
+            <article class="panel selector-panel"><label>客戶分類<select id="materialCustomerCategory"><option value="">請選擇分類</option><option value="school">學校機關</option><option value="government">政府機關</option></select></label><span>→</span><label>選擇客戶<select id="materialCustomer" disabled><option>請先選擇分類</option></select></label><span>→</span><label>選擇專案<select id="materialProject" disabled><option>請先選擇客戶</option></select></label></article>
+            <div class="material-summary" id="materialSummary"><article class="empty-state"><span>≣</span><h2>請選擇客戶與專案</h2><p>系統只會顯示該客戶實際關聯的專案。</p></article></div>
+          </section>
+
+          <section class="page" id="backup" data-page="backup">
+            <div class="page-actions"><div><h2>Excel 備份／復原</h2><p>資料庫是唯一主要資料來源；匯入僅用於受控災難復原</p></div></div>
+            <div class="backup-grid"><article class="panel backup-card"><span>⇩</span><h3>匯出資料庫快照</h3><p>下載登入時取得的正式資料快照；不會對資料庫執行任何寫入。</p><button class="primary" id="exportBackup">下載資料庫快照</button></article><article class="panel backup-card caution"><span>⇧</span><h3>受控復原</h3><p>為避免誤覆蓋正式資料，Vercel 版本暫不開放線上復原。</p><button class="outline" disabled>基於資料安全未開放</button></article></div>
+            <article class="panel"><h2>備份原則</h2><ol class="rules"><li><b>資料庫為唯一真實來源</b><span>Excel 或 JSON 不參與日常雙向同步。</span></li><li><b>所有正式寫入通過 API</b><span>後端再次執行 RBAC、輸入驗證及版本衝突檢查。</span></li><li><b>復原前先驗證</b><span>比對筆數、外鍵、編號唯一性與庫存計算結果。</span></li></ol></article>
+          </section>
+
+          <section class="page" id="settings" data-page="settings">
+            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="logs">系統日誌</button></div>
+            <div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／專案與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場資料</dt><dd>直接同步專案主檔</dd></div></dl></article></div>
+            <div class="tab-pane" data-pane="users">
+              <div class="page-actions"><div><h2>使用者管理</h2><p>可新增、查詢、修改及刪除使用者；僅管理員可執行異動。</p></div><button class="primary" data-open="accountModal">＋ 新增使用者</button></div>
+              <div class="filterbar"><label class="search">⌕<input id="userSearch" placeholder="搜尋帳號、顯示名稱、角色或狀態" /></label><select id="userSort"><option value="username:asc">帳號：升冪</option><option value="username:desc">帳號：降冪</option><option value="displayName:asc">名稱：升冪</option><option value="role:asc">角色：升冪</option></select></div>
+              <div class="table-card"><table><thead><tr><th data-table-sort="user" data-key="username">帳號</th><th data-table-sort="user" data-key="displayName">顯示名稱</th><th data-table-sort="user" data-key="role">角色</th><th data-table-sort="user" data-key="activeLabel">狀態</th><th data-table-sort="user" data-key="updatedAt">更新時間</th><th>操作</th></tr></thead><tbody id="userTable"></tbody></table></div><div id="userPagination"></div>
+              <article class="panel role-matrix"><div class="panel-head"><div><h2>角色權限</h2><p>角色僅保留 admin、operator、viewer</p></div></div><div class="table-card flat"><table><thead><tr><th>角色</th><th>查詢</th><th>交易新增修改</th><th>主檔管理</th><th>使用者管理</th></tr></thead><tbody><tr><td><span class="role admin">admin</span></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr><tr><td><span class="role operator">operator</span></td><td>✓</td><td>✓</td><td>僅專案／案場</td><td>—</td></tr><tr><td><span class="role viewer">viewer</span></td><td>✓</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></article>
+            </div>
+            <div class="tab-pane" data-pane="logs">
+              <div class="page-actions"><div><h2>系統日誌</h2><p>集中顯示原「最近操作」與資料異動稽核紀錄。</p></div><span class="pill">Audit Log</span></div>
+              <div class="filterbar"><label class="search">⌕<input id="logSearch" placeholder="搜尋時間、資料類型、動作、操作者或識別碼" /></label><select id="logSort"><option value="createdAt:desc">時間：由新到舊</option><option value="createdAt:asc">時間：由舊到新</option><option value="actor:asc">操作者：升冪</option></select></div>
+              <div class="table-card"><table><thead><tr><th data-table-sort="log" data-key="createdAt">時間</th><th data-table-sort="log" data-key="entityType">資料類型</th><th data-table-sort="log" data-key="actionCode">動作</th><th data-table-sort="log" data-key="actor">操作者</th><th>來源</th><th>識別碼</th></tr></thead><tbody id="logTable"></tbody></table></div><div id="logPagination"></div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div class="modal" id="simpleModal" aria-hidden="true"><div class="modal-backdrop" data-close></div><div class="modal-card"><div class="modal-head"><div><h2 id="modalTitle">新增資料</h2><p id="modalHint">操作將依帳號權限寫入正式資料庫</p></div><button data-close>×</button></div><form id="modalForm" class="form-grid"></form></div></div>
+    <div class="login-gate open" id="loginGate">
+      <div class="login-card">
+        <span class="brand-mark">G</span>
+        <div class="login-heading"><small>恭元成科技有限公司</small><h2>登入 GUC ERP</h2><p>請使用既有系統帳號登入。登入前不會載入任何客戶或庫存資料。</p></div>
+        <form id="loginForm">
+          <label>帳號<input name="username" autocomplete="username" required placeholder="請輸入帳號" /></label>
+          <label>密碼<input name="password" type="password" autocomplete="current-password" required placeholder="請輸入密碼" /></label>
+          <p class="login-error" id="loginError" role="alert"></p>
+          <button class="primary" type="submit">登入系統</button>
+        </form>
+        <small class="login-footnote">正式資料庫｜受保護 API｜RBAC 權限控管</small>
+      </div>
+    </div>
+    <div class="system-gate" id="systemChooser" aria-hidden="true">
+      <section class="system-chooser" role="dialog" aria-modal="true" aria-labelledby="systemChooserTitle">
+        <span class="brand-mark">G</span>
+        <header>
+          <small>恭元成科技有限公司</small>
+          <h2 id="systemChooserTitle">選擇要進入的系統</h2>
+          <p>帳號驗證已完成，請選擇本次要使用的工作系統。</p>
+        </header>
+        <div class="system-choice-grid">
+          <button type="button" class="system-choice erp" data-system-choice="erp">
+            <span>▦</span><strong>ERP 系統</strong><small>進入目前的專案與庫存 Dashboard</small>
+          </button>
+          <button type="button" class="system-choice sites" data-system-choice="sites">
+            <span>⌂</span><strong>案場資料</strong><small>獨立案場系統（網址待設定）</small>
+          </button>
+        </div>
+        <p class="system-chooser-status" id="systemChooserStatus" role="status"></p>
+        <button type="button" class="text-button system-logout" id="systemChooserLogout">使用其他帳號</button>
+      </section>
+    </div>
+    <div class="toast" id="toast"><span>✓</span><div><b>已完成</b><p></p></div></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
