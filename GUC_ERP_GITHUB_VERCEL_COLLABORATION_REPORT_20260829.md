@@ -10,9 +10,9 @@
 | Vercel Project | `guc-erp-vercel-rebuild`（`prj_iKqgI59W9UUL0AcpSCn0ASRzKZi1`） |
 | GitHub Repository | `Williams-CHEN0401/GUC-ERP`，Private，預設分支 `main` |
 | Baseline PR | `#1`，已以 squash merge 合併 |
-| `main` commit | `7d0645731de25fe7c0a6bf42936c732505f02f40` |
+| 程式 baseline commit | `7d0645731de25fe7c0a6bf42936c732505f02f40` |
 | Vercel Preview | `dpl_EQFbzGy4cC6VjFT5mpC2ooZT2gtW`，`READY`，來源 Git |
-| 最新 Production | `dpl_DmpVYfx3cYHgZJYVPuv3abYVEEAW`，`READY`，來源 Git `main` |
+| 程式 baseline Production | `dpl_DmpVYfx3cYHgZJYVPuv3abYVEEAW`，`READY`，來源 Git `main` |
 | GitHub 權限 | 登入帳號 `Williams-CHEN0401`，具有 Admin 與 Push 權限 |
 | Vercel CLI | 工作環境未安裝；Vercel 專案狀態已透過已連線的專案介面核對 |
 
