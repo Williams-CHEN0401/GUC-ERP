@@ -1,0 +1,9 @@
+{
+  "name": "guc-erp-vercel-rebuild",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node scripts/check.mjs && node --test scripts/*.test.mjs",
+    "test": "node --test scripts/*.test.mjs"
+  }
+}

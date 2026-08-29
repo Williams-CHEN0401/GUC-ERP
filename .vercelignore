@@ -1,0 +1,10 @@
+upload
+.git
+.agents
+.codex
+.github
+supabase
+scripts
+*.md
+.env.example
+.gitignore
