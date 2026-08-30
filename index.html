@@ -21,7 +21,6 @@
           <button class="nav-item" data-page="transactions"><b>⇄</b><span>交易管理</span></button>
           <button class="nav-item" data-page="inventory"><b>□</b><span>商品與庫存</span></button>
           <button class="nav-item" data-page="crm"><b>♙</b><span>客戶與專案</span></button>
-          <button class="nav-item" data-page="sites"><b>⌂</b><span>案場資料</span></button>
           <button class="nav-item" data-page="worklogs"><b>▤</b><span>工作日誌</span></button>
           <button class="nav-item" data-page="materials"><b>≣</b><span>專案用料</span></button>
           <button class="nav-item" data-page="backup"><b>⇩</b><span>Excel 備份／復原</span></button>
@@ -40,6 +39,7 @@
           <div><h1 id="pageTitle">首頁 Dashboard</h1><p id="pageSubtitle">掌握專案、庫存與交易現況</p></div>
           <div class="top-actions">
             <span class="sync-state" id="syncState"><i></i>等待登入</span>
+            <button class="secondary system-switch-button" id="openSiteDataButton" type="button">⌂ 開啟案場資料</button>
             <button class="secondary" id="refreshButton">↻ 重新整理</button>
           </div>
         </header>
@@ -97,18 +97,6 @@
             <div class="tab-pane" data-pane="suppliers"><div class="page-actions"><div><h2>供應商管理</h2><p>進貨時只能選擇啟用中的供應商</p></div><button class="primary" data-open="supplierModal">＋ 新增供應商</button></div><div class="filterbar"><label class="search">⌕<input id="supplierSearch" placeholder="搜尋供應商、聯絡人、電話或 Email" /></label><select id="supplierSort"><option value="name:asc">名稱：升冪</option><option value="name:desc">名稱：降冪</option><option value="contact:asc">聯絡人：升冪</option></select></div><div class="table-card"><table><thead><tr><th data-table-sort="supplier" data-key="name">供應商名稱</th><th data-table-sort="supplier" data-key="contact">聯絡人</th><th data-table-sort="supplier" data-key="phone">電話</th><th data-table-sort="supplier" data-key="email">Email</th><th>狀態</th><th>操作</th></tr></thead><tbody id="supplierTable"></tbody></table></div><div id="supplierPagination"></div></div>
           </section>
 
-          <section class="page" id="sites" data-page="sites">
-            <div class="page-actions"><div><h2>案場資料</h2><p>依客戶承攬內容管理案場；未歸類的歷史專案資料保留唯讀查詢</p></div></div>
-            <div class="site-selector panel"><div class="site-selector-fields"><label>客戶分類<select id="siteCustomerCategory"><option value="">請選擇分類</option><option value="school">學校機關</option><option value="government">政府機關</option></select></label><label>選擇客戶<select id="siteCustomerSelector" disabled><option>請先選擇分類</option></select></label><label>選擇承攬內容<select id="siteContractSelector" disabled><option>請先選擇客戶</option></select></label></div><div><span class="status active" id="siteContractStatus">—</span><small>與客戶承攬內容同步</small></div></div>
-            <div class="section-tabs scroll-tabs" data-tabs="site"><button class="active" data-tab="site-overview">總覽</button><button data-tab="floor">平面與架構</button><button data-tab="routes">管道走線</button><button data-tab="devices">設備點位</button><button data-tab="notes">施工備忘</button><button data-tab="assets">附件</button></div>
-            <div class="tab-pane active" data-pane="site-overview"><div class="site-grid"><article class="panel"><div class="panel-head"><h3>承攬內容資訊</h3><button class="outline" id="editSiteCustomer">修改客戶承攬內容</button></div><dl class="details"><div><dt>客戶</dt><dd id="siteCustomer">—</dd></div><div><dt>客戶分類</dt><dd id="siteCustomerCategoryLabel">—</dd></div><div><dt>承攬內容</dt><dd id="siteContractService">—</dd></div><div><dt>資料狀態</dt><dd id="siteDataBindingStatus">—</dd></div><div><dt>歷史來源專案</dt><dd id="siteLegacyProject">—</dd></div><div><dt>客戶地址</dt><dd id="siteAddress">—</dd></div><div><dt>聯絡電話</dt><dd id="sitePhone">—</dd></div></dl></article><article class="panel"><h3>施工摘要</h3><div class="site-stats"><span><b id="siteFloorCount">0</b>樓層</span><span><b id="siteDeviceCount">0</b>設備點位</span><span><b id="siteRouteCount">0</b>管道路徑</span></div><div class="empty-inline" id="siteContextHint">請先選擇承攬內容</div></article></div></div>
-            <div class="tab-pane" data-pane="floor"><div class="site-module" data-site-module="floors"></div></div>
-            <div class="tab-pane" data-pane="routes"><div class="site-module" data-site-module="routes"></div></div>
-            <div class="tab-pane" data-pane="devices"><div class="site-module" data-site-module="devices"></div></div>
-            <div class="tab-pane" data-pane="notes"><div class="site-module" data-site-module="notes"></div></div>
-            <div class="tab-pane" data-pane="assets"><div class="site-module" data-site-module="assets"></div></div>
-          </section>
-
           <section class="page" id="worklogs" data-page="worklogs">
             <div class="page-actions"><div><h2>工作日誌</h2><p>獨立管理所有客戶與專案的工作紀錄；既有日誌、施工人員、取貨及附件關聯完整保留。</p></div><button class="primary" data-open="workLogModal">＋ 新增工作日誌</button></div>
             <div class="filterbar worklog-filterbar"><label class="search">⌕<input id="worklogSearch" placeholder="搜尋日期、客戶、專案、工作類型、施工人員或內容" /></label><select id="worklogCustomerCategoryFilter"><option value="">所有客戶分類</option><option value="school">學校機關</option><option value="government">政府機關</option></select><select id="worklogCustomerFilter" disabled><option value="">請先選擇客戶分類</option></select><select id="worklogProjectFilter"><option value="">所有專案</option></select><select id="worklogTypeFilter"><option value="">所有工作類型</option><option value="工程施工">工程施工</option><option value="維修紀錄">維修紀錄</option><option value="維護保養">維護保養</option></select><select id="worklogSort"><option value="log_date:desc">日期：由新到舊</option><option value="log_date:asc">日期：由舊到新</option><option value="project:asc">專案：升冪</option></select></div>
@@ -129,12 +117,12 @@
 
           <section class="page" id="settings" data-page="settings">
             <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="logs">系統日誌</button></div>
-            <div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／專案與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場資料</dt><dd>直接同步專案主檔</dd></div></dl></article></div>
+            <div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／專案與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
             <div class="tab-pane" data-pane="users">
               <div class="page-actions"><div><h2>使用者管理</h2><p>可新增、查詢、修改及刪除使用者；僅管理員可執行異動。</p></div><button class="primary" data-open="accountModal">＋ 新增使用者</button></div>
               <div class="filterbar"><label class="search">⌕<input id="userSearch" placeholder="搜尋帳號、顯示名稱、角色或狀態" /></label><select id="userSort"><option value="username:asc">帳號：升冪</option><option value="username:desc">帳號：降冪</option><option value="displayName:asc">名稱：升冪</option><option value="role:asc">角色：升冪</option></select></div>
               <div class="table-card"><table><thead><tr><th data-table-sort="user" data-key="username">帳號</th><th data-table-sort="user" data-key="displayName">顯示名稱</th><th data-table-sort="user" data-key="role">角色</th><th data-table-sort="user" data-key="activeLabel">狀態</th><th data-table-sort="user" data-key="updatedAt">更新時間</th><th>操作</th></tr></thead><tbody id="userTable"></tbody></table></div><div id="userPagination"></div>
-              <article class="panel role-matrix"><div class="panel-head"><div><h2>角色權限</h2><p>角色僅保留 admin、operator、viewer</p></div></div><div class="table-card flat"><table><thead><tr><th>角色</th><th>查詢</th><th>交易新增修改</th><th>主檔管理</th><th>使用者管理</th></tr></thead><tbody><tr><td><span class="role admin">admin</span></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr><tr><td><span class="role operator">operator</span></td><td>✓</td><td>✓</td><td>僅專案／案場</td><td>—</td></tr><tr><td><span class="role viewer">viewer</span></td><td>✓</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></article>
+              <article class="panel role-matrix"><div class="panel-head"><div><h2>角色權限</h2><p>角色僅保留 admin、operator、viewer</p></div></div><div class="table-card flat"><table><thead><tr><th>角色</th><th>查詢</th><th>交易新增修改</th><th>主檔管理</th><th>使用者管理</th></tr></thead><tbody><tr><td><span class="role admin">admin</span></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr><tr><td><span class="role operator">operator</span></td><td>✓</td><td>✓</td><td>僅專案</td><td>—</td></tr><tr><td><span class="role viewer">viewer</span></td><td>✓</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></article>
             </div>
             <div class="tab-pane" data-pane="logs">
               <div class="page-actions"><div><h2>系統日誌</h2><p>集中顯示原「最近操作」與資料異動稽核紀錄。</p></div><span class="pill">Audit Log</span></div>

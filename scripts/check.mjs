@@ -7,15 +7,16 @@ for (const file of files) {
 }
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-for (const marker of ["data-page=\"dashboard\"", "data-page=\"transactions\"", "data-page=\"inventory\"", "data-page=\"crm\"", "data-page=\"sites\"", "data-page=\"worklogs\""]) {
+for (const marker of ["data-page=\"dashboard\"", "data-page=\"transactions\"", "data-page=\"inventory\"", "data-page=\"crm\"", "data-page=\"worklogs\""]) {
   if (!html.includes(marker)) throw new Error(`Missing page marker: ${marker}`);
 }
-for (const marker of ["id=\"siteCustomerCategory\"", "id=\"siteCustomerSelector\"", "id=\"siteContractSelector\"", "id=\"worklogCustomerCategoryFilter\"", "id=\"worklogCustomerFilter\"", "id=\"materialCustomerCategory\"", "id=\"customerCategoryFilter\"", "id=\"itemBatchForm\"", "id=\"inventoryPagination\"", "id=\"userTable\"", "id=\"logTable\"", "data-open=\"accountModal\"", "id=\"systemChooser\"", "data-system-choice=\"erp\"", "data-system-choice=\"sites\""]) {
+for (const marker of ["id=\"worklogCustomerCategoryFilter\"", "id=\"worklogCustomerFilter\"", "id=\"materialCustomerCategory\"", "id=\"customerCategoryFilter\"", "id=\"itemBatchForm\"", "id=\"inventoryPagination\"", "id=\"userTable\"", "id=\"logTable\"", "data-open=\"accountModal\"", "id=\"systemChooser\"", "data-system-choice=\"erp\"", "data-system-choice=\"sites\""]) {
   if (!html.includes(marker)) throw new Error(`Missing preview feature marker: ${marker}`);
 }
 if (html.includes("批次修改") || html.includes("bulkItemForm")) throw new Error("Bulk edit feature was not removed");
 if (html.includes("現場照片") || html.includes('data-pane="photos"')) throw new Error("Site photo tab was not removed");
 if (html.includes('data-tab="maintenance"') || html.includes('data-pane="maintenance"') || html.includes('data-site-module="logs"')) throw new Error("Work log or maintenance tab remains under sites");
+if (html.includes('data-page="sites"') || html.includes('id="siteCustomerCategory"') || html.includes('data-site-module="floors"')) throw new Error("Internal ERP site-data page was not removed");
 if (html.includes("安全預覽模式") || html.includes("預覽資料來源") || html.includes("dataNoticeLabel")) throw new Error("Preview notices were not removed");
 
 const js = readFileSync(new URL("../app.js", import.meta.url), "utf8");
@@ -44,6 +45,7 @@ for (const marker of ["workLogActionMenu", "worklog-content-action", "syncModalC
   if (!js.includes(marker)) throw new Error(`Correction V1 flow missing: ${marker}`);
 }
 if (js.includes("preview_site_upsert") || js.includes("preview_site_delete")) throw new Error("Preview-only site CRUD operation remains");
+if (js.includes("updateMaterialCustomers(false);updateSiteCustomers(false)")) throw new Error("Removed site-data page is still invoked from master-data rendering");
 if (!js.includes("state.siteData.assets=assets.map")) throw new Error("NAS attachment hydration is missing");
 if (js.includes("preview_bulk_inventory") || js.includes("selectedInventoryIds")) throw new Error("Bulk edit JavaScript was not removed");
 
