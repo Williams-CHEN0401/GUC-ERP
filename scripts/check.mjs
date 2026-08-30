@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-const files = ["index.html", "styles.css", "app.js", "api/inventory.js", "api/nas.mjs", "api/public-config.js", ".env.example", "vercel.json", "supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", "supabase/migrations/20260828000100_work_log_workers_pickups_and_nas_folders.sql", "supabase/migrations/20260828000200_standalone_work_logs_contracts_accounts_nas.sql", "supabase/migrations/20260828000300_contract_centric_sites.sql", "supabase/migrations/20260828000400_lock_down_work_log_project_trigger.sql", "supabase/migrations/20260829000100_contract_attachment_project_path.sql"];
+const files = ["index.html", "styles.css", "app.js", "api/inventory.js", "api/nas.mjs", "api/public-config.js", ".env.example", "vercel.json", "supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", "supabase/migrations/20260828000100_work_log_workers_pickups_and_nas_folders.sql", "supabase/migrations/20260828000200_standalone_work_logs_contracts_accounts_nas.sql", "supabase/migrations/20260828000300_contract_centric_sites.sql", "supabase/migrations/20260828000400_lock_down_work_log_project_trigger.sql", "supabase/migrations/20260829000100_contract_attachment_project_path.sql", "supabase/migrations/20260830082440_create_secure_phone_data_module.sql"];
 for (const file of files) {
   const content = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
   if (!content.trim()) throw new Error(`${file} is empty`);
@@ -84,6 +84,10 @@ for (const marker of ["site_work_log_workers", "site_workers", "upsert_project_s
 for (const marker of ["contract_service_types", "customer_contract_services", "upsert_customer_project_work_log_v2", "register_site_attachments_v2", "password_confirmation"]) {
   if (!edge.includes(marker)) throw new Error(`Standalone work-log or account marker missing: ${marker}`);
 }
+for (const marker of ["phone_systems", "phone_extensions", "phone_terminal_points", 'operation === "upsert_phone_system"', 'operation === "upsert_phone_extension"', 'operation === "set_phone_system_credential"', 'operation === "reveal_phone_system_credential"']) {
+  if (!edge.includes(marker)) throw new Error(`Phone data gateway marker missing: ${marker}`);
+}
+if (edge.includes("login_username_ciphertext") || edge.includes("login_password_ciphertext")) throw new Error("Encrypted phone credentials must not be included in the gateway snapshot.");
 if (edge.includes("...(await snapshot(logged.user))")) throw new Error("Login still loads the full database snapshot");
 
 const formalMigration = readFileSync(new URL("../supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", import.meta.url), "utf8");
