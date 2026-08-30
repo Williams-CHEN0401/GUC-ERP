@@ -1,8 +1,13 @@
 const DEFAULT_SITE_DATA_URL = "https://guc-site-data-system.vercel.app";
+const DEFAULT_PREVIEW_SITE_DATA_URL = "https://guc-site-data-system-git-fix-n-bff4ad-sam5321051-5955s-projects.vercel.app";
+
+function defaultSiteDataUrl() {
+  return process.env.VERCEL_ENV === "preview" ? DEFAULT_PREVIEW_SITE_DATA_URL : DEFAULT_SITE_DATA_URL;
+}
 
 function normalizedSiteDataUrl() {
   const configured = String(process.env.NEXT_PUBLIC_SITE_DATA_URL || "").trim();
-  const value = configured || DEFAULT_SITE_DATA_URL;
+  const value = configured || defaultSiteDataUrl();
   if (!value) return "";
   try {
     const url = new URL(value);
