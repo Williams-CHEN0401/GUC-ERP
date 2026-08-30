@@ -108,6 +108,7 @@ const datasets: Record<string, DatasetDefinition> = {
   receipts: { path: "stock_receipts?select=id,receipt_date,inventory_item_id,quantity,supplier_id,supplier,note,row_version,created_at,updated_at,source,updated_by&order=receipt_date.desc,created_at.desc" },
   adjustments: { path: "stock_adjustments?select=id,inventory_item_id,before_quantity,after_quantity,difference_quantity,adjusted_at,reason,idempotency_key,source,updated_by,created_at&order=adjusted_at.desc,id.desc" },
   audit_logs: { path: "audit_logs?select=id,entity_type,entity_id,action,source,actor,created_at&order=created_at.desc&limit=100" },
+  site_audit_logs: { path: "audit_logs?select=id,entity_type,entity_id,action,source,actor,created_at&entity_type=in.(sites,site_work_logs,site_assets)&order=created_at.desc&limit=100" },
   sync_runs: { path: "sync_runs?select=id,direction,status,source_name,total_records,processed_records,error_message,started_at,finished_at&order=started_at.desc&limit=20" },
   import_batches: { path: "import_batches?select=id,file_name,status,total_rows,valid_rows,error_rows,conflict_rows,created_at,completed_at&order=created_at.desc&limit=20" },
   conflicts: { path: "data_conflicts?select=id,entity_type,entity_id,status,created_at&status=eq.open&order=created_at.desc&limit=20" },
@@ -138,7 +139,7 @@ const scopes: Record<string, string[]> = {
   transactions: ["customers", "projects", "items", "pickups", "receipts", "suppliers", "categories"],
   inventory: ["items", "pickups", "receipts", "adjustments", "suppliers", "categories"],
   crm: ["customers", "contract_service_types", "customer_contract_services", "projects", "suppliers"],
-  sites: ["customers", "contract_service_types", "customer_contract_services", "projects", "items", "categories", "pickups", "sites", "site_floors", "site_devices", "site_routes", "site_work_logs", "site_work_log_workers", "site_workers", "site_notes", "site_assets", "maintenance_details"],
+  sites: ["customers", "contract_service_types", "customer_contract_services", "projects", "items", "categories", "pickups", "sites", "site_floors", "site_devices", "site_routes", "site_work_logs", "site_work_log_workers", "site_workers", "site_notes", "site_assets", "maintenance_details", "site_audit_logs"],
   materials: ["customers", "projects", "items", "pickups"],
   settings: ["accounts", "audit_logs"],
   backup: Object.keys(datasets)
