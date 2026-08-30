@@ -4,6 +4,7 @@
 
 - 透過 Vercel Function 轉送既有受保護 ERP API，不在原始碼保存 Gateway token 或 service role。
 - 登入前不讀取客戶或庫存資料；登入工作階段只保存在瀏覽器 sessionStorage。
+- 「案場資料」會在新分頁開啟；兩站以限定來源、視窗與 nonce 的 `postMessage` 交接短期 access token，不傳送密碼、refresh token，也不把 Token 放進網址。
 - 正式發布依序執行資料庫備份與 preflight、migration、Edge Function、Vercel Production、上線驗證；不執行 seed 或 restore。
 - 「案場資料」以客戶承攬內容為核心；新平面、走線、設備、施工備忘及附件綁定客戶＋承攬內容。既有專案案場保留為未歸類歷史資料，不自動重新綁定。
 - 「現場照片／施工照片」頁籤已移除；附件功能仍保留於獨立的「附件」頁籤。
