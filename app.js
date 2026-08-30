@@ -3,6 +3,9 @@ const NAS_API_ENDPOINT = "/api/nas";
 const SESSION_KEY = "GUC_ERP_ACCESS_TOKEN";
 const PRODUCTION_HOST = "guc-erp-vercel-rebuild.vercel.app";
 const SITE_SYSTEM_TARGET_URL = globalThis.GUC_PUBLIC_CONFIG?.siteDataUrl || "";
+const SITE_SYSTEM_TARGET_ORIGIN = (() => { try { return new URL(SITE_SYSTEM_TARGET_URL).origin; } catch { return ""; } })();
+const SITE_SSO_READY_MESSAGE = "GUC_SITE_SSO_READY";
+const SITE_SSO_SESSION_MESSAGE = "GUC_SITE_SSO_SESSION";
 const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST;
 const CUSTOMER_CATEGORIES = [["school", "學校機關"], ["government", "政府機關"]];
 const DEFAULT_CONTRACT_SERVICES = ["電話系統","監控系統","辦公室佈線","音響","柵欄機","緊急求救系統","籃球場投幣機"];
@@ -281,7 +284,26 @@ function showLogin(message=""){document.querySelector("#loginGate").classList.ad
 function hideLogin(){document.querySelector("#loginGate").classList.remove("open");document.querySelector("#loginError").classList.remove("show");}
 function showSystemChooser(){const chooser=document.querySelector("#systemChooser"),status=document.querySelector("#systemChooserStatus");chooser.classList.add("open");chooser.setAttribute("aria-hidden","false");if(status)status.textContent=SITE_SYSTEM_TARGET_URL?"案場資料系統已可開啟。":"案場資料系統網址尚未設定；本次不會建立假網址或錯誤跳轉。";}
 function hideSystemChooser(){const chooser=document.querySelector("#systemChooser");chooser.classList.remove("open");chooser.setAttribute("aria-hidden","true");}
-async function chooseSystem(target,button){if(target==="sites"){if(!SITE_SYSTEM_TARGET_URL){document.querySelector("#systemChooserStatus").textContent="案場資料系統尚未建置，請先使用 ERP 系統。";showToast("尚未設定案場資料系統網址，因此未執行跳轉。","案場資料尚未開放");return;}window.location.assign(SITE_SYSTEM_TARGET_URL);return;}if(target!=="erp")return;button.disabled=true;button.querySelector("small").textContent="正在載入 Dashboard…";try{hideSystemChooser();await switchPage("dashboard");}catch(error){showSystemChooser();showToast(error.message,"ERP 首頁載入失敗");}finally{button.disabled=false;button.querySelector("small").textContent="進入目前的專案與庫存 Dashboard";}}
+function openSiteSystem(){
+  if(!SITE_SYSTEM_TARGET_URL||!SITE_SYSTEM_TARGET_ORIGIN){showToast("尚未設定案場資料系統網址，因此未開啟新分頁。","案場資料尚未開放");return false;}
+  if(!accessToken){showLogin("請先登入 ERP，再開啟案場資料系統。");return false;}
+  const nonce=crypto.randomUUID(),target=new URL(SITE_SYSTEM_TARGET_URL);
+  target.searchParams.set("sso","erp");target.searchParams.set("sso_nonce",nonce);
+  let siteWindow=null,timer=0;
+  const receiveReady=(event)=>{
+    const message=event.data;
+    if(event.origin!==SITE_SYSTEM_TARGET_ORIGIN||event.source!==siteWindow||!message||typeof message!=="object"||message.type!==SITE_SSO_READY_MESSAGE||message.nonce!==nonce)return;
+    if(!accessToken)return;
+    siteWindow.postMessage({type:SITE_SSO_SESSION_MESSAGE,nonce,accessToken},SITE_SYSTEM_TARGET_ORIGIN);
+    window.removeEventListener("message",receiveReady);clearTimeout(timer);
+  };
+  window.addEventListener("message",receiveReady);
+  siteWindow=window.open(target.toString(),"_blank");
+  if(!siteWindow){window.removeEventListener("message",receiveReady);showToast("瀏覽器已阻擋新分頁，請允許此網站開啟彈出式視窗。","無法開啟案場資料");return false;}
+  timer=setTimeout(()=>window.removeEventListener("message",receiveReady),15000);
+  return true;
+}
+async function chooseSystem(target,button){if(target==="sites"){if(!openSiteSystem()){const status=document.querySelector("#systemChooserStatus");if(status)status.textContent="案場資料新分頁未能開啟，請確認瀏覽器設定。";return;}hideSystemChooser();switchPage("dashboard").catch((error)=>showToast(error.message,"ERP 首頁載入失敗"));return;}if(target!=="erp")return;button.disabled=true;button.querySelector("small").textContent="正在載入 Dashboard…";try{hideSystemChooser();await switchPage("dashboard");}catch(error){showSystemChooser();showToast(error.message,"ERP 首頁載入失敗");}finally{button.disabled=false;button.querySelector("small").textContent="進入目前的專案與庫存 Dashboard";}}
 function logout(){accessToken="";sessionStorage.removeItem(SESSION_KEY);loadedScopes.clear();scopeRequests.clear();lastSnapshot=null;nasConnectionState={checked:false,checking:false,available:false,message:"登入後檢查 NAS 連線"};state=emptyState();hideSystemChooser();renderAll();applyUserState();showLogin();}
 function setSearch(name,value,render){tableState[name].search=value.trim().toLocaleLowerCase("zh-Hant");tableState[name].page=1;render();}
 function setSort(name,value,render){const[key,direction]=value.split(":");tableState[name].sortKey=key;tableState[name].direction=direction;tableState[name].page=1;render();}
@@ -324,7 +346,7 @@ document.addEventListener("input",(event)=>{const input=event.target.closest("[d
 
 document.querySelector("#loginForm").addEventListener("submit",async(event)=>{event.preventDefault();const form=event.currentTarget,data=Object.fromEntries(new FormData(form)),button=form.querySelector("button");button.disabled=true;button.textContent="驗證帳號中…";try{const auth=await apiRequest({operation:"login",payload:{username:data.username,password:data.password}});accessToken=auth.session?.access_token||"";if(!accessToken)throw new Error("登入工作階段建立失敗。");sessionStorage.setItem(SESSION_KEY,accessToken);state.currentUser=auth.current_user||null;loadedScopes.clear();lastSnapshot={current_user:auth.current_user||null};renderAll();applyUserState();form.reset();hideLogin();showSystemChooser();}catch(error){if(!accessToken){sessionStorage.removeItem(SESSION_KEY);showLogin(error.message);}else showToast(error.message,"登入後流程載入失敗");}finally{button.disabled=false;button.textContent=PREVIEW_MODE?"登入安全預覽":"登入正式系統";}});
 document.querySelector("#systemChooser").addEventListener("click",(event)=>{const button=event.target.closest("[data-system-choice]");if(button)chooseSystem(button.dataset.systemChoice,button);});
-document.querySelector("#logoutButton").addEventListener("click",logout);document.querySelector("#systemChooserLogout").addEventListener("click",logout);document.querySelector("#menuButton").addEventListener("click",()=>document.querySelector("#sidebar").classList.toggle("open"));document.querySelector("#refreshButton").addEventListener("click",async()=>{try{await refreshSnapshot();showToast("目前頁面資料已重新載入。");}catch(error){if(error.status!==401)showToast(error.message,"重新整理失敗");}});document.querySelector("#modalForm").addEventListener("submit",handleModalSubmit);
+document.querySelector("#logoutButton").addEventListener("click",logout);document.querySelector("#systemChooserLogout").addEventListener("click",logout);document.querySelector("#openSiteDataButton").addEventListener("click",openSiteSystem);document.querySelector("#menuButton").addEventListener("click",()=>document.querySelector("#sidebar").classList.toggle("open"));document.querySelector("#refreshButton").addEventListener("click",async()=>{try{await refreshSnapshot();showToast("目前頁面資料已重新載入。");}catch(error){if(error.status!==401)showToast(error.message,"重新整理失敗");}});document.querySelector("#modalForm").addEventListener("submit",handleModalSubmit);
 [["pickupSearch","pickup",renderTransactions],["receiptSearch","receipt",renderTransactions],["inventorySearch","inventory",renderInventory],["customerSearch","customer",renderMasterData],["projectSearch","project",renderMasterData],["supplierSearch","supplier",renderMasterData],["userSearch","user",renderUsers],["logSearch","log",renderSystemLogs],["worklogSearch","worklog",renderWorkLogs]].forEach(([id,name,render])=>document.querySelector(`#${id}`).addEventListener("input",(e)=>setSearch(name,e.target.value,render)));
 [["pickupSort","pickup",renderTransactions],["receiptSort","receipt",renderTransactions],["inventorySort","inventory",renderInventory],["customerSort","customer",renderMasterData],["projectSort","project",renderMasterData],["supplierSort","supplier",renderMasterData],["userSort","user",renderUsers],["logSort","log",renderSystemLogs],["worklogSort","worklog",renderWorkLogs]].forEach(([id,name,render])=>document.querySelector(`#${id}`).addEventListener("change",(e)=>setSort(name,e.target.value,render)));
 document.querySelector("#categoryFilter").addEventListener("change",()=>{tableState.inventory.page=1;renderInventory();});document.querySelector("#customerCategoryFilter").addEventListener("change",()=>{tableState.customer.page=1;renderMasterData();});document.querySelector("#materialCustomerCategory").addEventListener("change",()=>updateMaterialCustomers(true));document.querySelector("#materialCustomer").addEventListener("change",()=>updateMaterialProjects(true));document.querySelector("#materialProject").addEventListener("change",renderMaterialSummary);
