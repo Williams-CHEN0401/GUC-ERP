@@ -52,7 +52,9 @@ test("登入成功後先顯示系統選擇且案場網址未設定時不跳轉",
 test("案場網站使用集中設定且正式環境缺少變數時仍有安全預設網址", () => {
   assert.match(publicConfig, /NEXT_PUBLIC_SITE_DATA_URL/);
   assert.match(publicConfig, /DEFAULT_SITE_DATA_URL = "https:\/\/guc-site-data-system\.vercel\.app"/);
-  assert.match(publicConfig, /configured \|\| DEFAULT_SITE_DATA_URL/);
+  assert.match(publicConfig, /DEFAULT_PREVIEW_SITE_DATA_URL/);
+  assert.match(publicConfig, /process\.env\.VERCEL_ENV === "preview"/);
+  assert.match(publicConfig, /configured \|\| defaultSiteDataUrl\(\)/);
 });
 
 test("ERP 內部案場資料模組已移除但獨立網站入口仍保留", () => {
