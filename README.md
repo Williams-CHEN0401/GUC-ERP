@@ -28,3 +28,5 @@ NAS Vercel Function 需要在對應環境設定 `NAS_WEBDAV_URL`、`NAS_WEBDAV_U
 - `20260829000100_contract_attachment_project_path.sql`：已套用；附件路徑加入專案層級，並禁止新附件建立工作日誌關聯。
 
 版本控制與多人協作方式請見 `CONTRIBUTING.md` 與 `VERSION_CONTROL_AND_COLLABORATION.md`。
+
+跨 ERP 與獨立案場系統的正式架構、SSO、Gateway API、資料模型、環境變數、發布、回滾與驗收規格，以 [`GUC-Site-Data/docs/SYSTEM_SPECIFICATION.md`](https://github.com/Williams-CHEN0401/GUC-Site-Data/blob/main/docs/SYSTEM_SPECIFICATION.md) 為單一正式來源。
