@@ -50,10 +50,10 @@ test("project_workers 關聯具備外鍵、RLS、service role 限制與原子 RP
   ]) assert.ok(migration.includes(marker), marker);
 });
 
-test("Gateway 只接受 UUID 負責人並在 CRM 與工作日誌範圍回傳關聯", () => {
+test("Gateway 只接受 UUID 負責人並以狀態同步 RPC 儲存專案", () => {
   assert.match(edge, /project_workers\?select=project_id,user_id,created_at/);
   assert.match(edge, /crm: \[[^\]]*"project_workers"[^\]]*"site_workers"/);
   assert.match(edge, /sites: \[[^\]]*"project_workers"/);
   assert.match(edge, /worker_user_ids\.some\(workerId=>!workerId\)/);
-  assert.match(edge, /rpc\("upsert_erp_project_with_workers_v1"/);
+  assert.match(edge, /rpc\("upsert_erp_project_with_workers_v2"/);
 });

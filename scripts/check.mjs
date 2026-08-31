@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-const files = ["index.html", "styles.css", "app.js", "api/inventory.js", "api/nas.mjs", "api/public-config.js", ".env.example", "vercel.json", "supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", "supabase/migrations/20260828000100_work_log_workers_pickups_and_nas_folders.sql", "supabase/migrations/20260828000200_standalone_work_logs_contracts_accounts_nas.sql", "supabase/migrations/20260828000300_contract_centric_sites.sql", "supabase/migrations/20260828000400_lock_down_work_log_project_trigger.sql", "supabase/migrations/20260829000100_contract_attachment_project_path.sql", "supabase/migrations/20260830082440_create_secure_phone_data_module.sql", "supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", "supabase/migrations/20260831000100_project_workers_and_work_log_defaults.sql", "supabase/migrations/20260831000200_phone_building_and_optional_extension.sql"];
+const files = ["index.html", "styles.css", "app.js", "api/inventory.js", "api/nas.mjs", "api/public-config.js", ".env.example", "vercel.json", "supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", "supabase/migrations/20260828000100_work_log_workers_pickups_and_nas_folders.sql", "supabase/migrations/20260828000200_standalone_work_logs_contracts_accounts_nas.sql", "supabase/migrations/20260828000300_contract_centric_sites.sql", "supabase/migrations/20260828000400_lock_down_work_log_project_trigger.sql", "supabase/migrations/20260829000100_contract_attachment_project_path.sql", "supabase/migrations/20260830082440_create_secure_phone_data_module.sql", "supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", "supabase/migrations/20260831000100_project_workers_and_work_log_defaults.sql", "supabase/migrations/20260831000200_phone_building_and_optional_extension.sql", "supabase/migrations/20260831081216_work_log_period_project_status_sync.sql", "supabase/migrations/20260831105247_add_social_welfare_and_cleaning_customer_categories.sql"];
 for (const file of files) {
   const content = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
   if (!content.trim()) throw new Error(`${file} is empty`);
@@ -10,7 +10,7 @@ const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 for (const marker of ["data-page=\"dashboard\"", "data-page=\"transactions\"", "data-page=\"inventory\"", "data-page=\"crm\"", "data-page=\"worklogs\""]) {
   if (!html.includes(marker)) throw new Error(`Missing page marker: ${marker}`);
 }
-for (const marker of ["id=\"worklogCustomerCategoryFilter\"", "id=\"worklogCustomerFilter\"", "id=\"materialCustomerCategory\"", "id=\"customerCategoryFilter\"", "id=\"itemBatchForm\"", "id=\"inventoryPagination\"", "id=\"userTable\"", "id=\"logTable\"", "data-open=\"accountModal\"", "id=\"systemChooser\"", "data-system-choice=\"erp\"", "data-system-choice=\"sites\""]) {
+for (const marker of ["id=\"worklogCustomerCategoryFilter\"", "id=\"worklogCustomerFilter\"", "id=\"worklogStatusFilter\"", "id=\"materialCustomerCategory\"", "id=\"customerCategoryFilter\"", "id=\"itemBatchForm\"", "id=\"inventoryPagination\"", "id=\"userTable\"", "id=\"logTable\"", "data-open=\"accountModal\"", "id=\"systemChooser\"", "data-system-choice=\"erp\"", "data-system-choice=\"sites\""]) {
   if (!html.includes(marker)) throw new Error(`Missing preview feature marker: ${marker}`);
 }
 if (html.includes("批次修改") || html.includes("bulkItemForm")) throw new Error("Bulk edit feature was not removed");
@@ -31,6 +31,9 @@ for (const operation of ["create_account", "update_account", "delete_account"]) 
 }
 for (const marker of ["inferCustomerCategory", "create_inventory_item_batch", "collectTransactionBatchRows", "customer_category"]) {
   if (!js.includes(marker)) throw new Error(`2026-08-25 specification flow missing: ${marker}`);
+}
+for (const marker of ['["social_welfare", "社福機關"]', '["cleaning_team", "清潔隊"]']) {
+  if (!js.includes(marker)) throw new Error(`Expanded customer category missing: ${marker}`);
 }
 for (const marker of ["NAS_TARGET_ROOT", "attachmentModal", "preview_attachment_upload", "MAX_ATTACHMENT_FILES", "MAX_ATTACHMENT_BYTES", "attachmentTargetPath", "workerPickerField", "workLogPickupModal", "work_log_id", "request_id"]) {
   if (!js.includes(marker)) throw new Error(`NAS attachment preview flow missing: ${marker}`);
@@ -84,13 +87,13 @@ for (const marker of ['operation === "upsert_project_site_entry"', 'operation ==
 for (const marker of ["site_work_log_workers", "site_workers", "upsert_project_site_work_log_v1", "create_pickup_records_batch_v2", "p_work_log_id", "p_request_id"]) {
   if (!edge.includes(marker)) throw new Error(`Work-log worker or shared pickup marker missing: ${marker}`);
 }
-for (const marker of ["contract_service_types", "customer_contract_services", "upsert_customer_project_work_log_v2", "register_site_attachments_v2", "password_confirmation"]) {
+for (const marker of ["contract_service_types", "customer_contract_services", "upsert_customer_project_work_log_v3", "p_time_period", "p_status", "register_site_attachments_v2", "password_confirmation"]) {
   if (!edge.includes(marker)) throw new Error(`Standalone work-log or account marker missing: ${marker}`);
 }
 for (const marker of ["phone_systems", "phone_extensions", "phone_terminal_points", 'operation === "upsert_phone_system"', 'operation === "upsert_phone_extension"', 'operation === "set_phone_system_credential"', 'operation === "reveal_phone_system_credential"']) {
   if (!edge.includes(marker)) throw new Error(`Phone data gateway marker missing: ${marker}`);
 }
-for (const marker of ["project_workers", "upsert_erp_project_with_workers_v1", "worker_user_ids"]){
+for (const marker of ["project_workers", "upsert_erp_project_with_workers_v2", "worker_user_ids"]){
   if (!edge.includes(marker)) throw new Error(`Project-owner gateway marker missing: ${marker}`);
 }
 if (edge.includes("login_username_ciphertext") || edge.includes("login_password_ciphertext")) throw new Error("Encrypted phone credentials must not be included in the gateway snapshot.");
@@ -124,6 +127,11 @@ if (!triggerSecurityMigration.includes("set_site_work_log_project_id_v1") || !tr
 const attachmentProjectMigration = readFileSync(new URL("../supabase/migrations/20260829000100_contract_attachment_project_path.sql", import.meta.url), "utf8");
 for (const marker of ["register_contract_site_attachments_v2", "p_project_id uuid", "project_id = p_project_id", "work_log_id = null", "from public, anon, authenticated"]) {
   if (!attachmentProjectMigration.includes(marker)) throw new Error(`Project-aware attachment migration marker missing: ${marker}`);
+}
+
+const workLogStatusMigration = readFileSync(new URL("../supabase/migrations/20260831081216_work_log_period_project_status_sync.sql", import.meta.url), "utf8");
+for (const marker of ["time_period", "site_work_logs_status_check", "upsert_project_site_work_log_v2", "upsert_customer_project_work_log_v3", "upsert_erp_project_with_workers_v2", "status is distinct from p_status", "from public, anon, authenticated"]) {
+  if (!workLogStatusMigration.includes(marker)) throw new Error(`Work-log period/status sync marker missing: ${marker}`);
 }
 
 const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
