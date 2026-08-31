@@ -5,6 +5,7 @@ import test from "node:test";
 const edge = readFileSync(new URL("../supabase/functions/inventory-gateway/index.ts", import.meta.url), "utf8");
 const migration = readFileSync(new URL("../supabase/migrations/20260830082440_create_secure_phone_data_module.sql", import.meta.url), "utf8");
 const hardening = readFileSync(new URL("../supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", import.meta.url), "utf8");
+const phoneLocation = readFileSync(new URL("../supabase/migrations/20260831000200_phone_building_and_optional_extension.sql", import.meta.url), "utf8");
 
 test("phone schema stays linked to the customer contract and indexed", () => {
   for (const table of ["phone_systems", "phone_extensions", "phone_terminal_points", "phone_system_credentials", "phone_credential_access_logs"]) {
@@ -14,6 +15,15 @@ test("phone schema stays linked to the customer contract and indexed", () => {
   assert.match(migration, /foreign key \(customer_id, contract_service_type_id\)[\s\S]*customer_contract_services\(customer_id, service_type_id\)/);
   assert.match(migration, /phone_extensions_number_unique/);
   assert.match(migration, /phone_terminal_points_slot_idx/);
+});
+
+test("phone location migration is additive and keeps legacy rows compatible", () => {
+  assert.match(phoneLocation, /add column if not exists building_name text/);
+  assert.match(phoneLocation, /alter column extension_number drop not null/);
+  assert.match(phoneLocation, /extension_number is null/);
+  assert.match(phoneLocation, /phone_extensions_building_floor_idx/);
+  assert.match(phoneLocation, /upsert_phone_extension_v2/);
+  assert.doesNotMatch(phoneLocation, /delete from public\.phone_extensions|truncate|drop table/);
 });
 
 test("credentials are encrypted and inaccessible through the regular snapshot", () => {
@@ -35,4 +45,8 @@ test("gateway enforces phone module RBAC", () => {
   assert.match(edge, /operation === "delete_phone_system"[\s\S]*requireRole\(user,\["admin"\]\)/);
   assert.match(edge, /operation === "set_phone_system_credential"[\s\S]*requireRole\(user,\["admin"\]\)/);
   assert.match(edge, /operation === "reveal_phone_system_credential"[\s\S]*requireRole\(user,\["admin"\]\)/);
+  assert.match(edge, /upsert_phone_extension_v2/);
+  assert.match(edge, /p_building_name/);
+  assert.match(edge, /extension_number=nullable/);
+  assert.match(edge, /building_name,floor,installation_location/);
 });
