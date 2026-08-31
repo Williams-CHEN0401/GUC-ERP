@@ -23,7 +23,7 @@ const ipAddress = (value: unknown) => {
   return null;
 };
 const role = (value: unknown): Role | null => ["admin", "operator", "viewer"].includes(text(value)) ? text(value) as Role : null;
-const customerCategory = (value: unknown) => ["school", "government"].includes(text(value)) ? text(value) : null;
+const customerCategory = (value: unknown) => ["school", "government", "social_welfare", "cleaning_team"].includes(text(value)) ? text(value) : null;
 const safePathPart = (value: unknown) => text(value).normalize("NFKC").replace(/[\\/:*?"<>|\x00-\x1F]/g,"_").replace(/\s+/g," ").trim().slice(0,100) || "未命名";
 const optionalEmail = (value: unknown) => {
   const result = nullable(value, 160);

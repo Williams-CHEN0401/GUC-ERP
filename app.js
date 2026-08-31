@@ -7,7 +7,7 @@ const SITE_SYSTEM_TARGET_ORIGIN = (() => { try { return new URL(SITE_SYSTEM_TARG
 const SITE_SSO_READY_MESSAGE = "GUC_SITE_SSO_READY";
 const SITE_SSO_SESSION_MESSAGE = "GUC_SITE_SSO_SESSION";
 const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST;
-const CUSTOMER_CATEGORIES = [["school", "學校機關"], ["government", "政府機關"]];
+const CUSTOMER_CATEGORIES = [["school", "學校機關"], ["government", "政府機關"], ["social_welfare", "社福機關"], ["cleaning_team", "清潔隊"]];
 const DEFAULT_CONTRACT_SERVICES = ["電話系統","監控系統","辦公室佈線","音響","柵欄機","緊急求救系統","籃球場投幣機"];
 const MAX_BATCH_ROWS = 20;
 const PAGE_SCOPES = { dashboard:"dashboard", transactions:"transactions", inventory:"inventory", crm:"crm", worklogs:"sites", materials:"materials", backup:"backup", settings:"settings" };
@@ -68,7 +68,7 @@ function canAdmin() { return state.currentUser?.role === "admin"; }
 function legacyProjectOwnerIds(owner=""){const names=String(owner||"").split(/[、,，;；]/).map((name)=>name.trim()).filter(Boolean);return names.flatMap((name)=>{const matches=state.siteWorkers.filter((worker)=>worker.displayName===name);return matches.length===1?[matches[0].id]:[];});}
 function projectOwnerNames(ownerIds=[]){const ids=new Set(ownerIds);return state.siteWorkers.filter((worker)=>ids.has(worker.id)).map((worker)=>worker.displayName);}
 function applyProjectWorkerLinks(){state.projects.forEach((project)=>{const linked=state.projectWorkers.filter((row)=>row.projectId===project.id).map((row)=>row.userId),ownerIds=linked.length?linked:legacyProjectOwnerIds(project.owner);project.ownerIds=[...new Set(ownerIds)];const names=projectOwnerNames(project.ownerIds);if(names.length)project.owner=names.join("、");});}
-function inferCustomerCategory(name) { return /(國小|國中|高中|中學)/.test(String(name || "")) ? "school" : "government"; }
+function inferCustomerCategory(name) { const value=String(name||"");if(value.includes("清潔隊"))return "cleaning_team";if(value.includes("社福"))return "social_welfare";return /(國小|國中|高中|中學)/.test(value)?"school":"government"; }
 function customerCategoryLabel(value) { return CUSTOMER_CATEGORIES.find(([key]) => key === value)?.[1] || "政府機關"; }
 function contractServiceByCode(code){return state.contractServiceTypes.find((service)=>service.code===code);}
 function customerContractServiceTypes(customer){return (customer?.contractServiceCodes||[]).map(contractServiceByCode).filter(Boolean).sort((a,b)=>a.sortOrder-b.sortOrder);}

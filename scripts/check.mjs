@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-const files = ["index.html", "styles.css", "app.js", "api/inventory.js", "api/nas.mjs", "api/public-config.js", ".env.example", "vercel.json", "supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", "supabase/migrations/20260828000100_work_log_workers_pickups_and_nas_folders.sql", "supabase/migrations/20260828000200_standalone_work_logs_contracts_accounts_nas.sql", "supabase/migrations/20260828000300_contract_centric_sites.sql", "supabase/migrations/20260828000400_lock_down_work_log_project_trigger.sql", "supabase/migrations/20260829000100_contract_attachment_project_path.sql", "supabase/migrations/20260830082440_create_secure_phone_data_module.sql", "supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", "supabase/migrations/20260831000100_project_workers_and_work_log_defaults.sql", "supabase/migrations/20260831000200_phone_building_and_optional_extension.sql", "supabase/migrations/20260831081216_work_log_period_project_status_sync.sql"];
+const files = ["index.html", "styles.css", "app.js", "api/inventory.js", "api/nas.mjs", "api/public-config.js", ".env.example", "vercel.json", "supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", "supabase/migrations/20260828000100_work_log_workers_pickups_and_nas_folders.sql", "supabase/migrations/20260828000200_standalone_work_logs_contracts_accounts_nas.sql", "supabase/migrations/20260828000300_contract_centric_sites.sql", "supabase/migrations/20260828000400_lock_down_work_log_project_trigger.sql", "supabase/migrations/20260829000100_contract_attachment_project_path.sql", "supabase/migrations/20260830082440_create_secure_phone_data_module.sql", "supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", "supabase/migrations/20260831000100_project_workers_and_work_log_defaults.sql", "supabase/migrations/20260831000200_phone_building_and_optional_extension.sql", "supabase/migrations/20260831081216_work_log_period_project_status_sync.sql", "supabase/migrations/20260831105247_add_social_welfare_and_cleaning_customer_categories.sql"];
 for (const file of files) {
   const content = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
   if (!content.trim()) throw new Error(`${file} is empty`);
@@ -31,6 +31,9 @@ for (const operation of ["create_account", "update_account", "delete_account"]) 
 }
 for (const marker of ["inferCustomerCategory", "create_inventory_item_batch", "collectTransactionBatchRows", "customer_category"]) {
   if (!js.includes(marker)) throw new Error(`2026-08-25 specification flow missing: ${marker}`);
+}
+for (const marker of ['["social_welfare", "社福機關"]', '["cleaning_team", "清潔隊"]']) {
+  if (!js.includes(marker)) throw new Error(`Expanded customer category missing: ${marker}`);
 }
 for (const marker of ["NAS_TARGET_ROOT", "attachmentModal", "preview_attachment_upload", "MAX_ATTACHMENT_FILES", "MAX_ATTACHMENT_BYTES", "attachmentTargetPath", "workerPickerField", "workLogPickupModal", "work_log_id", "request_id"]) {
   if (!js.includes(marker)) throw new Error(`NAS attachment preview flow missing: ${marker}`);
