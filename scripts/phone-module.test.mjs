@@ -6,6 +6,7 @@ const edge = readFileSync(new URL("../supabase/functions/inventory-gateway/index
 const migration = readFileSync(new URL("../supabase/migrations/20260830082440_create_secure_phone_data_module.sql", import.meta.url), "utf8");
 const hardening = readFileSync(new URL("../supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", import.meta.url), "utf8");
 const phoneLocation = readFileSync(new URL("../supabase/migrations/20260831000200_phone_building_and_optional_extension.sql", import.meta.url), "utf8");
+const phoneImport = readFileSync(new URL("../supabase/migrations/20260831043000_phone_terminal_excel_import.sql", import.meta.url), "utf8");
 
 test("phone schema stays linked to the customer contract and indexed", () => {
   for (const table of ["phone_systems", "phone_extensions", "phone_terminal_points", "phone_system_credentials", "phone_credential_access_logs"]) {
@@ -24,6 +25,17 @@ test("phone location migration is additive and keeps legacy rows compatible", ()
   assert.match(phoneLocation, /phone_extensions_building_floor_idx/);
   assert.match(phoneLocation, /upsert_phone_extension_v2/);
   assert.doesNotMatch(phoneLocation, /delete from public\.phone_extensions|truncate|drop table/);
+});
+
+test("phone Excel import is row-rollback safe, logged, service-role only, and prevents orphan field endpoints", () => {
+  for (const marker of ["phone_terminal_import_logs", "import_phone_terminal_rows_v1", "phone_terminal_points_location_uidx", "source_rows", "failure_reasons", "preview_status", "frame_name", "source_column", "exception", "when others", "現場端資料不得建立為沒有系統端的孤立資料"]) assert.ok(phoneImport.includes(marker), `missing phone import marker: ${marker}`);
+  assert.match(phoneImport, /security definer/);
+  assert.match(phoneImport, /revoke all on function public\.import_phone_terminal_rows_v1[\s\S]*from public, anon, authenticated/);
+  assert.match(phoneImport, /grant execute on function public\.import_phone_terminal_rows_v1[\s\S]*to service_role/);
+  assert.match(edge, /operation === "import_phone_terminal_rows"[\s\S]*requireRole\(user,\["admin","operator"\]\)/);
+  assert.match(edge, /preview_status/);
+  assert.match(edge, /eligibleRows/);
+  assert.doesNotMatch(phoneImport, /delete from public\.phone_extensions|truncate|drop table/);
 });
 
 test("credentials are encrypted and inaccessible through the regular snapshot", () => {
