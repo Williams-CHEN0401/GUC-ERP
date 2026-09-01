@@ -30,6 +30,7 @@ NAS Vercel Function 需要在對應環境設定 `NAS_WEBDAV_URL`、`NAS_WEBDAV_U
 - `20260829000100_contract_attachment_project_path.sql`：已套用；附件路徑加入專案層級，並禁止新附件建立工作日誌關聯。
 - `20260831081216_work_log_period_project_status_sync.sql`：新增工作日誌時段，並以新版原子 RPC 雙向同步工作日誌與專案狀態；正式發布前只在回滾交易中驗證。
 - `20260831105247_add_social_welfare_and_cleaning_customer_categories.sql`：擴充客戶分類，並將名稱含「社福／清潔隊」的既有客戶歸入對應分類；正式發布前只在回滾交易中驗證。
+- `20260902010234_monitoring_device_management.sql`：為獨立案場網站擴充監控設備、AES-GCM 密文儲存、軟刪除與原子 Excel 匯入；目前只在 feature branch，使用者確認 Preview 前不得套用正式資料庫。
 
 版本控制與多人協作方式請見 `CONTRIBUTING.md` 與 `VERSION_CONTROL_AND_COLLABORATION.md`。
 
