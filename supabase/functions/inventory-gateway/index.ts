@@ -365,6 +365,26 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     await ensurePhoneContract(customer_id,service_type_id);
     return rpc("upsert_phone_extension_v2",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_phone_system_id:phone_system_id,p_id:id,p_row_version:rowVersion,p_line_type:line_type,p_extension_number:extension_number||null,p_extension_name:extension_name||null,p_building_name:building_name||null,p_floor:floor||null,p_installation_location:installation_location||null,p_device_brand:device_brand||null,p_device_model:device_model||null,p_notes:notes||null,p_system_slot:system_slot||null,p_system_terminal_code:system_terminal_code||null,p_field_slot:field_slot||null,p_field_terminal_code:field_terminal_code||null,p_actor:actor});
   }
+  if (operation === "import_phone_terminal_rows") {
+    requireRole(user,["admin","operator"]);
+    const customer_id=uuid(payload.customer_id),service_type_id=uuid(payload.contract_service_type_id),file_name=limited(payload.file_name,255),import_type=text(payload.import_type);
+    if(!customer_id||!service_type_id||!file_name||!["system","field"].includes(import_type)||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>1000) throw new Error("端子匯入資料不完整或超過 1000 筆。");
+    const rows=payload.rows.map((value,index)=>{
+      if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆端子資料格式不正確。`);
+      const row=value as Row,preview_status=text(row.preview_status),preview_message=nullable(row.preview_message,500),frame_name=nullable(row.frame_name,160),board=nullable(row.board,80),slot=text(row.slot),terminal_position=nullable(row.terminal_position,80),terminal_type=nullable(row.terminal_type,200),extension_number=nullable(row.extension_number,40),building=nullable(row.building,80),floor=nullable(row.floor,80),installation_location=nullable(row.installation_location,300),phone_type=text(row.phone_type)||"unknown",source_sheet=limited(row.source_sheet,120),source_row=Number(row.source_row),source_column=Number(row.source_column),existing_extension_id=text(row.existing_extension_id)?uuid(row.existing_extension_id):null;
+      if(!["new","update","skip","error"].includes(preview_status)||preview_message===null||frame_name===null||board===null||terminal_position===null||terminal_type===null||extension_number===null||building===null||floor===null||installation_location===null||!["digital","analog","ip","trunk","unknown"].includes(phone_type)||!source_sheet||!Number.isInteger(source_row)||source_row<1||!Number.isInteger(source_column)||source_column<1||source_column>16384||(text(row.existing_extension_id)&&!existing_extension_id)) throw new Error(`第 ${index+1} 筆端子資料欄位不完整。`);
+      if(["new","update"].includes(preview_status)&&(!frame_name||!board||!/^[0-9]{1,5}$/.test(slot)||Number(slot)<1||Number(slot)>10000)) throw new Error(`第 ${index+1} 筆可匯入資料缺少端子群組、端子板或有效槽位。`);
+      if(preview_status==="error"&&!preview_message) throw new Error(`第 ${index+1} 筆錯誤資料缺少原因。`);
+      return {preview_status,preview_message:preview_message||null,frame_name:frame_name||null,board:board||null,slot,terminal_position:terminal_position||null,terminal_type:terminal_type||null,extension_number:extension_number||null,building:building||null,floor:floor||null,installation_location:installation_location||null,phone_type,source_sheet,source_row,source_column,existing_extension_id,raw:row.raw&&typeof row.raw==="object"&&!Array.isArray(row.raw)?row.raw:{}};
+    });
+    const eligibleRows=rows.filter(row=>row.preview_status==="new"||row.preview_status==="update");
+    const keys=eligibleRows.map(row=>`${import_type}|${text(row.frame_name)}|${text(row.building)}|${text(row.floor)}|${text(row.board)}|${row.slot}`);
+    if(new Set(keys).size!==keys.length) throw new Error("匯入檔案包含重複的棟名、樓層、端子板與槽位。");
+    const numbers=eligibleRows.map(row=>text(row.extension_number)).filter(Boolean);
+    if(new Set(numbers).size!==numbers.length) throw new Error("匯入檔案包含無法唯一對應的重複號碼。");
+    await ensurePhoneContract(customer_id,service_type_id);
+    return rpc("import_phone_terminal_rows_v1",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_file_name:file_name,p_import_type:import_type,p_rows:rows,p_actor:actor});
+  }
   if (operation === "delete_phone_extension") {
     requireRole(user,["admin"]);
     const id=uuid(payload.id),rowVersion=Number(payload.row_version);
