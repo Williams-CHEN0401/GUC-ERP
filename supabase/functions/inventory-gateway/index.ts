@@ -677,4 +677,3 @@ Deno.serve(async request => {
     return json({ ok: true, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
   } catch(error) { return json({error:error instanceof Error?error.message:"系統暫時無法完成操作。"},400); }
 });
-

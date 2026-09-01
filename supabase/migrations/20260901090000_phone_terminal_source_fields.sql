@@ -186,4 +186,3 @@ grant execute on function public.upsert_phone_extension_v3(
 ) to service_role;
 
 commit;
-

@@ -89,4 +89,3 @@ test("gateway enforces phone module RBAC", () => {
   assert.match(edge, /extension_number=nullable/);
   assert.match(edge, /building_name,floor,installation_location/);
 });
-
