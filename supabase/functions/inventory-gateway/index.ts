@@ -84,6 +84,99 @@ async function ensurePhoneContract(customerId: string, serviceTypeId: string) {
   ]);
   if (links.length !== 1 || services.length !== 1) throw new Error("此客戶未承攬啟用中的電話系統服務。");
 }
+type PhoneTerminalImportType = "system" | "field";
+type PhoneTerminalImportRow = {
+  row_key: string;
+  sheet_name: string;
+  source_row: number;
+  source_reference: string;
+  terminal_block: string;
+  slot: number;
+  slot_identifier: string;
+  building_name: string | null;
+  floor: string | null;
+  system_terminal_code: string | null;
+  phone_number: string | null;
+  phone_type: "digital" | "analog" | "ip" | "trunk" | null;
+  raw_type: string | null;
+  raw_extra_values: string[];
+  raw_values: Row;
+  mapping_warnings: string[];
+};
+function phoneTerminalImportType(value: unknown): PhoneTerminalImportType | null {
+  return value === "system" || value === "field" ? value : null;
+}
+function phoneTerminalImportRows(value: unknown): PhoneTerminalImportRow[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 1000) return null;
+  const rows: PhoneTerminalImportRow[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const row = item as Row;
+    const row_key=limited(row.row_key,240),sheet_name=limited(row.sheet_name,120),source_row=Number(row.source_row),source_reference=limited(row.source_reference,500),terminal_block=limited(row.terminal_block,80),slot=Number(row.slot),slot_identifier=limited(row.slot_identifier,120),building_name=nullable(row.building_name,80),floor=nullable(row.floor,80),system_terminal_code=nullable(row.system_terminal_code,80),phone_number=nullable(row.phone_number,40),phone_type=text(row.phone_type),raw_type=nullable(row.raw_type,120),raw_extra_values=Array.isArray(row.raw_extra_values)?row.raw_extra_values.map(value=>limited(value,200)):[],mapping_warnings=Array.isArray(row.mapping_warnings)?row.mapping_warnings.map(value=>limited(value,240)):[];
+    if(!row_key||!sheet_name||!Number.isInteger(source_row)||source_row<1||!source_reference||!terminal_block||!Number.isInteger(slot)||slot<1||slot>10000||!slot_identifier||building_name===null||floor===null||system_terminal_code===null||phone_number===null||raw_type===null||!(["","digital","analog","ip","trunk"].includes(phone_type))||raw_extra_values.some(value=>!value)||mapping_warnings.some(value=>!value)||!row.raw_values||typeof row.raw_values!=="object"||Array.isArray(row.raw_values)) return null;
+    rows.push({row_key,sheet_name,source_row,source_reference,terminal_block,slot,slot_identifier,building_name:building_name||null,floor:floor||null,system_terminal_code:system_terminal_code||null,phone_number:phone_number||null,phone_type:phone_type?phone_type as PhoneTerminalImportRow["phone_type"]:null,raw_type:raw_type||null,raw_extra_values:raw_extra_values as string[],raw_values:row.raw_values as Row,mapping_warnings:mapping_warnings as string[]});
+  }
+  return rows;
+}
+function countKeys(values: Array<string | null>) {
+  const counts = new Map<string,number>();
+  values.filter((value):value is string=>Boolean(value)).forEach(value=>counts.set(value,(counts.get(value)||0)+1));
+  return counts;
+}
+async function previewPhoneTerminalImport(customerId:string,serviceTypeId:string,importType:PhoneTerminalImportType,rows:PhoneTerminalImportRow[]) {
+  await ensurePhoneContract(customerId,serviceTypeId);
+  const [extensions,points] = await Promise.all([
+    get(`phone_extensions?customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceTypeId}&select=id,extension_number,building_name,floor,row_version`) as Promise<{id:string;extension_number?:string|null;building_name?:string|null;floor?:string|null;row_version:number}[]>,
+    get(`phone_terminal_points?customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceTypeId}&select=id,phone_extension_id,endpoint_side,frame_block,frame_position,terminal_code,slot_identifier,row_version`) as Promise<{id:string;phone_extension_id:string;endpoint_side:string;frame_block?:string|null;frame_position?:number|null;terminal_code?:string|null;slot_identifier?:string|null;row_version:number}[]>,
+  ]);
+  const extensionsByNumber = new Map(extensions.filter(row=>text(row.extension_number)).map(row=>[text(row.extension_number),row]));
+  const systemPoints = points.filter(row=>row.endpoint_side==="system");
+  const systemByIdentity = new Map<string,typeof systemPoints>();
+  systemPoints.forEach(point=>{const keyValue=`${text(point.frame_block)}|${Number(point.frame_position)||text(point.slot_identifier)}`;systemByIdentity.set(keyValue,[...(systemByIdentity.get(keyValue)||[]),point]);});
+  const systemByExtension = new Map(systemPoints.map(row=>[row.phone_extension_id,row]));
+  const fieldByExtension = new Map(points.filter(row=>row.endpoint_side==="field").map(row=>[row.phone_extension_id,row]));
+  const slotCounts=countKeys(rows.map(row=>`${row.terminal_block.toLocaleLowerCase()}|${row.slot}`));
+  const phoneCounts=countKeys(rows.map(row=>row.phone_number?row.phone_number.toLocaleLowerCase():null));
+  const previewRows = rows.map(row=>{
+    const errors:string[]=[],warnings=[...row.mapping_warnings];
+    const identity=`${row.terminal_block.toLocaleLowerCase()}|${row.slot}`;
+    const numberKey=row.phone_number?.toLocaleLowerCase()||null;
+    let action:"insert"|"update"|"skip"="skip",matchedExtensionId:string|null=null,matchedRowVersion:number|null=null;
+    if((slotCounts.get(identity)||0)>1) errors.push("同一匯入檔有重複的端子板＋槽位");
+    if(numberKey&&(phoneCounts.get(numberKey)||0)>1) errors.push("同一匯入檔有重複的電話／分機，無法唯一對應");
+    if(importType==="system"){
+      const identityPoints=systemByIdentity.get(identity)||[];
+      const numberExtension=numberKey?extensionsByNumber.get(numberKey):undefined;
+      if(identityPoints.length>1)errors.push("資料庫已有多筆相同系統端端子位置");
+      const identityPoint=identityPoints[0];
+      if(identityPoint&&numberExtension&&identityPoint.phone_extension_id!==numberExtension.id)errors.push("槽位與電話／分機分別指向不同既有資料");
+      const matched=identityPoint?extensions.find(item=>item.id===identityPoint.phone_extension_id):numberExtension;
+      if(matched){
+        const existingPoint=systemByExtension.get(matched.id);
+        if(existingPoint&&(!identityPoint)&&(text(existingPoint.frame_block)!==row.terminal_block||Number(existingPoint.frame_position)!==row.slot))errors.push("相同電話／分機已對應其他系統端槽位");
+        matchedExtensionId=matched.id;matchedRowVersion=matched.row_version;action="update";
+      } else action="insert";
+      if(!row.system_terminal_code)warnings.push("系統端端子代碼空白；不覆蓋既有代碼");
+    }else{
+      if(!numberKey)errors.push("缺少電話／分機，無法對應既有系統端");
+      const matched=numberKey?extensionsByNumber.get(numberKey):undefined;
+      if(!matched)errors.push("找不到相同電話／分機的既有系統端資料，為避免孤立資料不會新增");
+      else if(!systemByExtension.has(matched.id))errors.push("找到電話／分機，但該筆沒有系統端端點");
+      else {matchedExtensionId=matched.id;matchedRowVersion=matched.row_version;action="update";if(fieldByExtension.has(matched.id))warnings.push("已有現場端資料；確認後將更新非空白欄位");}
+    }
+    const status=errors.length?"error":warnings.length?"warning":"ready";
+    return {...row,status,action:errors.length?"skip":action,matched_extension_id:matchedExtensionId,matched_row_version:matchedRowVersion,errors,warnings};
+  });
+  return {
+    total_rows:previewRows.length,
+    insert_rows:previewRows.filter(row=>row.action==="insert").length,
+    update_rows:previewRows.filter(row=>row.action==="update").length,
+    skipped_rows:previewRows.filter(row=>row.action==="skip").length,
+    error_rows:previewRows.filter(row=>row.status==="error").length,
+    warning_rows:previewRows.filter(row=>row.status==="warning").length,
+    rows:previewRows,
+  };
+}
 async function updatePhoneSystem(id: string, rowVersion: number, customerId: string, serviceTypeId: string, values: Row) {
   const response = await db(`phone_systems?id=eq.${id}&customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceTypeId}&row_version=eq.${rowVersion}`, {
     method: "PATCH",
@@ -344,6 +437,20 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "update_stock_receipt") { requireRole(user,["admin","operator"]); const id=uuid(payload.id),row_version=Number(payload.row_version),receipt_date=date(payload.receipt_date),inventory_item_id=uuid(payload.inventory_item_id),quantity=positive(payload.quantity),supplier_id=uuid(payload.supplier_id),note=nullable(payload.note,500); if(!id||!Number.isInteger(row_version)||row_version<1||!receipt_date||!inventory_item_id||quantity===null||!supplier_id||note===null) throw new Error("請填寫完整的進貨入庫資料。"); return rpc("update_stock_receipt_record_v2",{p_id:id,p_row_version:row_version,p_receipt_date:receipt_date,p_inventory_item_id:inventory_item_id,p_quantity:quantity,p_supplier_id:supplier_id,p_note:note||null,p_actor:actor}); }
   if (operation === "delete_stock_receipts") { requireRole(user,["admin"]); const ids=Array.isArray(payload.ids)?payload.ids.map(uuid):[]; if(!ids.length||ids.some(id=>!id)) throw new Error("請選擇有效的進貨紀錄。"); return rpc("delete_stock_receipt_records",{p_ids:ids,p_actor:actor}); }
   if (operation === "create_stock_adjustment") { requireRole(user,["admin"]); const inventory_item_id=uuid(payload.inventory_item_id),after_quantity=nonNegative(payload.after_quantity),reason=nullable(payload.reason,500),idempotency_key=uuid(payload.idempotency_key); if(!inventory_item_id||after_quantity===null||reason===null||!idempotency_key) throw new Error("請選擇品項並輸入 0 或正數的校正後庫存。"); return rpc("apply_stock_adjustment",{p_inventory_item_id:inventory_item_id,p_after_quantity:after_quantity,p_reason:reason||null,p_idempotency_key:idempotency_key,p_actor:actor}); }
+  if (operation === "preview_phone_terminal_import") {
+    requireRole(user,["admin","operator"]);
+    const customer_id=uuid(payload.customer_id),service_type_id=uuid(payload.contract_service_type_id),import_type=phoneTerminalImportType(payload.import_type),rows=phoneTerminalImportRows(payload.rows);
+    if(!customer_id||!service_type_id||!import_type||!rows)throw new Error("端子版匯入預覽資料不完整或超過 1,000 筆。");
+    return {preview:await previewPhoneTerminalImport(customer_id,service_type_id,import_type,rows)};
+  }
+  if (operation === "commit_phone_terminal_import") {
+    requireRole(user,["admin","operator"]);
+    const customer_id=uuid(payload.customer_id),service_type_id=uuid(payload.contract_service_type_id),import_type=phoneTerminalImportType(payload.import_type),file_name=limited(payload.file_name,240),file_hash=text(payload.file_hash).toLowerCase(),rows=phoneTerminalImportRows(payload.rows);
+    if(!customer_id||!service_type_id||!import_type||!file_name||!file_hash.match(/^[0-9a-f]{64}$/)||!rows)throw new Error("端子版正式匯入資料不完整或超過 1,000 筆。");
+    await ensurePhoneContract(customer_id,service_type_id);
+    const result=await rpc("commit_phone_terminal_import_v1",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_file_name:file_name,p_file_hash:file_hash,p_import_type:import_type,p_rows:rows,p_actor:actor});
+    return {import_result:Array.isArray(result)?result[0]:result};
+  }
   if (operation === "upsert_phone_system") {
     requireRole(user,["admin","operator"]);
     const id=text(payload.id)?uuid(payload.id):null,rowVersion=id?Number(payload.row_version):null,customer_id=uuid(payload.customer_id),service_type_id=uuid(payload.contract_service_type_id),system_name=limited(payload.system_name,160),ip_address=ipAddress(payload.ip_address),installation_location=nullable(payload.installation_location,300),device_brand=nullable(payload.device_brand,120),device_model=nullable(payload.device_model,160),notes=nullable(payload.notes,2000);
@@ -605,6 +712,9 @@ Deno.serve(async request => {
       const credential = Array.isArray(result) ? result[0] : null;
       if (!credential) throw new Error("無法取得總機登入資料。");
       return json({ ok: true, credential, current_user: publicUser(user), refreshed_at: new Date().toISOString() },200);
+    }
+    if ((operation === "preview_phone_terminal_import" || operation === "commit_phone_terminal_import") && result && typeof result === "object" && !Array.isArray(result)) {
+      return json({ ok: true, ...result, current_user: publicUser(user), refreshed_at: new Date().toISOString() }, operation === "preview_phone_terminal_import" ? 200 : 201);
     }
     return json({ ok: true, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
   } catch(error) { return json({error:error instanceof Error?error.message:"系統暫時無法完成操作。"},400); }
