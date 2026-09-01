@@ -47,6 +47,17 @@ async function timedFetch(resource: string, init: RequestInit = {}, label = "資
 async function db(path: string, init: RequestInit = {}) { const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); return timedFetch(`${url}/rest/v1/${path}`, { ...init, headers }, "資料庫"); }
 async function authApi(path: string, init: RequestInit = {}) { const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); return timedFetch(`${url}${path}`, { ...init, headers }, "身分驗證服務"); }
 async function get(path: string) { const response = await db(path); if (!response.ok) throw new Error("讀取資料失敗。"); return response.json(); }
+async function getAll(path: string, pageSize = 1000) {
+  const result: Row[] = [];
+  let offset = 0;
+  while (true) {
+    const separator = path.includes("?") ? "&" : "?";
+    const page = await get(`${path}${separator}limit=${pageSize}&offset=${offset}`) as Row[];
+    if (!page.length) return result;
+    result.push(...page);
+    offset += page.length;
+  }
+}
 async function insert(table: string, row: Row) { const response = await db(table, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) }); if (!response.ok) { const failure = await response.json().catch(() => ({})) as { code?: string; message?: string }; if (failure.code === "23505") throw new Error("資料已存在，請確認後重試。"); if (failure.code === "42501") throw new Error("帳號資料服務尚未取得必要權限。"); if (failure.code === "PGRST204") throw new Error("帳號資料服務正在更新，請稍後重試。"); if (failure.code === "23503") throw new Error("登入帳號建立未完成，請稍後重試。"); throw new Error(`儲存失敗（代碼：${failure.code || "unknown"}）。`); } return response.json(); }
 async function rpc(name: string, args: Row) { const response = await db(`rpc/${name}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(args) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || "資料處理失敗，請確認輸入內容後重試。"); } return response.json(); }
 async function updateVersioned(table: "customers" | "suppliers" | "projects" | "sites", id: string, rowVersion: number, values: Row, conflictMessage: string) {
@@ -360,30 +371,84 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   }
   if (operation === "upsert_phone_extension") {
     requireRole(user,["admin","operator"]);
-    const id=text(payload.id)?uuid(payload.id):null,rowVersion=id?Number(payload.row_version):null,customer_id=uuid(payload.customer_id),service_type_id=uuid(payload.contract_service_type_id),phone_system_id=text(payload.phone_system_id)?uuid(payload.phone_system_id):null,line_type=text(payload.line_type)||"extension",extension_number=nullable(payload.extension_number,40),extension_name=nullable(payload.extension_name,160),building_name=nullable(payload.building_name,80),floor=nullable(payload.floor,80),installation_location=nullable(payload.installation_location,300),device_brand=nullable(payload.device_brand,120),device_model=nullable(payload.device_model,160),notes=nullable(payload.notes,2000),system_slot=nullable(payload.system_slot,120),system_terminal_code=nullable(payload.system_terminal_code,80),field_slot=nullable(payload.field_slot,120),field_terminal_code=nullable(payload.field_terminal_code,80);
-    if((text(payload.id)&&!id)||(id&&(!Number.isInteger(rowVersion)||Number(rowVersion)<1))||(text(payload.phone_system_id)&&!phone_system_id)||!customer_id||!service_type_id||!["extension","trunk","special"].includes(line_type)||[extension_number,extension_name,building_name,floor,installation_location,device_brand,device_model,notes,system_slot,system_terminal_code,field_slot,field_terminal_code].some(value=>value===null)) throw new Error("請完整填寫有效的電話、插槽與端子資料。");
+    const sourceFieldsProvided=Object.prototype.hasOwnProperty.call(payload,"source_terminal_group")||Object.prototype.hasOwnProperty.call(payload,"source_terminal_board");
+    const id=text(payload.id)?uuid(payload.id):null,rowVersion=id?Number(payload.row_version):null,customer_id=uuid(payload.customer_id),service_type_id=uuid(payload.contract_service_type_id),phone_system_id=text(payload.phone_system_id)?uuid(payload.phone_system_id):null,line_type=text(payload.line_type)||"extension",extension_number=nullable(payload.extension_number,40),extension_name=nullable(payload.extension_name,160),building_name=nullable(payload.building_name,80),floor=nullable(payload.floor,80),installation_location=nullable(payload.installation_location,300),device_brand=nullable(payload.device_brand,120),device_model=nullable(payload.device_model,160),notes=nullable(payload.notes,2000),source_terminal_group=nullable(payload.source_terminal_group,160),source_terminal_board=nullable(payload.source_terminal_board,80),system_slot=nullable(payload.system_slot,120),system_terminal_code=nullable(payload.system_terminal_code,80),field_slot=nullable(payload.field_slot,120),field_terminal_code=nullable(payload.field_terminal_code,80);
+    if((text(payload.id)&&!id)||(id&&(!Number.isInteger(rowVersion)||Number(rowVersion)<1))||(text(payload.phone_system_id)&&!phone_system_id)||!customer_id||!service_type_id||!["extension","trunk","special"].includes(line_type)||(sourceFieldsProvided&&!source_terminal_group)||[extension_number,extension_name,building_name,floor,installation_location,device_brand,device_model,notes,source_terminal_group,source_terminal_board,system_slot,system_terminal_code,field_slot,field_terminal_code].some(value=>value===null)) throw new Error("請完整填寫有效的電話、來源端子、插槽與端子資料。");
     await ensurePhoneContract(customer_id,service_type_id);
-    return rpc("upsert_phone_extension_v2",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_phone_system_id:phone_system_id,p_id:id,p_row_version:rowVersion,p_line_type:line_type,p_extension_number:extension_number||null,p_extension_name:extension_name||null,p_building_name:building_name||null,p_floor:floor||null,p_installation_location:installation_location||null,p_device_brand:device_brand||null,p_device_model:device_model||null,p_notes:notes||null,p_system_slot:system_slot||null,p_system_terminal_code:system_terminal_code||null,p_field_slot:field_slot||null,p_field_terminal_code:field_terminal_code||null,p_actor:actor});
+    return rpc("upsert_phone_extension_v3",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_phone_system_id:phone_system_id,p_id:id,p_row_version:rowVersion,p_line_type:line_type,p_extension_number:extension_number||null,p_extension_name:extension_name||null,p_building_name:building_name||null,p_floor:floor||null,p_installation_location:installation_location||null,p_device_brand:device_brand||null,p_device_model:device_model||null,p_notes:notes||null,p_source_terminal_group:source_terminal_group||null,p_source_terminal_board:source_terminal_board||null,p_source_fields_provided:sourceFieldsProvided,p_system_slot:system_slot||null,p_system_terminal_code:system_terminal_code||null,p_field_slot:field_slot||null,p_field_terminal_code:field_terminal_code||null,p_actor:actor});
   }
   if (operation === "import_phone_terminal_rows") {
     requireRole(user,["admin","operator"]);
     const customer_id=uuid(payload.customer_id),service_type_id=uuid(payload.contract_service_type_id),file_name=limited(payload.file_name,255),import_type=text(payload.import_type);
     if(!customer_id||!service_type_id||!file_name||!["system","field"].includes(import_type)||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>1000) throw new Error("端子匯入資料不完整或超過 1000 筆。");
-    const rows=payload.rows.map((value,index)=>{
+    let rows=payload.rows.map((value,index)=>{
       if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆端子資料格式不正確。`);
-      const row=value as Row,preview_status=text(row.preview_status),preview_message=nullable(row.preview_message,500),frame_name=nullable(row.frame_name,160),board=nullable(row.board,80),slot=text(row.slot),terminal_position=nullable(row.terminal_position,80),terminal_type=nullable(row.terminal_type,200),extension_number=nullable(row.extension_number,40),building=nullable(row.building,80),floor=nullable(row.floor,80),installation_location=nullable(row.installation_location,300),phone_type=text(row.phone_type)||"unknown",source_sheet=limited(row.source_sheet,120),source_row=Number(row.source_row),source_column=Number(row.source_column),existing_extension_id=text(row.existing_extension_id)?uuid(row.existing_extension_id):null;
-      if(!["new","update","skip","error"].includes(preview_status)||preview_message===null||frame_name===null||board===null||terminal_position===null||terminal_type===null||extension_number===null||building===null||floor===null||installation_location===null||!["digital","analog","ip","trunk","unknown"].includes(phone_type)||!source_sheet||!Number.isInteger(source_row)||source_row<1||!Number.isInteger(source_column)||source_column<1||source_column>16384||(text(row.existing_extension_id)&&!existing_extension_id)) throw new Error(`第 ${index+1} 筆端子資料欄位不完整。`);
+      const row=value as Row,preview_status=text(row.preview_status),preview_message=nullable(row.preview_message,500),frame_name=nullable(row.frame_name,160),board=nullable(row.board,80),slot=text(row.slot),terminal_position=nullable(row.terminal_position,80),terminal_type=nullable(row.terminal_type,200),extension_number=nullable(row.extension_number,40),building=nullable(row.building,80),floor=nullable(row.floor,80),installation_location=nullable(row.installation_location,300),phone_type=text(row.phone_type)||"unknown",phone_type_match_status=text(row.phone_type_match_status),phone_type_match_message=nullable(row.phone_type_match_message,500),source_sheet=limited(row.source_sheet,120),source_row=Number(row.source_row),source_column=Number(row.source_column),existing_extension_id=text(row.existing_extension_id)?uuid(row.existing_extension_id):null;
+      if(!["new","update","skip","error"].includes(preview_status)||preview_message===null||frame_name===null||board===null||terminal_position===null||terminal_type===null||extension_number===null||building===null||floor===null||installation_location===null||!["digital","analog","ip","trunk","unknown"].includes(phone_type)||(phone_type_match_status&&!["matched","unmatched","conflict","empty","not_applicable"].includes(phone_type_match_status))||phone_type_match_message===null||!source_sheet||!Number.isInteger(source_row)||source_row<1||!Number.isInteger(source_column)||source_column<1||source_column>16384||(text(row.existing_extension_id)&&!existing_extension_id)) throw new Error(`第 ${index+1} 筆端子資料欄位不完整。`);
       if(["new","update"].includes(preview_status)&&(!frame_name||!board||!/^[0-9]{1,5}$/.test(slot)||Number(slot)<1||Number(slot)>10000)) throw new Error(`第 ${index+1} 筆可匯入資料缺少端子群組、端子板或有效槽位。`);
       if(preview_status==="error"&&!preview_message) throw new Error(`第 ${index+1} 筆錯誤資料缺少原因。`);
-      return {preview_status,preview_message:preview_message||null,frame_name:frame_name||null,board:board||null,slot,terminal_position:terminal_position||null,terminal_type:terminal_type||null,extension_number:extension_number||null,building:building||null,floor:floor||null,installation_location:installation_location||null,phone_type,source_sheet,source_row,source_column,existing_extension_id,raw:row.raw&&typeof row.raw==="object"&&!Array.isArray(row.raw)?row.raw:{}};
+      return {preview_status,preview_message:preview_message||null,frame_name:frame_name||null,board:board||null,slot,terminal_position:terminal_position||null,terminal_type:terminal_type||null,extension_number:extension_number||null,building:building||null,floor:floor||null,installation_location:installation_location||null,phone_type,phone_type_match_status:phone_type_match_status||null,phone_type_match_message:phone_type_match_message||null,source_sheet,source_row,source_column,existing_extension_id,raw:row.raw&&typeof row.raw==="object"&&!Array.isArray(row.raw)?row.raw:{}};
     });
+    await ensurePhoneContract(customer_id,service_type_id);
+    if(import_type==="field"){
+      type MatchedPhoneType="digital"|"analog"|"ip"|"trunk";
+      type MatchExtension={id:string;line_type?:string;device_model?:string;notes?:string};
+      type MatchPoint={id:string;phone_extension_id:string;frame_name?:string;notes?:string};
+      const normalizeMatch=(value:unknown)=>text(value).replace(/\u3000/g," ").replace(/[\t\r\n ]+/g," ").trim().toLocaleLowerCase("zh-Hant");
+      const sourceValue=(notes:unknown)=>String(notes||"").split(/\r?\n/).find(value=>/^Excel\s*型態\s*[:：]/i.test(value.trim()))?.trim().replace(/^Excel\s*型態\s*[:：]\s*/i,"")||"";
+      const [extensionData,pointData]=await Promise.all([
+        getAll(`phone_extensions?customer_id=eq.${customer_id}&contract_service_type_id=eq.${service_type_id}&select=id,line_type,device_model,notes&order=id.asc`),
+        getAll(`phone_terminal_points?customer_id=eq.${customer_id}&contract_service_type_id=eq.${service_type_id}&endpoint_side=eq.system&select=id,phone_extension_id,frame_name,notes&order=id.asc`),
+      ]);
+      const extensionRows=extensionData as MatchExtension[],pointRows=pointData as MatchPoint[];
+      const extensionById=new Map(extensionRows.map(row=>[row.id,row]));
+      const pointByExtensionId=new Map(pointRows.map(row=>[row.phone_extension_id,row]));
+      const phoneTypeOf=(extension:MatchExtension|undefined,point:MatchPoint|undefined):MatchedPhoneType|"unknown"=>{
+        if(!extension)return "unknown";
+        const sourceGroup=String(point?.frame_name||"").trim().replace(/[\u3000\s]+/g,"");
+        const marker=String(extension.notes||"").match(/(?:^|\r?\n)\[\[(?:GUC_PHONE_TYPE|phone_type):(digital|analog|ip|trunk)\]\]/i)?.[1]?.toLowerCase() as MatchedPhoneType|undefined;
+        return sourceGroup.startsWith("數位分機系統端")?"digital":sourceGroup.startsWith("類比分機系統端")?"analog":extension.line_type==="trunk"?"trunk":marker||(/\bIP\b/i.test(String(extension.device_model||""))?"ip":/數位|digital/i.test(String(extension.device_model||""))?"digital":"unknown");
+      };
+      const typesBySource=new Map<string,Set<MatchedPhoneType>>();
+      const exactAliases:{value:string;type:MatchedPhoneType}[]=[{value:"數位",type:"digital"},{value:"數位話機",type:"digital"},{value:"digital",type:"digital"},{value:"類比",type:"analog"},{value:"類比話機",type:"analog"},{value:"analog",type:"analog"},{value:"IP",type:"ip"},{value:"IP 話機",type:"ip"},{value:"外線",type:"trunk"},{value:"中繼",type:"trunk"},{value:"外線／中繼",type:"trunk"},{value:"trunk",type:"trunk"}];
+      const addType=(value:unknown,phoneType:MatchedPhoneType)=>{const matchKey=normalizeMatch(value);if(!matchKey)return;const matches=typesBySource.get(matchKey)||new Set<MatchedPhoneType>();matches.add(phoneType);typesBySource.set(matchKey,matches);};
+      pointRows.forEach(point=>{
+        const phoneType=phoneTypeOf(extensionById.get(point.phone_extension_id),point);
+        if(phoneType==="unknown")return;
+        addType(sourceValue(point.notes),phoneType);
+        exactAliases.filter(alias=>alias.type===phoneType).forEach(alias=>addType(alias.value,phoneType));
+      });
+      rows=rows.map(row=>{
+        const matchKey=normalizeMatch(row.terminal_type),matches=[...(typesBySource.get(matchKey)||[])];
+        let status="unmatched",computedPhoneType:MatchedPhoneType|"unknown"="unknown",message=`話機類型「${row.terminal_type}」找不到系統端精確對應；電話類型保持空白`;
+        if(!matchKey){status="empty";message="Excel 話機類型空白；不執行查詢，電話類型保持空白";}
+        else if(matches.length===1){status="matched";computedPhoneType=matches[0];message=`話機類型「${row.terminal_type}」已精確匹配系統端資料`;}
+        else if(matches.length>1){status="conflict";message=`話機類型「${row.terminal_type}」在系統端對應到不同電話類型；未自動選擇`;}
+        if(status==="matched"&&row.existing_extension_id){
+          const targetExtension=extensionById.get(row.existing_extension_id),targetPoint=pointByExtensionId.get(row.existing_extension_id),targetType=phoneTypeOf(targetExtension,targetPoint);
+          if(targetType!=="unknown"&&targetType!==computedPhoneType){status="conflict";computedPhoneType="unknown";message=`話機類型「${row.terminal_type}」的匹配結果與該號碼系統端電話類型不一致；未自動選擇`;}
+        }
+        const previewChanged=Boolean(row.phone_type_match_status&&(row.phone_type_match_status!==status||row.phone_type!==computedPhoneType));
+        if(previewChanged)message+=`；確認匯入時已依最新系統端資料重新驗證`;
+        return {...row,phone_type:computedPhoneType,phone_type_match_status:status,phone_type_match_message:message};
+      });
+    }else{
+      rows=rows.map(row=>({...row,phone_type_match_status:"not_applicable",phone_type_match_message:"系統端匯入不執行話機類型查詢"}));
+    }
     const eligibleRows=rows.filter(row=>row.preview_status==="new"||row.preview_status==="update");
     const keys=eligibleRows.map(row=>`${import_type}|${text(row.frame_name)}|${text(row.building)}|${text(row.floor)}|${text(row.board)}|${row.slot}`);
     if(new Set(keys).size!==keys.length) throw new Error("匯入檔案包含重複的棟名、樓層、端子板與槽位。");
     const numbers=eligibleRows.map(row=>text(row.extension_number)).filter(Boolean);
     if(new Set(numbers).size!==numbers.length) throw new Error("匯入檔案包含無法唯一對應的重複號碼。");
-    await ensurePhoneContract(customer_id,service_type_id);
-    return rpc("import_phone_terminal_rows_v1",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_file_name:file_name,p_import_type:import_type,p_rows:rows,p_actor:actor});
+    const result=await rpc("import_phone_terminal_rows_v1",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_file_name:file_name,p_import_type:import_type,p_rows:rows,p_actor:actor}) as Row;
+    const matchCounts=rows.reduce((counts,row)=>{const status=text(row.phone_type_match_status);if(status in counts)counts[status as keyof typeof counts]+=1;return counts;},{matched:0,unmatched:0,conflict:0,empty:0});
+    const logId=uuid(result?.log_id);
+    let failureReasons:unknown[]=[];
+    if(logId){
+      try{const logs=await get(`phone_terminal_import_logs?id=eq.${logId}&select=failure_reasons&limit=1`) as {failure_reasons?:unknown}[];if(Array.isArray(logs[0]?.failure_reasons))failureReasons=logs[0].failure_reasons;}
+      catch{/* The import is already committed; a follow-up log read must not turn success into a retryable failure. */}
+    }
+    return {...result,phone_type_matched:matchCounts.matched,phone_type_unmatched:matchCounts.unmatched,phone_type_conflict:matchCounts.conflict,phone_type_empty:matchCounts.empty,failure_reasons:failureReasons};
   }
   if (operation === "delete_phone_extension") {
     requireRole(user,["admin"]);
@@ -606,6 +671,10 @@ Deno.serve(async request => {
       if (!credential) throw new Error("無法取得總機登入資料。");
       return json({ ok: true, credential, current_user: publicUser(user), refreshed_at: new Date().toISOString() },200);
     }
+    if (operation === "import_phone_terminal_rows") {
+      return json({ ok: true, result, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
+    }
     return json({ ok: true, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
   } catch(error) { return json({error:error instanceof Error?error.message:"系統暫時無法完成操作。"},400); }
 });
+

@@ -7,6 +7,7 @@ const migration = readFileSync(new URL("../supabase/migrations/20260830082440_cr
 const hardening = readFileSync(new URL("../supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", import.meta.url), "utf8");
 const phoneLocation = readFileSync(new URL("../supabase/migrations/20260831000200_phone_building_and_optional_extension.sql", import.meta.url), "utf8");
 const phoneImport = readFileSync(new URL("../supabase/migrations/20260831043000_phone_terminal_excel_import.sql", import.meta.url), "utf8");
+const phoneSourceFields = readFileSync(new URL("../supabase/migrations/20260901090000_phone_terminal_source_fields.sql", import.meta.url), "utf8");
 
 test("phone schema stays linked to the customer contract and indexed", () => {
   for (const table of ["phone_systems", "phone_extensions", "phone_terminal_points", "phone_system_credentials", "phone_credential_access_logs"]) {
@@ -35,7 +36,33 @@ test("phone Excel import is row-rollback safe, logged, service-role only, and pr
   assert.match(edge, /operation === "import_phone_terminal_rows"[\s\S]*requireRole\(user,\["admin","operator"\]\)/);
   assert.match(edge, /preview_status/);
   assert.match(edge, /eligibleRows/);
+  for (const marker of ["phone_type_match_status", "normalizeMatch", "typesBySource", "phone_type_matched", "failure_reasons", 'operation === "import_phone_terminal_rows"']) assert.ok(edge.includes(marker), `missing exact type matching/result marker: ${marker}`);
+  assert.match(edge, /return json\(\{ ok: true, result,/);
+  assert.match(edge, /const logId=uuid\(result\?\.log_id\)/);
+  assert.doesNotMatch(edge, /Number\(result\?\.log_id\)/);
+  assert.match(edge, /getAll\(`phone_extensions[\s\S]*getAll\(`phone_terminal_points/);
+  assert.match(edge, /\.find\(value=>\/\^Excel\\s\*型態[\s\S]*\?\.trim\(\)\.replace/);
+  assert.match(edge, /targetType!=="unknown"&&targetType!==computedPhoneType/);
+  assert.match(edge, /確認匯入時已依最新系統端資料重新驗證/);
+  assert.doesNotMatch(edge, /話機類型匹配狀態與系統端資料不一致|電話類型與系統端精確匹配結果不一致/);
   assert.doesNotMatch(phoneImport, /delete from public\.phone_extensions|truncate|drop table/);
+});
+
+test("source terminal fields reuse frame columns through an additive v3 RPC", () => {
+  for (const marker of ["upsert_phone_extension_v3", "p_source_terminal_group", "p_source_terminal_board", "frame_name", "frame_block", "frame_position", "phone_terminal_points_location_uidx"]) assert.ok(phoneSourceFields.includes(marker), `missing source terminal marker: ${marker}`);
+  assert.match(phoneSourceFields, /revoke all on function public\.upsert_phone_extension_v3[\s\S]*from public, anon, authenticated/);
+  assert.match(phoneSourceFields, /grant execute on function public\.upsert_phone_extension_v3[\s\S]*to service_role/);
+  assert.doesNotMatch(phoneSourceFields, /add column|drop table|truncate|delete from public\.phone_extensions/);
+  assert.match(edge, /sourceFieldsProvided=Object\.prototype\.hasOwnProperty/);
+  assert.match(edge, /source_terminal_group=nullable/);
+  assert.match(edge, /source_terminal_board=nullable/);
+  assert.match(edge, /p_source_fields_provided:sourceFieldsProvided/);
+  assert.match(edge, /rpc\("upsert_phone_extension_v3"/);
+  assert.match(phoneSourceFields, /phone_terminal_points\.frame_name/);
+  assert.match(phoneSourceFields, /phone_terminal_points\.frame_block/);
+  assert.match(phoneSourceFields, /數字系統端槽位必須介於 1 到 10000/);
+  assert.match(phoneSourceFields, /coalesce\(nullif\(btrim\(coalesce\(p_source_terminal_board, ''\)\), ''\), ''\)/);
+  assert.match(phoneSourceFields, /when coalesce\(p_source_fields_provided, false\) then excluded\.frame_block/);
 });
 
 test("credentials are encrypted and inaccessible through the regular snapshot", () => {
@@ -57,8 +84,9 @@ test("gateway enforces phone module RBAC", () => {
   assert.match(edge, /operation === "delete_phone_system"[\s\S]*requireRole\(user,\["admin"\]\)/);
   assert.match(edge, /operation === "set_phone_system_credential"[\s\S]*requireRole\(user,\["admin"\]\)/);
   assert.match(edge, /operation === "reveal_phone_system_credential"[\s\S]*requireRole\(user,\["admin"\]\)/);
-  assert.match(edge, /upsert_phone_extension_v2/);
+  assert.match(edge, /upsert_phone_extension_v3/);
   assert.match(edge, /p_building_name/);
   assert.match(edge, /extension_number=nullable/);
   assert.match(edge, /building_name,floor,installation_location/);
 });
+
