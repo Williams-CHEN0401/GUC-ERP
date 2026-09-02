@@ -1,6 +1,10 @@
 const DEFAULT_SITE_DATA_URL = "https://guc-site-data-system.vercel.app";
 const DEFAULT_PREVIEW_SITE_DATA_URL = "https://guc-site-data-system-git-codex-f5e9e7-sam5321051-5955s-projects.vercel.app";
-const ALLOWED_QUOTATION_HOSTS = new Set(["guc-quotation-system.vercel.app"]);
+const DEFAULT_PREVIEW_QUOTATION_URL = "https://guc-quotation-system-eqeua6i0g-sam5321051-5955s-projects.vercel.app/";
+const ALLOWED_QUOTATION_HOSTS = new Set([
+  "guc-quotation-system.vercel.app",
+  "guc-quotation-system-eqeua6i0g-sam5321051-5955s-projects.vercel.app",
+]);
 
 function defaultSiteDataUrl() {
   return process.env.VERCEL_ENV === "preview" ? DEFAULT_PREVIEW_SITE_DATA_URL : DEFAULT_SITE_DATA_URL;
@@ -24,7 +28,7 @@ function normalizedSiteDataUrl() {
 
 function normalizedQuotationUrl() {
   const configured = String(process.env.NEXT_PUBLIC_QUOTATION_URL || "").trim();
-  const value = configured;
+  const value = configured || (process.env.VERCEL_ENV === "preview" ? DEFAULT_PREVIEW_QUOTATION_URL : "");
   if (!value) return "";
   try {
     const url = new URL(value);

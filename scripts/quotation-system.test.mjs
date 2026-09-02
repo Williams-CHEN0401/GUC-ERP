@@ -39,7 +39,9 @@ test("報價公開設定採精確 host 白名單且沒有硬編碼正式 fallbac
   assert.doesNotMatch(configSource, /DEFAULT_QUOTATION_URL/);
   const handler = require("../api/public-config.js");
   const previous = process.env.NEXT_PUBLIC_QUOTATION_URL;
+  const previousEnvironment = process.env.VERCEL_ENV;
   try {
+    delete process.env.VERCEL_ENV;
     for (const unsafe of [
       "https://guc-quotation-system-evil.vercel.app/",
       "https://user:pass@guc-quotation-system.vercel.app/",
@@ -55,9 +57,15 @@ test("報價公開設定採精確 host 白名單且沒有硬編碼正式 fallbac
     const response = responseHarness();
     handler({}, response);
     assert.match(String(response.body), /"quotationUrl":""/);
+    process.env.VERCEL_ENV = "preview";
+    const previewResponse = responseHarness();
+    handler({}, previewResponse);
+    assert.match(String(previewResponse.body), /guc-quotation-system-eqeua6i0g-sam5321051-5955s-projects\.vercel\.app/);
   } finally {
     if (previous === undefined) delete process.env.NEXT_PUBLIC_QUOTATION_URL;
     else process.env.NEXT_PUBLIC_QUOTATION_URL = previous;
+    if (previousEnvironment === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousEnvironment;
   }
 });
 
