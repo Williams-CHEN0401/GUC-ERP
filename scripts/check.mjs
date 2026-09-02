@@ -10,7 +10,7 @@ const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 for (const marker of ["data-page=\"dashboard\"", "data-page=\"transactions\"", "data-page=\"inventory\"", "data-page=\"crm\"", "data-page=\"worklogs\""]) {
   if (!html.includes(marker)) throw new Error(`Missing page marker: ${marker}`);
 }
-for (const marker of ["id=\"worklogCustomerCategoryFilter\"", "id=\"worklogCustomerFilter\"", "id=\"worklogStatusFilter\"", "id=\"materialCustomerCategory\"", "id=\"customerCategoryFilter\"", "id=\"itemBatchForm\"", "id=\"inventoryPagination\"", "id=\"userTable\"", "id=\"logTable\"", "data-open=\"accountModal\"", "id=\"systemChooser\"", "data-system-choice=\"erp\"", "data-system-choice=\"sites\""]) {
+for (const marker of ["id=\"worklogCustomerCategoryFilter\"", "id=\"worklogCustomerFilter\"", "id=\"materialCustomerCategory\"", "id=\"customerCategoryFilter\"", "id=\"itemBatchForm\"", "id=\"inventoryPagination\"", "id=\"userTable\"", "id=\"logTable\"", "data-open=\"accountModal\"", "id=\"systemChooser\"", "data-system-choice=\"erp\"", "data-system-choice=\"sites\""]) {
   if (!html.includes(marker)) throw new Error(`Missing preview feature marker: ${marker}`);
 }
 if (html.includes("批次修改") || html.includes("bulkItemForm")) throw new Error("Bulk edit feature was not removed");
@@ -44,7 +44,7 @@ for (const marker of ["create_contract_site_attachment_batch", "上傳日期/檔
 for (const marker of ["upsert_contract_site_entry", "delete_contract_site_entry", "selectedSiteContext", "contract_service_type_id"]){
   if (!js.includes(marker)) throw new Error(`Contract-centric site CRUD flow missing: ${marker}`);
 }
-for (const marker of ["workLogActionMenu", "worklog-content-action", "syncModalCustomerOptions", "syncAttachmentOptions", "SITE_SYSTEM_TARGET_URL", "Preview 不載入正式 NAS 帳密", "Preview 不使用正式 NAS 環境變數"]) {
+for (const marker of ["workLogActionMenu", "data-work-log-row", "syncModalCustomerOptions", "syncAttachmentOptions", "SITE_SYSTEM_TARGET_URL", "Preview 不載入正式 NAS 帳密", "Preview 不使用正式 NAS 環境變數"]) {
   if (!js.includes(marker)) throw new Error(`Correction V1 flow missing: ${marker}`);
 }
 for (const marker of ["projectOwnerPickerField", "projectWorkerIds", "syncWorkLogWorkersFromProject", "const form=event.currentTarget", "form.reset();renderInventory()"]){

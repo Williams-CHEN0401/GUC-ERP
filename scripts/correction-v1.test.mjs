@@ -13,16 +13,18 @@ test("工作日誌先依客戶類型篩選，再選擇客戶", () => {
   assert.match(js, /syncModalCustomerOptions/);
 });
 
-test("工作日誌內容是單一可點入口且不直接顯示全文", () => {
+test("工作日誌雙擊整列開啟內容，操作選單不再包含內容入口", () => {
   const start = js.indexOf("function workLogActionMenu");
   const end = js.indexOf("function renderWorkLogs", start);
   const menu = js.slice(start, end);
   assert.ok(start >= 0 && end > start);
-  assert.match(menu, /worklog-content-action/);
-  assert.match(menu, /data-edit-work-log/);
-  assert.match(menu, /<strong>內容<\/strong>/);
+  assert.doesNotMatch(menu, /worklog-content-action/);
+  assert.doesNotMatch(menu, /data-edit-work-log/);
+  assert.match(js, /data-work-log-row/);
+  assert.match(js, /addEventListener\("dblclick"/);
+  assert.match(js, /openModal\("workLogModal",row\.dataset\.workLogRow\)/);
   assert.doesNotMatch(menu, /log\.summary/);
-  assert.doesNotMatch(menu, />修改<\/button>/);
+  assert.match(js, /<td><strong>\$\{esc\(log\.project\)\}<\/strong><\/td>/);
 });
 
 test("Preview NAS 檢查不讀取正式帳密或呼叫 NAS API", () => {

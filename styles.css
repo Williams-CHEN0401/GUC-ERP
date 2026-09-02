@@ -78,3 +78,10 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 @media(max-width:1180px){.selector-panel.report-selector{grid-template-columns:repeat(3,minmax(0,1fr))}.report-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:780px){.selector-panel.report-selector{grid-template-columns:1fr}.report-selector label,.report-filter-hint{grid-column:1}.report-tabs{width:100%}.report-tabs button{min-width:100px;flex:1}.report-grid{grid-template-columns:1fr}.report-kpis,.report-kpis.compact{grid-template-columns:1fr 1fr}.report-heading{align-items:flex-start}.report-heading>div{display:block}.report-heading .pill{margin-bottom:8px}.report-heading h2{margin:0 0 5px}}
 @media(max-width:460px){.report-kpis,.report-kpis.compact{grid-template-columns:1fr}.report-tabs button{min-width:94px;padding-inline:10px}}
+
+/* 2026-09-02 修正專案統計篩選欄位被舊版 30px 欄寬擠壓重疊 */
+.selector-panel.report-selector:has(#materialCustomerCategory){grid-template-columns:repeat(5,minmax(0,1fr))}
+.report-selector label{min-width:0}
+.report-selector select,.report-selector input{box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:42px}
+@media(max-width:1180px){.selector-panel.report-selector:has(#materialCustomerCategory){grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:780px){.selector-panel.report-selector:has(#materialCustomerCategory){grid-template-columns:1fr}}
