@@ -138,7 +138,7 @@ MVP 後續項目：報價列表的建立人、日期區間與多欄排序 UI；�
 2026-09-02 Vercel Preview 驗證結果：
 
 - ERP 固定測試入口：`https://guc-erp-vercel-rebuild-git-cod-904604-sam5321051-5955s-projects.vercel.app/`。
-- 報價系統凍結測試版本：`https://guc-quotation-system-eqeua6i0g-sam5321051-5955s-projects.vercel.app/`。
+- 報價系統凍結測試版本：`https://guc-quotation-system-g8zwrrbhl-sam5321051-5955s-projects.vercel.app/`。
 - 兩個 deployment 均為 READY；頁面非空白、無 Next.js error overlay、無瀏覽器 console error，登入元件與響應式桌面版面正常。
 - ERP `/api/public-config` 已回傳上述精確報價 Preview origin；兩站 SSO 以 exact origin、opener 與 nonce 驗證。
 - 報價 BFF 未登入 GET 回傳 401、`X-Quotation-Mode: preview-session-only`；本機與靜態 release gate 驗證非 login POST 回傳 403。
