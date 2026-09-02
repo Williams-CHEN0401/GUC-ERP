@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-const files = ["index.html", "styles.css", "app.js", "api/inventory.js", "api/nas.mjs", "api/public-config.js", ".env.example", "vercel.json", "supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", "supabase/migrations/20260828000100_work_log_workers_pickups_and_nas_folders.sql", "supabase/migrations/20260828000200_standalone_work_logs_contracts_accounts_nas.sql", "supabase/migrations/20260828000300_contract_centric_sites.sql", "supabase/migrations/20260828000400_lock_down_work_log_project_trigger.sql", "supabase/migrations/20260829000100_contract_attachment_project_path.sql", "supabase/migrations/20260830082440_create_secure_phone_data_module.sql", "supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", "supabase/migrations/20260831000100_project_workers_and_work_log_defaults.sql", "supabase/migrations/20260831000200_phone_building_and_optional_extension.sql", "supabase/migrations/20260831081216_work_log_period_project_status_sync.sql", "supabase/migrations/20260831105247_add_social_welfare_and_cleaning_customer_categories.sql"];
+const files = ["index.html", "styles.css", "app.js", "api/inventory.js", "api/nas.mjs", "api/public-config.js", ".env.example", "vercel.json", "supabase/migrations/20260827000200_formal_site_crud_and_work_type.sql", "supabase/migrations/20260828000100_work_log_workers_pickups_and_nas_folders.sql", "supabase/migrations/20260828000200_standalone_work_logs_contracts_accounts_nas.sql", "supabase/migrations/20260828000300_contract_centric_sites.sql", "supabase/migrations/20260828000400_lock_down_work_log_project_trigger.sql", "supabase/migrations/20260829000100_contract_attachment_project_path.sql", "supabase/migrations/20260830082440_create_secure_phone_data_module.sql", "supabase/migrations/20260830083755_harden_phone_module_service_role_grants.sql", "supabase/migrations/20260831000100_project_workers_and_work_log_defaults.sql", "supabase/migrations/20260831000200_phone_building_and_optional_extension.sql", "supabase/migrations/20260831081216_work_log_period_project_status_sync.sql", "supabase/migrations/20260831105247_add_social_welfare_and_cleaning_customer_categories.sql", "supabase/migrations/20260902110557_sync_project_type_status_with_work_logs.sql"];
 for (const file of files) {
   const content = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
   if (!content.trim()) throw new Error(`${file} is empty`);
@@ -49,6 +49,9 @@ for (const marker of ["workLogActionMenu", "worklog-content-action", "syncModalC
 }
 for (const marker of ["projectOwnerPickerField", "projectWorkerIds", "syncWorkLogWorkersFromProject", "const form=event.currentTarget", "form.reset();renderInventory()"]){
   if (!js.includes(marker)) throw new Error(`Project-owner or inventory-adjustment fix missing: ${marker}`);
+}
+for (const marker of ["PROJECT_WORK_TYPES", '["repair", "維修紀錄"]', "result?.result?.work_log?.id", "是否要立即進入", 'openModal("workLogPickupModal",pickupLogId)']) {
+  if (!js.includes(marker)) throw new Error(`Project/work-log shared fields or pickup handoff missing: ${marker}`);
 }
 if (js.includes("preview_site_upsert") || js.includes("preview_site_delete")) throw new Error("Preview-only site CRUD operation remains");
 if (js.includes("updateMaterialCustomers(false);updateSiteCustomers(false)")) throw new Error("Removed site-data page is still invoked from master-data rendering");
@@ -134,6 +137,12 @@ for (const marker of ["time_period", "site_work_logs_status_check", "upsert_proj
   if (!workLogStatusMigration.includes(marker)) throw new Error(`Work-log period/status sync marker missing: ${marker}`);
 }
 
+const projectWorkLogSyncMigration = readFileSync(new URL("../supabase/migrations/20260902110557_sync_project_type_status_with_work_logs.sql", import.meta.url), "utf8");
+for (const marker of ["'construction', 'repair', 'maintenance'", "sync_project_fields_to_work_logs_v1", "sync_work_log_fields_to_project_v1", "projects_sync_work_logs_v1", "work_logs_sync_project_v1", "security invoker", "set search_path = ''", "from public, anon, authenticated", "work_type = v_work_type", "status = p_status"]) {
+  if (!projectWorkLogSyncMigration.includes(marker)) throw new Error(`Project/work-log bidirectional sync marker missing: ${marker}`);
+}
+if (/\bdrop\s+table\b|\btruncate\b/i.test(projectWorkLogSyncMigration)) throw new Error("Project/work-log sync migration contains a destructive table operation");
+
 const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 if (!css.includes(".modal-card .form-submit{position:sticky")) throw new Error("Sticky modal save action missing");
 if (!css.includes(".nas-status-card") || !css.includes(".attachment-dropzone") || !css.includes(".worker-picker") || !css.includes(".work-log-pickup-summary") || !css.includes(".worklog-action-menu") || !css.includes(".system-gate")) throw new Error("NAS attachment, work-log, or system chooser UI styles missing");
@@ -155,3 +164,4 @@ if (oldEnvironment === undefined) delete process.env.VERCEL_ENV; else process.en
 if (statusCode !== 403 || !String(responseBody?.error).includes("禁止寫入")) throw new Error("Preview API write guard failed");
 
 console.log("ERP preview verification passed.");
+
