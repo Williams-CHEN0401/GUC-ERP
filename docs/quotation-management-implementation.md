@@ -146,4 +146,5 @@ MVP 後續項目：報價列表的建立人、日期區間與多欄排序 UI；�
 
 仍由使用者驗收的項目：使用 Williams、Joyce、老闆三個既有帳號實際登入，確認其他帳號拒絕、ERP→報價 SSO、options/list/detail、歷史版本及手機操作。代理驗證未使用或索取任何帳號密碼。
 
-正式 migration、正式 `quotation-gateway` 與正式 ERP／報價發布仍保持停用，必須等使用者確認測試站後才執行。
+2026-09-02 使用者確認 Preview 後，正式 migration、正式 `quotation-gateway` 與正式 ERP／報價發布已依序執行；正式 ERP 入口固定導向 `https://guc-quotation-system.vercel.app/`。
+
