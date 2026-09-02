@@ -33,10 +33,9 @@ test("ERP 只為白名單使用者顯示報價入口並以 nonce SSO 交接", ()
   assert.doesNotMatch(app, /searchParams\.set\([^,]+,accessToken\)/);
 });
 
-test("報價公開設定採精確 host 白名單且沒有硬編碼正式 fallback", () => {
+test("報價公開設定採精確 host 白名單且只在正式環境啟用正式入口", () => {
   assert.match(configSource, /ALLOWED_QUOTATION_HOSTS = new Set/);
   assert.match(configSource, /url\.pathname !== "\/" \|\| url\.search \|\| url\.hash/);
-  assert.doesNotMatch(configSource, /DEFAULT_QUOTATION_URL/);
   const handler = require("../api/public-config.js");
   const previous = process.env.NEXT_PUBLIC_QUOTATION_URL;
   const previousEnvironment = process.env.VERCEL_ENV;
@@ -57,6 +56,10 @@ test("報價公開設定採精確 host 白名單且沒有硬編碼正式 fallbac
     const response = responseHarness();
     handler({}, response);
     assert.match(String(response.body), /"quotationUrl":""/);
+    process.env.VERCEL_ENV = "production";
+    const productionResponse = responseHarness();
+    handler({}, productionResponse);
+    assert.match(String(productionResponse.body), /guc-quotation-system\.vercel\.app/);
     process.env.VERCEL_ENV = "preview";
     const previewResponse = responseHarness();
     handler({}, previewResponse);
@@ -114,3 +117,4 @@ test("Migration 有狀態機、金額、版本、稽核、RLS 與最小權限防
   ]) assert.ok(migration.includes(marker), `missing SQL guard: ${marker}`);
   assert.doesNotMatch(migration, /\bdrop\s+table\b|\btruncate\b/i);
 });
+
