@@ -22,6 +22,98 @@ const ipAddress = (value: unknown) => {
   if (result.includes(":") && /^[0-9a-f:]+$/i.test(result)) return result;
   return null;
 };
+const httpUrl = (value: unknown, max = 1000) => {
+  const result = nullable(value, max);
+  if (result === null) return null;
+  if (!result) return "";
+  try {
+    const parsed = new URL(result);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.toString() : null;
+  } catch { return null; }
+};
+const DEVICE_TYPES = ["monitoring_host", "camera", "hub"] as const;
+type MonitoringDeviceType = typeof DEVICE_TYPES[number];
+const monitoringDeviceType = (value: unknown): MonitoringDeviceType | null => DEVICE_TYPES.includes(text(value) as MonitoringDeviceType) ? text(value) as MonitoringDeviceType : null;
+const bytesToBase64 = (value: Uint8Array) => {
+  let binary = "";
+  for (let index = 0; index < value.length; index += 1) binary += String.fromCharCode(value[index]);
+  return btoa(binary);
+};
+const base64ToBytes = (value: string) => {
+  const binary = atob(value);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+};
+const maskedDeviceUsername = (value: string) => {
+  const chars = Array.from(value);
+  if (chars.length <= 2) return `${chars[0] || "*"}***`;
+  const prefix = chars.slice(0, Math.min(2, chars.length - 1)).join("");
+  const suffix = chars.slice(Math.max(2, chars.length - 2)).join("");
+  return `${prefix}***${suffix}`;
+};
+let monitoringDeviceKeyPromise: Promise<string> | null = null;
+async function monitoringDeviceCredentialKey() {
+  const configuredKey = Deno.env.get("GUC_DEVICE_CREDENTIAL_KEY_V1") ?? "";
+  if (configuredKey) return configuredKey;
+  if (!monitoringDeviceKeyPromise) {
+    monitoringDeviceKeyPromise = rpc("get_monitoring_device_key_v1", {}).then(result => {
+      const candidate = typeof result === "string"
+        ? result
+        : Array.isArray(result)
+          ? result[0]?.get_monitoring_device_key_v1
+          : (result as Row)?.get_monitoring_device_key_v1;
+      if (typeof candidate !== "string" || !candidate) throw new Error("設備憑證加密金鑰尚未正確設定。");
+      return candidate;
+    }).catch(error => {
+      monitoringDeviceKeyPromise = null;
+      throw error;
+    });
+  }
+  return monitoringDeviceKeyPromise;
+}
+async function encryptDeviceCredentialValue(value: string) {
+  const encodedKey = await monitoringDeviceCredentialKey();
+  let keyBytes: Uint8Array;
+  try { keyBytes = base64ToBytes(encodedKey); }
+  catch { throw new Error("設備憑證加密金鑰尚未正確設定。"); }
+  if (keyBytes.length !== 32) throw new Error("設備憑證加密金鑰尚未正確設定。");
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(value);
+  try {
+    const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt"]);
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, cryptoKey, plaintext));
+    const tagOffset = sealed.length - 16;
+    return {
+      ciphertext: bytesToBase64(sealed.slice(0, tagOffset)),
+      iv: bytesToBase64(iv),
+      authentication_tag: bytesToBase64(sealed.slice(tagOffset)),
+    };
+  } finally {
+    keyBytes.fill(0);
+    plaintext.fill(0);
+  }
+}
+async function deviceCredentialEnvelope(loginUsername: unknown, loginPassword: unknown): Promise<Row | null> {
+  const usernameValue = typeof loginUsername === "string" ? loginUsername.trim() : "";
+  const passwordValue = typeof loginPassword === "string" ? loginPassword : "";
+  if (!usernameValue && !passwordValue) return null;
+  if (!usernameValue || !passwordValue || usernameValue.length > 256 || passwordValue.length > 512) {
+    throw new Error("設備登入帳號與新密碼必須同時提供，且不得超過長度限制。");
+  }
+  const [usernameSealed, passwordSealed] = await Promise.all([
+    encryptDeviceCredentialValue(usernameValue),
+    encryptDeviceCredentialValue(passwordValue),
+  ]);
+  return {
+    username_ciphertext: usernameSealed.ciphertext,
+    username_iv: usernameSealed.iv,
+    username_authentication_tag: usernameSealed.authentication_tag,
+    password_ciphertext: passwordSealed.ciphertext,
+    password_iv: passwordSealed.iv,
+    password_authentication_tag: passwordSealed.authentication_tag,
+    masked_username: maskedDeviceUsername(usernameValue),
+    key_version: "v1",
+  };
+}
 const role = (value: unknown): Role | null => ["admin", "operator", "viewer"].includes(text(value)) ? text(value) as Role : null;
 const customerCategory = (value: unknown) => ["school", "government", "social_welfare", "cleaning_team"].includes(text(value)) ? text(value) : null;
 const safePathPart = (value: unknown) => text(value).normalize("NFKC").replace(/[\\/:*?"<>|\x00-\x1F]/g,"_").replace(/\s+/g," ").trim().slice(0,100) || "未命名";
@@ -57,6 +149,15 @@ async function getAll(path: string, pageSize = 1000) {
     result.push(...page);
     offset += page.length;
   }
+}
+async function getPage(path: string) {
+  const response = await db(path, { headers: { Prefer: "count=exact" } });
+  if (!response.ok) throw new Error("讀取資料失敗。");
+  const records = await response.json() as Row[];
+  const range = response.headers.get("content-range") || "";
+  const totalText = range.includes("/") ? range.slice(range.lastIndexOf("/") + 1) : "";
+  const total = /^\d+$/.test(totalText) ? Number(totalText) : records.length;
+  return { records, total };
 }
 async function insert(table: string, row: Row) { const response = await db(table, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) }); if (!response.ok) { const failure = await response.json().catch(() => ({})) as { code?: string; message?: string }; if (failure.code === "23505") throw new Error("資料已存在，請確認後重試。"); if (failure.code === "42501") throw new Error("帳號資料服務尚未取得必要權限。"); if (failure.code === "PGRST204") throw new Error("帳號資料服務正在更新，請稍後重試。"); if (failure.code === "23503") throw new Error("登入帳號建立未完成，請稍後重試。"); throw new Error(`儲存失敗（代碼：${failure.code || "unknown"}）。`); } return response.json(); }
 async function rpc(name: string, args: Row) { const response = await db(`rpc/${name}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(args) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || "資料處理失敗，請確認輸入內容後重試。"); } return response.json(); }
@@ -228,6 +329,114 @@ async function queryRecords(params: URLSearchParams) {
   if (term) path += `&or=(${definition.search.map(field=>`${field}.ilike.*${encodeURIComponent(term)}*`).join(",")})`;
   return { records: await get(path), entity: params.get("entity"), sort: params.get("sort"), direction };
 }
+
+const MONITORING_DEVICE_SELECT = "id,site_id,device_no,device_name,ip_address,device_type,network_cable_no,cabinet,device_brand,device_model,details,manual_url,status,credential_configured,created_by,updated_by,created_at,updated_at,row_version";
+const MONITORING_SORTS: Record<string,string> = {
+  updated: "updated_at",
+  name: "device_name",
+  ip: "ip_address",
+  type: "device_type",
+  brand: "device_brand",
+  cabinet: "cabinet",
+};
+async function attachMonitoringDeviceDisplayData(records: Row[]) {
+  const deviceIds = records.map(row => uuid(row.id)).filter((value): value is string => !!value);
+  const siteIds = [...new Set(records.map(row => uuid(row.site_id)).filter((value): value is string => !!value))];
+  const [credentials, sites] = await Promise.all([
+    deviceIds.length ? get(`site_device_credentials?device_id=in.(${deviceIds.join(",")})&select=device_id,masked_username`) as Promise<Row[]> : Promise.resolve([]),
+    siteIds.length ? get(`sites?id=in.(${siteIds.join(",")})&select=id,site_code,site_name`) as Promise<Row[]> : Promise.resolve([]),
+  ]);
+  const credentialByDevice = new Map(credentials.map(row => [String(row.device_id), row.masked_username]));
+  const siteById = new Map(sites.map(row => [String(row.id), row]));
+  return records.map(row => ({
+    ...row,
+    masked_username: credentialByDevice.get(String(row.id)) || null,
+    site: siteById.get(String(row.site_id)) || null,
+  }));
+}
+async function monitoringDevices(params: URLSearchParams) {
+  const page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
+  const pageSize = Math.min(100, Math.max(10, Math.floor(Number(params.get("page_size")) || 25)));
+  const direction = params.get("direction") === "asc" ? "asc" : "desc";
+  const sort = text(params.get("sort"));
+  const sortField = MONITORING_SORTS[sort] || MONITORING_SORTS.updated;
+  const search = text(params.get("search")).replace(/[,*()]/g, " ").slice(0, 80);
+  let path = `site_devices?select=${MONITORING_DEVICE_SELECT}&deleted_at=is.null&device_type=not.is.null&order=${sortField}.${direction},id.asc&limit=${pageSize}&offset=${(page - 1) * pageSize}`;
+  const siteId = uuid(params.get("site_id"));
+  const type = monitoringDeviceType(params.get("type"));
+  const brand = text(params.get("brand")).slice(0, 120);
+  const model = text(params.get("model")).slice(0, 160);
+  const cabinet = text(params.get("cabinet")).slice(0, 160);
+  if (siteId) path += `&site_id=eq.${siteId}`;
+  if (type) path += `&device_type=eq.${type}`;
+  if (brand) path += `&device_brand=eq.${encodeURIComponent(brand)}`;
+  if (model) path += `&device_model=eq.${encodeURIComponent(model)}`;
+  if (cabinet) path += `&cabinet=eq.${encodeURIComponent(cabinet)}`;
+  if (search) path += `&or=(device_no.ilike.*${encodeURIComponent(search)}*,device_name.ilike.*${encodeURIComponent(search)}*,ip_address.ilike.*${encodeURIComponent(search)}*,device_brand.ilike.*${encodeURIComponent(search)}*,device_model.ilike.*${encodeURIComponent(search)}*,cabinet.ilike.*${encodeURIComponent(search)}*)`;
+  const result = await getPage(path);
+  return {
+    records: await attachMonitoringDeviceDisplayData(result.records),
+    pagination: { page, page_size: pageSize, total: result.total, page_count: Math.max(1, Math.ceil(result.total / pageSize)) },
+    query: { search, site_id: siteId || "", type: type || "", brand, model, cabinet, sort: sort || "updated", direction },
+  };
+}
+async function monitoringDeviceDetail(params: URLSearchParams) {
+  const id = uuid(params.get("id"));
+  if (!id) throw new Error("監控設備編號不正確。");
+  const records = await get(`site_devices?id=eq.${id}&deleted_at=is.null&device_type=not.is.null&select=${MONITORING_DEVICE_SELECT}&limit=1`) as Row[];
+  if (records.length !== 1) throw new Error("找不到監控設備。");
+  return { record: (await attachMonitoringDeviceDisplayData(records))[0] };
+}
+async function monitoringDeviceOptions(user: AppUser) {
+  const services = await get("contract_service_types?code=eq.surveillance&is_active=eq.true&select=id&limit=1") as Row[];
+  const serviceId = services.length ? uuid(services[0].id) : null;
+  const [types, sites, devices] = await Promise.all([
+    get("monitoring_device_types?is_active=eq.true&select=code,name,sort_order&order=sort_order.asc") as Promise<Row[]>,
+    serviceId ? get(`sites?contract_service_type_id=eq.${serviceId}&status=neq.closed&select=id,site_code,site_name&order=site_code.asc`) as Promise<Row[]> : Promise.resolve([]),
+    get("site_devices?deleted_at=is.null&device_type=not.is.null&select=device_brand,device_model,cabinet,network_cable_no") as Promise<Row[]>,
+  ]);
+  const values = (key: string) => [...new Set(devices.map(row => text(row[key])).filter(Boolean))].sort((a,b) => a.localeCompare(b,"zh-Hant"));
+  return {
+    types,
+    sites,
+    filters: { brands: values("device_brand"), models: values("device_model"), cabinets: values("cabinet"), network_cables: values("network_cable_no") },
+    current_user: publicUser(user),
+  };
+}
+async function monitoringDeviceDashboard(user: AppUser) {
+  const [devices, imports] = await Promise.all([
+    get(`site_devices?deleted_at=is.null&device_type=not.is.null&select=${MONITORING_DEVICE_SELECT}`) as Promise<Row[]>,
+    get("monitoring_device_imports?select=id,file_name,sheet_name,total_count,inserted_count,status,actor,created_at&order=created_at.desc&limit=5") as Promise<Row[]>,
+  ]);
+  const byType = Object.fromEntries(DEVICE_TYPES.map(type => [type, devices.filter(row => row.device_type === type).length]));
+  return {
+    summary: {
+      total: devices.length,
+      active: devices.filter(row => row.status === "active").length,
+      maintenance: devices.filter(row => row.status === "maintenance").length,
+      credential_configured: devices.filter(row => row.credential_configured === true).length,
+      by_type: byType,
+    },
+    recent_devices: await attachMonitoringDeviceDisplayData([...devices].sort((a,b) => String(b.updated_at).localeCompare(String(a.updated_at))).slice(0,5)),
+    recent_imports: imports,
+    current_user: publicUser(user),
+  };
+}
+async function monitoringDeviceImports(params: URLSearchParams) {
+  const id = uuid(params.get("id"));
+  if (id) {
+    const [imports, rows] = await Promise.all([
+      get(`monitoring_device_imports?id=eq.${id}&select=id,file_name,sheet_name,total_count,inserted_count,status,actor,created_at&limit=1`) as Promise<Row[]>,
+      get(`monitoring_device_import_rows?import_id=eq.${id}&select=id,source_row,device_id,sanitized_payload,created_at&order=source_row.asc`) as Promise<Row[]>,
+    ]);
+    if (imports.length !== 1) throw new Error("找不到匯入紀錄。");
+    return { record: imports[0], rows };
+  }
+  const page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
+  const pageSize = Math.min(100, Math.max(10, Math.floor(Number(params.get("page_size")) || 25)));
+  const result = await getPage(`monitoring_device_imports?select=id,file_name,sheet_name,total_count,inserted_count,status,actor,created_at&order=created_at.desc&limit=${pageSize}&offset=${(page - 1) * pageSize}`);
+  return { records: result.records, pagination: { page, page_size: pageSize, total: result.total, page_count: Math.max(1, Math.ceil(result.total / pageSize)) } };
+}
 async function createAccount(payload: Row, actor: AppUser, firstAdmin = false) {
   const name = username(payload.username), displayName = limited(payload.display_name,80), userRole = role(payload.role), pass = password(payload.password);
   if (!name || !displayName || !userRole || !pass) throw new Error("請輸入帳號、名稱、角色與至少 12 碼的密碼。");
@@ -310,9 +519,76 @@ async function deleteAccount(payload: Row, actor: AppUser) {
   const response = await authApi(`/auth/v1/admin/users/${target.auth_user_id}`, { method: "DELETE" });
   if (!response.ok) throw new Error("刪除帳號失敗。");
 }
+function monitoringDeviceInput(payload: Row) {
+  const siteId = uuid(payload.site_id);
+  const deviceName = limited(payload.device_name, 160);
+  const address = ipAddress(payload.ip_address);
+  const type = monitoringDeviceType(payload.device_type);
+  const cable = nullable(payload.network_cable_no, 120);
+  const cabinet = limited(payload.cabinet, 160);
+  const brand = limited(payload.device_brand, 120);
+  const model = limited(payload.device_model, 160);
+  const details = limited(payload.details, 4000);
+  const manualUrl = httpUrl(payload.manual_url);
+  const status = text(payload.status) || "active";
+  if (!siteId || !deviceName || !address || !type || cable === null || !cabinet || !brand || !model || !details || manualUrl === null || !["active", "inactive", "maintenance"].includes(status)) {
+    throw new Error("請完整填寫有效的監控設備資料。");
+  }
+  return {
+    site_id: siteId,
+    device_name: deviceName,
+    ip_address: address,
+    device_type: type,
+    network_cable_no: cable || null,
+    cabinet,
+    device_brand: brand,
+    device_model: model,
+    details,
+    manual_url: manualUrl || null,
+    status,
+  };
+}
 async function change(operation: string, payload: Row, user: AppUser | null) {
   const actor = user?.username || "site-owner";
   const meta = { source: "web", updated_by: actor };
+  if (operation === "upsert_monitoring_device") {
+    requireRole(user,["admin","operator"]);
+    const values = monitoringDeviceInput(payload);
+    const id = text(payload.id) ? uuid(payload.id) : null;
+    const rowVersion = id ? Number(payload.row_version) : null;
+    if ((text(payload.id) && !id) || (id && (!Number.isInteger(rowVersion) || Number(rowVersion) < 1))) throw new Error("監控設備或版本不正確。");
+    const credentialRequested = typeof payload.login_username === "string" || typeof payload.login_password === "string";
+    if (credentialRequested) requireRole(user,["admin"]);
+    const credential = credentialRequested ? await deviceCredentialEnvelope(payload.login_username, payload.login_password) : null;
+    return rpc("upsert_monitoring_device_v1",{
+      p_id:id,p_row_version:rowVersion,p_site_id:values.site_id,p_device_name:values.device_name,
+      p_ip_address:values.ip_address,p_device_type:values.device_type,p_network_cable_no:values.network_cable_no,
+      p_cabinet:values.cabinet,p_device_brand:values.device_brand,p_device_model:values.device_model,
+      p_details:values.details,p_manual_url:values.manual_url,p_status:values.status,p_credential:credential,p_actor:actor,
+    });
+  }
+  if (operation === "delete_monitoring_device") {
+    requireRole(user,["admin"]);
+    const id=uuid(payload.id),rowVersion=Number(payload.row_version);
+    if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("監控設備或版本不正確。");
+    return rpc("delete_monitoring_device_v1",{p_id:id,p_row_version:rowVersion,p_actor:actor});
+  }
+  if (operation === "import_monitoring_devices") {
+    requireRole(user,["admin"]);
+    const fileName=limited(payload.file_name,255),sheetName=limited(payload.sheet_name,120),fileHash=text(payload.file_hash).toLowerCase(),siteId=uuid(payload.site_id);
+    if(!fileName||!sheetName||!/^[0-9a-f]{64}$/.test(fileHash)||!siteId||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>1000) throw new Error("監控設備匯入資料不完整。");
+    const rows=[] as Row[];
+    for(let index=0;index<payload.rows.length;index+=1){
+      const candidate=payload.rows[index];
+      if(!candidate||typeof candidate!=="object"||Array.isArray(candidate)) throw new Error(`第 ${index+2} 列資料格式不正確。`);
+      const row=candidate as Row,values=monitoringDeviceInput({...row,site_id:siteId});
+      const sourceRow=Number(row.source_row);
+      if(!Number.isInteger(sourceRow)||sourceRow<2) throw new Error(`第 ${index+2} 列來源列號不正確。`);
+      const credential=await deviceCredentialEnvelope(row.login_username,row.login_password);
+      rows.push({...values,source_row:sourceRow,credential});
+    }
+    return rpc("import_monitoring_devices_v1",{p_file_name:fileName,p_sheet_name:sheetName,p_file_hash:fileHash,p_site_id:siteId,p_rows:rows,p_actor:actor});
+  }
   if (operation === "create_project") { requireRole(user,["admin","operator"]); const name = limited(payload.name,120); if (!name) throw new Error("請輸入 1 至 120 個字的專案名稱。"); return insert("projects", {name,...meta}); }
   if (operation === "create_supplier") { requireRole(user,["admin"]); const name=limited(payload.name,160),contact_name=nullable(payload.contact_name,120),phone=nullable(payload.phone,50),email=optionalEmail(payload.email),address=nullable(payload.address,500),note=nullable(payload.note,1000); if(!name||contact_name===null||phone===null||email===null||address===null||note===null) throw new Error("請完整填寫有效的供應商資料。"); return insert("suppliers",{name,contact_name:contact_name||null,phone:phone||null,email:email||null,address:address||null,note:note||null,...meta}); }
   if (operation === "update_supplier") { requireRole(user,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version),name=limited(payload.name,160),contact_name=nullable(payload.contact_name,120),phone=nullable(payload.phone,50),email=optionalEmail(payload.email),address=nullable(payload.address,500),note=nullable(payload.note,1000); if(!id||!Number.isInteger(rowVersion)||rowVersion<1||!name||contact_name===null||phone===null||email===null||address===null||note===null) throw new Error("請完整填寫有效的供應商資料。"); return updateVersioned("suppliers",id,rowVersion,{name,contact_name:contact_name||null,phone:phone||null,email:email||null,address:address||null,note:note||null,...meta},"供應商資料已被其他使用者更新，請重新載入後再修改。"); }
@@ -644,19 +920,28 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
 }
 Deno.serve(async request => {
   try {
+    const requestUrl = new URL(request.url);
+    const isPreviewGateway = requestUrl.pathname.replace(/\/+$/, "").endsWith("/inventory-gateway-preview");
     if(request.method === "GET") {
       const user = await currentUser(request);
       if (!user) return json({error:"請先以有效帳號登入。"},401);
-      const params = new URL(request.url).searchParams;
+      const params = requestUrl.searchParams;
+      const entity = text(params.get("entity"));
+      if (entity === "monitoring_devices") return json({...(await monitoringDevices(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
+      if (entity === "monitoring_device_detail") return json({...(await monitoringDeviceDetail(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
+      if (entity === "monitoring_device_options") return json({...(await monitoringDeviceOptions(user)),preview_readonly:isPreviewGateway});
+      if (entity === "monitoring_device_dashboard") return json({...(await monitoringDeviceDashboard(user)),preview_readonly:isPreviewGateway});
+      if (entity === "monitoring_device_imports") return json({...(await monitoringDeviceImports(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (params.has("entity")) return json(await queryRecords(params));
       const scopeName = text(params.get("scope")) || "dashboard";
-      if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), errors: [], refreshed_at: new Date().toISOString() });
+      if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
       return json(await scopedSnapshot(user, scopeName));
     }
     if(request.method !== "POST") return json({error:"僅支援 GET 與 POST。"},405);
     const body=await request.json() as {operation?:unknown;payload?:unknown};
     const operation = text(body.operation), payload = body.payload&&typeof body.payload==="object"&&!Array.isArray(body.payload)?body.payload as Row:{};
     if (operation === "login") { const logged = await login(payload); return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
+    if (isPreviewGateway) return json({error:"Preview 環境僅允許登入與讀取；所有寫入均已封鎖。",code:"PREVIEW_READ_ONLY"},403);
     if (operation === "bootstrap_admin") {
       const existing = await get("app_users?select=id&limit=1") as Row[];
       if (existing.length) throw new Error("首位管理者已建立。");
@@ -674,6 +959,11 @@ Deno.serve(async request => {
     if (operation === "import_phone_terminal_rows") {
       return json({ ok: true, result, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
     }
-    return json({ ok: true, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
-  } catch(error) { return json({error:error instanceof Error?error.message:"系統暫時無法完成操作。"},400); }
+    return json({ ok: true, result: result ?? null, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
+  } catch(error) {
+    const message=error instanceof Error?error.message:"系統暫時無法完成操作。";
+    const status=message.includes("沒有執行")?403:message.startsWith("找不到")?404:message.includes("其他使用者")||message.includes("已被其他有效設備")?409:400;
+    return json({error:message,code:status===403?"FORBIDDEN":status===404?"NOT_FOUND":status===409?"CONFLICT":"VALIDATION_ERROR"},status);
+  }
 });
+
