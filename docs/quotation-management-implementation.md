@@ -130,9 +130,20 @@ MVP 後續項目：報價列表的建立人、日期區間與多欄排序 UI；�
 2026-09-02 本機驗證結果：
 
 - GUC-Quotation TypeScript：通過。
-- GUC-Quotation unit／integration：9/9 通過。
+- GUC-Quotation unit／integration：10/10 通過。
 - GUC-Quotation Next.js production build：通過，共 7 個應用 routes（另含 not-found）。
 - GUC-ERP regression：74/74 通過。
 - GUC-ERP static preview check：通過。
 
-部署後仍須完成的 Preview smoke：三帳號登入、其他帳號拒絕、ERP→報價 SSO、options/list/detail、Preview BFF 與 Edge 雙層 403、direct URL 權限、歷史版本與手機流程。Preview URL 將在實際部署後補入；正式 migration 與正式網站必須等使用者確認測試站後才發布。
+2026-09-02 Vercel Preview 驗證結果：
+
+- ERP 固定測試入口：`https://guc-erp-vercel-rebuild-git-cod-904604-sam5321051-5955s-projects.vercel.app/`。
+- 報價系統凍結測試版本：`https://guc-quotation-system-eqeua6i0g-sam5321051-5955s-projects.vercel.app/`。
+- 兩個 deployment 均為 READY；頁面非空白、無 Next.js error overlay、無瀏覽器 console error，登入元件與響應式桌面版面正常。
+- ERP `/api/public-config` 已回傳上述精確報價 Preview origin；兩站 SSO 以 exact origin、opener 與 nonce 驗證。
+- 報價 BFF 未登入 GET 回傳 401、`X-Quotation-Mode: preview-session-only`；本機與靜態 release gate 驗證非 login POST 回傳 403。
+- 兩站近 30 分鐘 Vercel runtime error／fatal logs 皆為 0。
+
+仍由使用者驗收的項目：使用 Williams、Joyce、老闆三個既有帳號實際登入，確認其他帳號拒絕、ERP→報價 SSO、options/list/detail、歷史版本及手機操作。代理驗證未使用或索取任何帳號密碼。
+
+正式 migration、正式 `quotation-gateway` 與正式 ERP／報價發布仍保持停用，必須等使用者確認測試站後才執行。
