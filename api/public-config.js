@@ -1,5 +1,5 @@
 const DEFAULT_SITE_DATA_URL = "https://guc-site-data-system.vercel.app";
-const DEFAULT_PREVIEW_SITE_DATA_URL = "https://guc-site-data-system-git-featu-b2c58a-sam5321051-5955s-projects.vercel.app";
+const DEFAULT_PREVIEW_SITE_DATA_URL = "https://guc-site-data-system-git-codex-f5e9e7-sam5321051-5955s-projects.vercel.app";
 
 function defaultSiteDataUrl() {
   return process.env.VERCEL_ENV === "preview" ? DEFAULT_PREVIEW_SITE_DATA_URL : DEFAULT_SITE_DATA_URL;
