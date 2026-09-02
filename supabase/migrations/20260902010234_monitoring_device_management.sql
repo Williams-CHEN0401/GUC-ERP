@@ -1,5 +1,36 @@
 begin;
 
+-- Generate the monitoring credential key inside Supabase Vault. The Edge
+-- Function receives it only through a service-role-only RPC when no managed
+-- function secret has been configured.
+do $$
+begin
+  if not exists (
+    select 1 from vault.secrets where name = 'guc_monitoring_device_credentials_v1'
+  ) then
+    perform vault.create_secret(
+      encode(extensions.gen_random_bytes(32), 'base64'),
+      'guc_monitoring_device_credentials_v1',
+      'GUC monitoring device credential AES-256-GCM key v1',
+      null
+    );
+  end if;
+end;
+$$;
+
+create or replace function public.get_monitoring_device_key_v1()
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select decrypted_secret
+  from vault.decrypted_secrets
+  where name = 'guc_monitoring_device_credentials_v1'
+  limit 1;
+$$;
+
 create table if not exists public.monitoring_device_types (
   code text primary key,
   name text not null unique,
@@ -470,12 +501,16 @@ $$;
 
 revoke all on function public.upsert_monitoring_device_v1(uuid,integer,uuid,text,text,text,text,text,text,text,text,text,text,jsonb,text)
   from public, anon, authenticated;
+revoke all on function public.get_monitoring_device_key_v1()
+  from public, anon, authenticated;
 revoke all on function public.delete_monitoring_device_v1(uuid,integer,text)
   from public, anon, authenticated;
 revoke all on function public.import_monitoring_devices_v1(text,text,text,uuid,jsonb,text)
   from public, anon, authenticated;
 
 grant execute on function public.upsert_monitoring_device_v1(uuid,integer,uuid,text,text,text,text,text,text,text,text,text,text,jsonb,text)
+  to service_role;
+grant execute on function public.get_monitoring_device_key_v1()
   to service_role;
 grant execute on function public.delete_monitoring_device_v1(uuid,integer,text)
   to service_role;

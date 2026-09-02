@@ -50,8 +50,28 @@ const maskedDeviceUsername = (value: string) => {
   const suffix = chars.slice(Math.max(2, chars.length - 2)).join("");
   return `${prefix}***${suffix}`;
 };
+let monitoringDeviceKeyPromise: Promise<string> | null = null;
+async function monitoringDeviceCredentialKey() {
+  const configuredKey = Deno.env.get("GUC_DEVICE_CREDENTIAL_KEY_V1") ?? "";
+  if (configuredKey) return configuredKey;
+  if (!monitoringDeviceKeyPromise) {
+    monitoringDeviceKeyPromise = rpc("get_monitoring_device_key_v1", {}).then(result => {
+      const candidate = typeof result === "string"
+        ? result
+        : Array.isArray(result)
+          ? result[0]?.get_monitoring_device_key_v1
+          : (result as Row)?.get_monitoring_device_key_v1;
+      if (typeof candidate !== "string" || !candidate) throw new Error("設備憑證加密金鑰尚未正確設定。");
+      return candidate;
+    }).catch(error => {
+      monitoringDeviceKeyPromise = null;
+      throw error;
+    });
+  }
+  return monitoringDeviceKeyPromise;
+}
 async function encryptDeviceCredentialValue(value: string) {
-  const encodedKey = Deno.env.get("GUC_DEVICE_CREDENTIAL_KEY_V1") ?? "";
+  const encodedKey = await monitoringDeviceCredentialKey();
   let keyBytes: Uint8Array;
   try { keyBytes = base64ToBytes(encodedKey); }
   catch { throw new Error("設備憑證加密金鑰尚未正確設定。"); }

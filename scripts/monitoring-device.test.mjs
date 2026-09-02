@@ -11,6 +11,12 @@ test("monitoring credentials use AES-256-GCM in the Edge Function and never decr
   assert.ok(edge.includes("site_device_credentials?device_id=in.(${deviceIds.join(\",\")})&select=device_id,masked_username"));
 });
 
+test("monitoring credential key is generated in Vault and exposed only to the service role",()=>{
+  for(const marker of ["guc_monitoring_device_credentials_v1","extensions.gen_random_bytes(32)","get_monitoring_device_key_v1","from public, anon, authenticated","to service_role"])assert.ok(migration.includes(marker),`missing ${marker}`);
+  assert.match(edge,/monitoringDeviceCredentialKey/);
+  assert.match(edge,/rpc\("get_monitoring_device_key_v1", \{\}\)/);
+});
+
 test("preview gateway blocks every non-login POST at the Edge boundary",()=>{
   assert.match(edge,/endsWith\("\/inventory-gateway-preview"\)/);
   assert.match(edge,/if \(isPreviewGateway\) return json\([^;]*PREVIEW_READ_ONLY/s);
