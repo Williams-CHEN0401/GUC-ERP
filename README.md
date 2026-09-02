@@ -12,6 +12,8 @@
 - 工作日誌可填寫每筆獨立「時段」，並可設定「進行中／已完成」；狀態視為專案層級資料，從工作日誌或專案管理修改時會同步同一專案的全部工作日誌。
 - 客戶分類包含「學校機關、政府機關、社福機關、清潔隊」；正式 migration 只依既有名稱中的「社福／清潔隊」分類，不新增或改寫客戶名稱。
 - 工作日誌可複選既有系統使用者作為施工人員，並可從日誌直接登錄取貨；取貨仍共用既有 `pickup_records`、庫存扣減、稽核與同步流程。
+- 原「專案用料」入口已升級為「專案統計報表」，保留 `materials` route，提供總覽、用料統計與施工人員三分頁；客戶／專案與日期篩選會同時套用既有取貨、工作日誌及施工人員資料，且不同材料單位分開彙總。
+- `inventory-gateway` 的共用 RPC 回應處理可接受成功的 `204` 空本文，避免總機、分機或監控設備實際刪除成功後被誤報失敗；電話總機名稱重複時會保留明確的資料庫錯誤訊息。
 - 新附件上傳固定使用 NAS `/GUC-ERP/客戶名稱/承攬內容/專案名稱/日期/檔名`；同名檔案必須選擇覆蓋、另存新檔或取消，寫入後再驗證檔案存在與大小。新附件不建立工作日誌關聯，歷史附件的關聯與路徑不改寫。
 - 所有正式寫入仍由既有 Gateway 執行 Auth、RBAC、驗證、版本控制與 Audit Log。
 
@@ -35,4 +37,3 @@ NAS Vercel Function 需要在對應環境設定 `NAS_WEBDAV_URL`、`NAS_WEBDAV_U
 版本控制與多人協作方式請見 `CONTRIBUTING.md` 與 `VERSION_CONTROL_AND_COLLABORATION.md`。
 
 跨 ERP 與獨立案場系統的正式架構、SSO、Gateway API、資料模型、環境變數、發布、回滾與驗收規格，以 [`GUC-Site-Data/docs/SYSTEM_SPECIFICATION.md`](https://github.com/Williams-CHEN0401/GUC-Site-Data/blob/main/docs/SYSTEM_SPECIFICATION.md) 為單一正式來源。
-

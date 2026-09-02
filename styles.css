@@ -55,3 +55,26 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .nav-item.active .nav-icon-shell{color:#fff;border-color:var(--green-800);background:var(--green-800);box-shadow:0 5px 13px rgba(12,79,62,.24)}
 .nav-item:focus-visible{outline:2px solid #f0cb65;outline-offset:2px}
 @media(max-width:780px){.nav-item:hover{transform:none}}
+
+/* 2026-09-02 專案統計報表 */
+.selector-panel.report-selector{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));max-width:none;align-items:end}
+.report-selector input{width:100%;min-height:42px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 11px;color:#35423e}
+.report-filter-hint{grid-column:1/-1;margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.report-tabs{display:flex;gap:6px;margin:0 0 18px;padding:5px;border:1px solid var(--line);border-radius:11px;background:#edf3f1;width:max-content;max-width:100%;overflow:auto}
+.report-tabs button{min-width:112px;border:0;border-radius:8px;background:transparent;padding:9px 15px;color:#5b6965;font-weight:750}
+.report-tabs button.active{background:#fff;color:var(--green-800);box-shadow:0 3px 10px rgba(18,55,44,.1)}
+.report-tabs button:focus-visible{outline:2px solid var(--green-700);outline-offset:1px}
+.report-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,#fff,#f1faf6)}
+.report-heading>div{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}.report-heading h2{font-size:20px}.report-heading p{width:100%;margin:0;color:var(--muted);font-size:13px}
+.report-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}.report-kpis.compact{grid-template-columns:repeat(4,minmax(0,1fr))}
+.report-kpi{min-width:0;border:1px solid var(--line);border-radius:11px;background:#fff;padding:15px 16px;box-shadow:0 3px 12px rgba(18,55,44,.03)}
+.report-kpi small,.report-kpi strong,.report-kpi span{display:block}.report-kpi small{color:var(--muted);font-size:12px}.report-kpi strong{margin-top:5px;color:var(--green-900);font-size:21px;line-height:1.35;overflow-wrap:anywhere}.report-kpi span{margin-top:4px;color:#80908a;font-size:11px}
+.report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.report-card{min-width:0}.report-grid>.report-card{margin-bottom:0}.report-grid+.report-card,.report-card+.report-card{margin-top:18px}
+.report-chart-list{display:grid;gap:13px}.report-chart-row>div{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:5px}.report-chart-row strong{font-size:13px;overflow-wrap:anywhere}.report-chart-row span{flex:0 0 auto;color:var(--green-800);font-size:12px;font-weight:800}
+.report-chart-row progress{display:block;width:100%;height:10px;overflow:hidden;border:0;border-radius:999px;background:#e8efec;accent-color:var(--green-700)}.report-chart-row progress::-webkit-progress-bar{border-radius:999px;background:#e8efec}.report-chart-row progress::-webkit-progress-value{border-radius:999px;background:linear-gradient(90deg,var(--green-700),#46aa85)}.report-chart-row progress::-moz-progress-bar{border-radius:999px;background:var(--green-700)}
+.report-unit-charts{display:grid;gap:16px}.report-unit-charts>section{display:grid;gap:10px;padding:12px;border:1px solid #e4ece8;border-radius:10px;background:#fbfdfc}.report-unit-charts h3{margin:0;color:var(--green-900);font-size:13px}.report-unit-charts .report-chart-list{gap:10px}
+.report-table table{min-width:760px}.report-daily-table table{min-width:980px}.report-summary{max-width:360px;white-space:normal;line-height:1.55}.compact-button{white-space:nowrap;padding:6px 9px}
+.material-summary>.empty-state{margin-top:4px}
+@media(max-width:1180px){.selector-panel.report-selector{grid-template-columns:repeat(3,minmax(0,1fr))}.report-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:780px){.selector-panel.report-selector{grid-template-columns:1fr}.report-selector label,.report-filter-hint{grid-column:1}.report-tabs{width:100%}.report-tabs button{min-width:100px;flex:1}.report-grid{grid-template-columns:1fr}.report-kpis,.report-kpis.compact{grid-template-columns:1fr 1fr}.report-heading{align-items:flex-start}.report-heading>div{display:block}.report-heading .pill{margin-bottom:8px}.report-heading h2{margin:0 0 5px}}
+@media(max-width:460px){.report-kpis,.report-kpis.compact{grid-template-columns:1fr}.report-tabs button{min-width:94px;padding-inline:10px}}

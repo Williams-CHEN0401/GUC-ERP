@@ -32,7 +32,7 @@
           <button class="nav-item" data-page="inventory"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-inventory"/></svg></span><span>商品與庫存</span></button>
           <button class="nav-item" data-page="crm"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-crm"/></svg></span><span>客戶與專案</span></button>
           <button class="nav-item" data-page="worklogs"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-worklogs"/></svg></span><span>工作日誌</span></button>
-          <button class="nav-item" data-page="materials"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-materials"/></svg></span><span>專案用料</span></button>
+          <button class="nav-item" data-page="materials"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-materials"/></svg></span><span>專案統計報表</span></button>
           <button class="nav-item" data-page="backup"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-backup"/></svg></span><span>Excel 備份／復原</span></button>
           <button class="nav-item" data-page="settings"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-settings"/></svg></span><span>系統設定</span></button>
         </nav>
@@ -114,8 +114,16 @@
           </section>
 
           <section class="page" id="materials" data-page="materials">
-            <div class="page-actions"><div><h2>專案用料</h2><p>先選擇客戶，再查看該客戶所屬專案的用料</p></div><button class="outline" id="exportMaterials">⇩ 匯出用料</button></div>
-            <article class="panel selector-panel"><label>客戶分類<select id="materialCustomerCategory"><option value="">請選擇分類</option><option value="school">學校機關</option><option value="government">政府機關</option><option value="social_welfare">社福機關</option><option value="cleaning_team">清潔隊</option></select></label><span>→</span><label>選擇客戶<select id="materialCustomer" disabled><option>請先選擇分類</option></select></label><span>→</span><label>選擇專案<select id="materialProject" disabled><option>請先選擇客戶</option></select></label></article>
+            <div class="page-actions"><div><h2>專案統計報表</h2><p>整合專案用料、工作日誌與實際施工人員；所有數據來自現有正式資料。</p></div><button class="outline" id="exportMaterials">⇩ 匯出用料明細</button></div>
+            <article class="panel selector-panel report-selector">
+              <label>客戶分類<select id="materialCustomerCategory"><option value="">請選擇分類</option><option value="school">學校機關</option><option value="government">政府機關</option><option value="social_welfare">社福機關</option><option value="cleaning_team">清潔隊</option></select></label>
+              <label>選擇客戶<select id="materialCustomer" disabled><option>請先選擇分類</option></select></label>
+              <label>選擇專案<select id="materialProject" disabled><option>請先選擇客戶</option></select></label>
+              <label>起始日期<input id="materialDateFrom" type="date" /></label>
+              <label>結束日期<input id="materialDateTo" type="date" /></label>
+              <p class="report-filter-hint">日期區間同時套用於取貨日期與工作日誌日期；留白代表不限。</p>
+            </article>
+            <div class="report-tabs" role="tablist" aria-label="專案統計報表分頁"><button class="active" type="button" role="tab" aria-selected="true" data-report-tab="overview">總覽</button><button type="button" role="tab" aria-selected="false" data-report-tab="materials">用料統計</button><button type="button" role="tab" aria-selected="false" data-report-tab="workers">施工人員</button></div>
             <div class="material-summary" id="materialSummary"><article class="empty-state"><span>≣</span><h2>請選擇客戶與專案</h2><p>系統只會顯示該客戶實際關聯的專案。</p></article></div>
           </section>
 
@@ -180,6 +188,7 @@
     </div>
     <div class="toast" id="toast"><span>✓</span><div><b>已完成</b><p></p></div></div>
     <script src="/api/public-config" defer></script>
+    <script src="/project-report.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
 </html>
