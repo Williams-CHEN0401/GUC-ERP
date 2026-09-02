@@ -79,8 +79,8 @@ async function encryptDeviceCredentialValue(value: string) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(value);
   try {
-    const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt"]);
-    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, cryptoKey, plaintext));
+    const cryptoKey = await crypto.subtle.importKey("raw", keyBytes as unknown as BufferSource, { name: "AES-GCM" }, false, ["encrypt"]);
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource, tagLength: 128 }, cryptoKey, plaintext as unknown as BufferSource));
     const tagOffset = sealed.length - 16;
     return {
       ciphertext: bytesToBase64(sealed.slice(0, tagOffset)),
