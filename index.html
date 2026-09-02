@@ -9,6 +9,16 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-dashboard" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.5"/><rect x="14" y="14" width="6.5" height="6.5" rx="1.5"/></symbol>
+      <symbol id="icon-transactions" viewBox="0 0 24 24"><path d="M4 7h14"/><path d="m15 4 3 3-3 3"/><path d="M20 17H6"/><path d="m9 14-3 3 3 3"/></symbol>
+      <symbol id="icon-inventory" viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4-8-4Z"/><path d="m4 7 8 4 8-4"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></symbol>
+      <symbol id="icon-crm" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20v-2.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V20"/><path d="M15.5 5.5h5v6h-5z"/><path d="M18 11.5V15"/></symbol>
+      <symbol id="icon-worklogs" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v4H9z"/><path d="M9 11h6M9 15h6"/></symbol>
+      <symbol id="icon-materials" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2.5"/></symbol>
+      <symbol id="icon-backup" viewBox="0 0 24 24"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 16v4h14v-4"/><path d="M7 4h10"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    </svg>
     <div class="app-shell">
       <aside class="sidebar" id="sidebar">
         <div class="brand">
@@ -17,14 +27,14 @@
         </div>
         <div class="preview-chip" id="environmentChip"><span></span>環境判定中</div>
         <nav class="nav" aria-label="主導覽">
-          <button class="nav-item active" data-page="dashboard"><b>▦</b><span>首頁 Dashboard</span></button>
-          <button class="nav-item" data-page="transactions"><b>⇄</b><span>交易管理</span></button>
-          <button class="nav-item" data-page="inventory"><b>□</b><span>商品與庫存</span></button>
-          <button class="nav-item" data-page="crm"><b>♙</b><span>客戶與專案</span></button>
-          <button class="nav-item" data-page="worklogs"><b>▤</b><span>工作日誌</span></button>
-          <button class="nav-item" data-page="materials"><b>≣</b><span>專案用料</span></button>
-          <button class="nav-item" data-page="backup"><b>⇩</b><span>Excel 備份／復原</span></button>
-          <button class="nav-item" data-page="settings"><b>⚙</b><span>系統設定</span></button>
+          <button class="nav-item active" data-page="dashboard"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-dashboard"/></svg></span><span>首頁 Dashboard</span></button>
+          <button class="nav-item" data-page="transactions"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-transactions"/></svg></span><span>交易管理</span></button>
+          <button class="nav-item" data-page="inventory"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-inventory"/></svg></span><span>商品與庫存</span></button>
+          <button class="nav-item" data-page="crm"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-crm"/></svg></span><span>客戶與專案</span></button>
+          <button class="nav-item" data-page="worklogs"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-worklogs"/></svg></span><span>工作日誌</span></button>
+          <button class="nav-item" data-page="materials"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-materials"/></svg></span><span>專案用料</span></button>
+          <button class="nav-item" data-page="backup"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-backup"/></svg></span><span>Excel 備份／復原</span></button>
+          <button class="nav-item" data-page="settings"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-settings"/></svg></span><span>系統設定</span></button>
         </nav>
         <div class="sidebar-foot">
           <div class="avatar" id="userAvatar">使</div>
