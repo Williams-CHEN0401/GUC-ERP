@@ -1,0 +1,5 @@
+[functions.quotation-gateway]
+verify_jwt = false
+
+[functions.quotation-gateway-preview]
+verify_jwt = false

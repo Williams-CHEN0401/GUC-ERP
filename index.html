@@ -49,7 +49,7 @@
           <div><h1 id="pageTitle">首頁 Dashboard</h1><p id="pageSubtitle">掌握專案、庫存與交易現況</p></div>
           <div class="top-actions">
             <span class="sync-state" id="syncState"><i></i>等待登入</span>
-            <button class="secondary system-switch-button" id="openSiteDataButton" type="button">⌂ 開啟案場資料</button>
+            <button class="secondary system-switch-button" id="openSiteDataButton" type="button">▦ 切換工作系統</button>
             <button class="secondary" id="refreshButton">↻ 重新整理</button>
           </div>
         </header>
@@ -180,6 +180,10 @@
           </button>
           <button type="button" class="system-choice sites" data-system-choice="sites">
             <span>⌂</span><strong>案場資料</strong><small>開啟獨立的案場承攬資料系統</small>
+          </button>
+          <button type="button" class="system-choice quotations" id="quotationSystemChoice" data-system-choice="quotations" hidden>
+            <span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3.5h9l3 3V20.5H6z"/><path d="M15 3.5v4h3M9 11h6M9 14.5h6M9 18h4"/></svg></span>
+            <strong>報價管理系統</strong><small>建立報價、版本追蹤與請款狀態管理</small>
           </button>
         </div>
         <p class="system-chooser-status" id="systemChooserStatus" role="status"></p>

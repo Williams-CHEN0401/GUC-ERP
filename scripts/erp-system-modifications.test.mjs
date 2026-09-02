@@ -46,7 +46,7 @@ test("登入成功後先顯示系統選擇且案場網址未設定時不跳轉",
   assert.match(js, /GUC_PUBLIC_CONFIG\?\.siteDataUrl/);
   assert.match(html, /\/api\/public-config/);
   assert.match(js, /showSystemChooser\(\)/);
-  assert.match(js, /if\(!SITE_SYSTEM_TARGET_URL\|\|!SITE_SYSTEM_TARGET_ORIGIN\)/);
+  assert.match(js, /if\(!url\|\|!origin\)/);
 });
 
 test("案場網站使用集中設定且正式環境缺少變數時仍有安全預設網址", () => {
@@ -69,9 +69,9 @@ test("ERP 內部案場資料模組已移除但獨立網站入口仍保留", () =
 test("案場資料以新分頁開啟並以嚴格來源交接現有登入", () => {
   assert.match(html, /id="openSiteDataButton"/);
   assert.match(js, /window\.open\(target\.toString\(\),"_blank"\)/);
-  assert.match(js, /event\.origin!==SITE_SYSTEM_TARGET_ORIGIN/);
-  assert.match(js, /event\.source!==siteWindow/);
+  assert.match(js, /event\.origin!==origin/);
+  assert.match(js, /event\.source!==externalWindow/);
   assert.match(js, /message\.nonce!==nonce/);
-  assert.match(js, /siteWindow\.postMessage\(\{type:SITE_SSO_SESSION_MESSAGE,nonce,accessToken\},SITE_SYSTEM_TARGET_ORIGIN\)/);
+  assert.match(js, /externalWindow\.postMessage\(\{type:sessionMessage,nonce,accessToken\},origin\)/);
   assert.doesNotMatch(js, /searchParams\.set\([^,]+,accessToken\)/);
 });

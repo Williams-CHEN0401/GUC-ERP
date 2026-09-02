@@ -7,7 +7,7 @@ const js = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const edge = readFileSync(new URL("../supabase/functions/inventory-gateway/index.ts", import.meta.url), "utf8");
 const migration = readFileSync(new URL("../supabase/migrations/20260831081216_work_log_period_project_status_sync.sql", import.meta.url), "utf8");
 
-test("工作日誌清單隱藏時段欄與狀態、日期下拉選單，但保留狀態欄位", () => {
+test("工作日誌清單隱藏時段與狀態、日期下拉選單，但保留狀態欄位", () => {
   assert.doesNotMatch(html, /id="worklogStatusFilter"/);
   assert.doesNotMatch(html, /id="worklogSort"/);
   assert.doesNotMatch(html, /<th>時段<\/th>/);
