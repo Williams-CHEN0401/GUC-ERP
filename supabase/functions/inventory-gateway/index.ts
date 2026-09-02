@@ -160,7 +160,27 @@ async function getPage(path: string) {
   return { records, total };
 }
 async function insert(table: string, row: Row) { const response = await db(table, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) }); if (!response.ok) { const failure = await response.json().catch(() => ({})) as { code?: string; message?: string }; if (failure.code === "23505") throw new Error("資料已存在，請確認後重試。"); if (failure.code === "42501") throw new Error("帳號資料服務尚未取得必要權限。"); if (failure.code === "PGRST204") throw new Error("帳號資料服務正在更新，請稍後重試。"); if (failure.code === "23503") throw new Error("登入帳號建立未完成，請稍後重試。"); throw new Error(`儲存失敗（代碼：${failure.code || "unknown"}）。`); } return response.json(); }
-async function rpc(name: string, args: Row) { const response = await db(`rpc/${name}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(args) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || "資料處理失敗，請確認輸入內容後重試。"); } return response.json(); }
+async function rpc(name: string, args: Row) {
+  const response = await db(`rpc/${name}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(args) });
+  const raw = await response.text();
+  let body: unknown = null;
+  if (raw) {
+    try { body = JSON.parse(raw); }
+    catch {
+      if (response.ok) throw new Error("資料服務回應格式不正確，請稍後重試。");
+    }
+  }
+  if (!response.ok) {
+    const failure = body && typeof body === "object" && !Array.isArray(body) ? body as { code?: string; message?: string } : {};
+    if (failure.code === "23503" && name === "delete_phone_system_v1") throw new Error("此總機仍有關聯的分機或端子資料，請先解除關聯後再刪除。");
+    if (failure.code === "23503" && name === "delete_phone_extension_v1") throw new Error("此電話仍有關聯的端子資料，請先解除關聯後再刪除。");
+    if (failure.code === "23503") throw new Error("此資料仍被其他紀錄使用，請先解除關聯後再重試。");
+    if (failure.code === "23505") throw new Error("資料已存在，請確認後重試。");
+    if (failure.code === "P0001" && failure.message && /[\u3400-\u9fff]/.test(failure.message)) throw new Error(failure.message.slice(0, 300));
+    throw new Error("資料處理失敗，請確認輸入內容後重試。");
+  }
+  return body;
+}
 async function updateVersioned(table: "customers" | "suppliers" | "projects" | "sites", id: string, rowVersion: number, values: Row, conflictMessage: string) {
   const response = await db(`${table}?id=eq.${id}&row_version=eq.${rowVersion}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(values) });
   if (!response.ok) {
@@ -202,7 +222,12 @@ async function updatePhoneSystem(id: string, rowVersion: number, customerId: str
     headers: { Prefer: "return=representation" },
     body: JSON.stringify(values),
   });
-  const rows = response.ok ? await response.json() as Row[] : [];
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({})) as { code?: string };
+    if (failure.code === "23505") throw new Error("同一客戶的總機名稱已存在，請使用其他名稱。");
+    throw new Error("總機資料更新失敗，請確認輸入內容後重試。");
+  }
+  const rows = await response.json() as Row[];
   if (rows.length !== 1) throw new Error("總機資料已被其他使用者更新，請重新載入後再修改。");
   return rows[0];
 }
@@ -238,21 +263,21 @@ function requireRole(user: AppUser | null, allowed: Role[]) {
   if (!user) throw new Error("請先以有效帳號登入。");
   if (!allowed.includes(user.role)) throw new Error("您的帳號沒有執行此操作的權限。");
 }
-type DatasetDefinition = { path: string; adminOnly?: boolean };
+type DatasetDefinition = { path: string; adminOnly?: boolean; paged?: boolean };
 const datasets: Record<string, DatasetDefinition> = {
-  projects: { path: "projects?select=id,name,project_code,customer_id,project_type,status,assigned_to,description,estimated_cost,actual_cost,started_on,completed_on,note,created_at,updated_at,row_version,source,updated_by&order=updated_at.desc" },
+  projects: { path: "projects?select=id,name,project_code,customer_id,project_type,status,assigned_to,description,estimated_cost,actual_cost,started_on,completed_on,note,created_at,updated_at,row_version,source,updated_by&order=updated_at.desc,id.asc", paged: true },
   project_workers: { path: "project_workers?select=project_id,user_id,created_at&order=created_at.asc" },
-  items: { path: "inventory_items?select=id,inventory_code,category_id,model,brand,item_name,item_type,unit,opening_quantity,cost_price,sale_price,inventory_status,default_supplier_id,note,created_at,updated_at,row_version,source,updated_by&order=inventory_code.asc" },
-  pickups: { path: "pickup_records?select=id,pickup_date,project_id,inventory_item_id,quantity,row_version,created_at,updated_at,source,updated_by,created_by_user_id,created_by_username,work_log_id,request_id,request_row&order=pickup_date.desc,created_at.desc" },
-  receipts: { path: "stock_receipts?select=id,receipt_date,inventory_item_id,quantity,supplier_id,supplier,note,row_version,created_at,updated_at,source,updated_by&order=receipt_date.desc,created_at.desc" },
-  adjustments: { path: "stock_adjustments?select=id,inventory_item_id,before_quantity,after_quantity,difference_quantity,adjusted_at,reason,idempotency_key,source,updated_by,created_at&order=adjusted_at.desc,id.desc" },
+  items: { path: "inventory_items?select=id,inventory_code,category_id,model,brand,item_name,item_type,unit,opening_quantity,cost_price,sale_price,inventory_status,default_supplier_id,note,created_at,updated_at,row_version,source,updated_by&order=inventory_code.asc,id.asc", paged: true },
+  pickups: { path: "pickup_records?select=id,pickup_date,project_id,inventory_item_id,quantity,row_version,created_at,updated_at,source,updated_by,created_by_user_id,created_by_username,work_log_id,request_id,request_row&order=pickup_date.desc,created_at.desc,id.desc", paged: true },
+  receipts: { path: "stock_receipts?select=id,receipt_date,inventory_item_id,quantity,supplier_id,supplier,note,row_version,created_at,updated_at,source,updated_by&order=receipt_date.desc,created_at.desc,id.desc", paged: true },
+  adjustments: { path: "stock_adjustments?select=id,inventory_item_id,before_quantity,after_quantity,difference_quantity,adjusted_at,reason,idempotency_key,source,updated_by,created_at&order=adjusted_at.desc,id.desc", paged: true },
   audit_logs: { path: "audit_logs?select=id,entity_type,entity_id,action,source,actor,created_at&order=created_at.desc&limit=100" },
   site_audit_logs: { path: "audit_logs?select=id,entity_type,entity_id,action,source,actor,created_at&entity_type=in.(sites,site_work_logs,site_assets,phone_systems,phone_extensions,phone_terminal_points)&order=created_at.desc&limit=200" },
   sync_runs: { path: "sync_runs?select=id,direction,status,source_name,total_records,processed_records,error_message,started_at,finished_at&order=started_at.desc&limit=20" },
   import_batches: { path: "import_batches?select=id,file_name,status,total_rows,valid_rows,error_rows,conflict_rows,created_at,completed_at&order=created_at.desc&limit=20" },
   conflicts: { path: "data_conflicts?select=id,entity_type,entity_id,status,created_at&status=eq.open&order=created_at.desc&limit=20" },
   suppliers: { path: "suppliers?select=id,name,contact_name,phone,email,address,note,created_at,updated_at,row_version&order=name.asc" },
-  customers: { path: "customers?select=id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc" },
+  customers: { path: "customers?select=id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc,id.asc", paged: true },
   contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,created_at,updated_at&order=sort_order.asc,name.asc" },
   customer_contract_services: { path: "customer_contract_services?select=customer_id,service_type_id,created_at&order=created_at.asc" },
   customer_contacts: { path: "customer_contacts?select=id,customer_id,name,title,phone,email,is_primary,note,created_at,updated_at,row_version&order=is_primary.desc,name.asc" },
@@ -267,9 +292,9 @@ const datasets: Record<string, DatasetDefinition> = {
   site_devices: { path: "site_devices?select=*&order=site_id.asc,device_no.asc" },
   site_routes: { path: "site_routes?select=*&order=site_id.asc,route_no.asc" },
   site_route_segments: { path: "site_route_segments?select=*&order=route_id.asc,sequence_no.asc" },
-  site_work_logs: { path: "site_work_logs?select=*&order=log_date.desc,created_at.desc" },
-  site_work_log_workers: { path: "site_work_log_workers?select=work_log_id,user_id,created_at&order=created_at.asc" },
-  site_workers: { path: "app_users?select=id,display_name,is_active&order=display_name.asc" },
+  site_work_logs: { path: "site_work_logs?select=*&order=log_date.desc,created_at.desc,id.desc", paged: true },
+  site_work_log_workers: { path: "site_work_log_workers?select=work_log_id,user_id,created_at&order=created_at.asc,work_log_id.asc,user_id.asc", paged: true },
+  site_workers: { path: "app_users?select=id,display_name,is_active&order=display_name.asc,id.asc", paged: true },
   site_notes: { path: "site_notes?select=*&order=importance.desc,created_at.desc" },
   site_assets: { path: "site_assets?select=*&order=created_at.desc" },
   phone_systems: { path: "phone_systems?select=id,customer_id,contract_service_type_id,system_name,ip_address,installation_location,device_brand,device_model,notes,credential_configured,source,updated_by,row_version,created_at,updated_at&order=system_name.asc" },
@@ -283,7 +308,7 @@ const scopes: Record<string, string[]> = {
   inventory: ["items", "pickups", "receipts", "adjustments", "suppliers", "categories"],
   crm: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "site_workers", "suppliers"],
   sites: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "items", "categories", "pickups", "sites", "site_floors", "site_devices", "site_routes", "site_work_logs", "site_work_log_workers", "site_workers", "site_notes", "site_assets", "maintenance_details", "phone_systems", "phone_extensions", "phone_terminal_points", "phone_credential_access_logs", "site_audit_logs"],
-  materials: ["customers", "projects", "items", "pickups"],
+  materials: ["customers", "projects", "items", "pickups", "site_work_logs", "site_work_log_workers", "site_workers"],
   settings: ["accounts", "audit_logs"],
   backup: Object.keys(datasets)
 };
@@ -293,7 +318,7 @@ async function scopedSnapshot(user: AppUser, scopeName: string) {
   const requests = names.map(async name => {
     const definition = datasets[name];
     if (definition.adminOnly && user.role !== "admin") return [name, []] as const;
-    return [name, await get(definition.path)] as const;
+    return [name, await (definition.paged ? getAll(definition.path) : get(definition.path))] as const;
   });
   const settled = await Promise.allSettled(requests);
   const result: Row = { scope: scopeName, current_user: publicUser(user), refreshed_at: new Date().toISOString(), errors: [] };

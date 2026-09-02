@@ -89,3 +89,21 @@ test("gateway enforces phone module RBAC", () => {
   assert.match(edge, /extension_number=nullable/);
   assert.match(edge, /building_name,floor,installation_location/);
 });
+
+test("void RPC success responses do not become false failures", () => {
+  assert.match(edge, /async function rpc[\s\S]*const raw = await response\.text\(\)/);
+  assert.match(edge, /if \(raw\)[\s\S]*JSON\.parse\(raw\)/);
+  assert.match(edge, /if \(!response\.ok\)[\s\S]*return body/);
+  assert.doesNotMatch(edge, /async function rpc[^\n]*return response\.json\(\)/);
+  for (const operation of ["delete_phone_system", "delete_phone_extension", "set_phone_system_credential"]) {
+    assert.ok(edge.includes(`operation === "${operation}"`), `missing void RPC caller: ${operation}`);
+  }
+});
+
+test("phone system updates preserve useful database errors", () => {
+  assert.match(edge, /async function updatePhoneSystem[\s\S]*failure\.code === "23505"/);
+  assert.match(edge, /同一客戶的總機名稱已存在/);
+  assert.match(edge, /failure\.code === "23503" && name === "delete_phone_system_v1"/);
+  assert.match(edge, /此總機仍有關聯的分機或端子資料/);
+  assert.doesNotMatch(edge, /throw new Error\(failure\.message \|\| "總機資料更新失敗/);
+});
