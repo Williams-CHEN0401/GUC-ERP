@@ -34,7 +34,23 @@ test("Preview NAS 檢查不讀取正式帳密或呼叫 NAS API", () => {
   const previewGuard = check.indexOf("if(PREVIEW_MODE)");
   const networkCall = check.indexOf("fetch(NAS_API_ENDPOINT");
   assert.ok(previewGuard >= 0 && networkCall > previewGuard);
-  assert.ok(check.indexOf("return;", previewGuard) < networkCall);
+  assert.ok(check.indexOf("return true;", previewGuard) < networkCall);
+});
+
+test("正式附件送出會重試 NAS 健康檢查並保留真正錯誤原因", () => {
+  const submitStart = js.indexOf("async function handleModalSubmit");
+  const attachmentStart = js.indexOf('if(type==="attachmentModal"){', submitStart);
+  const attachmentEnd = js.indexOf('if(type==="siteEntryModal")', attachmentStart);
+  const attachmentSubmit = js.slice(attachmentStart, attachmentEnd);
+  assert.ok(submitStart >= 0 && attachmentStart > submitStart && attachmentEnd > attachmentStart);
+  assert.match(attachmentSubmit, /const nasAvailable=await checkNasConnection\(\)/);
+  assert.match(attachmentSubmit, /if\(!nasAvailable\)throw new Error\(nasConnectionState\.message\|\|"NAS 尚未通過連線檢查。"\)/);
+
+  const checkStart = js.indexOf("async function checkNasConnection");
+  const checkEnd = js.indexOf("async function", checkStart + 30);
+  const connectionCheck = js.slice(checkStart, checkEnd);
+  assert.match(connectionCheck, /return true;/);
+  assert.match(connectionCheck, /return false;/);
 });
 
 test("承攬關聯 migration 具備外鍵索引與發布前資料防護", () => {

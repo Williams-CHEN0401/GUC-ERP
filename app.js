@@ -198,7 +198,23 @@ async function loadScope(scope,{force=false,silent=false}={}){
   scopeRequests.set(scope,request);return request;
 }
 async function loadPageData(page,{force=false,silent=false}={}){return loadScope(PAGE_SCOPES[page]||"dashboard",{force,silent});}
-async function checkNasConnection(){if(!accessToken)return;if(PREVIEW_MODE){nasConnectionState={checked:true,checking:false,available:false,message:"Preview 不使用正式 NAS 環境變數；附件只做瀏覽器安全模擬。"};renderSiteModules();return;}nasConnectionState={checked:false,checking:true,available:false,message:"正在驗證 WebDAV、帳號與 /GUC-ERP 權限…"};renderSiteModules();try{const response=await fetch(NAS_API_ENDPOINT,{headers:{Authorization:`Bearer ${accessToken}`},cache:"no-store"}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"NAS 連線檢查失敗。");nasConnectionState={checked:true,checking:false,available:true,message:`${data.message}｜可寫入 ${data.root}`};}catch(error){nasConnectionState={checked:true,checking:false,available:false,message:error.message};}renderSiteModules();}
+async function checkNasConnection(){
+  if(!accessToken)return false;
+  if(PREVIEW_MODE){nasConnectionState={checked:true,checking:false,available:false,message:"Preview 不使用正式 NAS 環境變數；附件只做瀏覽器安全模擬。"};renderSiteModules();return true;}
+  nasConnectionState={checked:false,checking:true,available:false,message:"正在驗證 WebDAV、帳號與 /GUC-ERP 權限…"};
+  renderSiteModules();
+  try{
+    const response=await fetch(NAS_API_ENDPOINT,{headers:{Authorization:`Bearer ${accessToken}`},cache:"no-store"}),data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"NAS 連線檢查失敗。");
+    nasConnectionState={checked:true,checking:false,available:true,message:`${data.message}｜可寫入 ${data.root}`};
+    return true;
+  }catch(error){
+    nasConnectionState={checked:true,checking:false,available:false,message:error.message};
+    return false;
+  }finally{
+    renderSiteModules();
+  }
+}
 async function switchPage(name){document.querySelectorAll(".page").forEach((p)=>p.classList.toggle("active",p.dataset.page===name));document.querySelectorAll(".nav-item").forEach((i)=>i.classList.toggle("active",i.dataset.page===name));document.querySelector("#pageTitle").textContent=pageMeta[name][0];document.querySelector("#pageSubtitle").textContent=pageMeta[name][1];document.querySelector("#sidebar").classList.remove("open");window.scrollTo({top:0,behavior:"smooth"});if(accessToken){await loadPageData(name);if(["sites","worklogs"].includes(name))await checkNasConnection();}}
 function setupTabs(){document.querySelectorAll(".section-tabs").forEach((tabs)=>tabs.addEventListener("click",(event)=>{const button=event.target.closest("button[data-tab]");if(!button)return;const page=tabs.closest(".page");tabs.querySelectorAll("button").forEach((b)=>b.classList.toggle("active",b===button));page.querySelectorAll(":scope > .tab-pane").forEach((pane)=>pane.classList.toggle("active",pane.dataset.pane===button.dataset.tab));}));}
 
@@ -288,7 +304,7 @@ async function handleModalSubmit(event){event.preventDefault();const form=event.
     if(!customer)throw new Error("請先選擇客戶。");
     if(!contractService||!customer.contractServiceCodes.includes(contractService.code))throw new Error("請選擇此客戶已設定的承攬內容。");
     if(!project||project.customerId!==customer.id)throw new Error("請選擇屬於目前客戶的專案，缺少專案時禁止上傳。");
-    if(!PREVIEW_MODE&&!nasConnectionState.available)throw new Error("NAS 尚未通過連線檢查。");
+    if(!PREVIEW_MODE&&!nasConnectionState.available){const nasAvailable=await checkNasConnection();if(!nasAvailable)throw new Error(nasConnectionState.message||"NAS 尚未通過連線檢查。");}
     if(!files.length||files.length>MAX_ATTACHMENT_FILES)throw new Error(`請選擇 1～${MAX_ATTACHMENT_FILES} 個檔案。`);
     if(files.reduce((sum,file)=>sum+file.size,0)>MAX_ATTACHMENT_TOTAL_BYTES)throw new Error(`單次附件合計不可超過 ${formatBytes(MAX_ATTACHMENT_TOTAL_BYTES)}。`);
     for(const file of files){if(!file.size)throw new Error(`${file.name||"附件"} 是空白檔案，請重新選擇。`);if(file.size>MAX_ATTACHMENT_BYTES)throw new Error(`${file.name} 超過 ${formatBytes(MAX_ATTACHMENT_BYTES)}。`);if(!ATTACHMENT_ACCEPT.includes(file.type)&&file.type!=="")throw new Error(`${file.name} 的檔案格式不支援。`);}
