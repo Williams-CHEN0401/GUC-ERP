@@ -12,6 +12,7 @@
     <svg class="icon-sprite" aria-hidden="true">
       <symbol id="icon-dashboard" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.5"/><rect x="14" y="14" width="6.5" height="6.5" rx="1.5"/></symbol>
       <symbol id="icon-transactions" viewBox="0 0 24 24"><path d="M4 7h14"/><path d="m15 4 3 3-3 3"/><path d="M20 17H6"/><path d="m9 14-3 3 3 3"/></symbol>
+      <symbol id="icon-repairs" viewBox="0 0 24 24"><path d="m14.5 6.5 3-3a4.2 4.2 0 0 1-5.4 5.4L5.3 15.7a2.1 2.1 0 0 0 3 3l6.8-6.8a4.2 4.2 0 0 1 5.4-5.4l-3 3"/><circle cx="6.8" cy="17.2" r=".8"/></symbol>
       <symbol id="icon-inventory" viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4-8-4Z"/><path d="m4 7 8 4 8-4"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></symbol>
       <symbol id="icon-crm" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20v-2.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V20"/><path d="M15.5 5.5h5v6h-5z"/><path d="M18 11.5V15"/></symbol>
       <symbol id="icon-worklogs" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v4H9z"/><path d="M9 11h6M9 15h6"/></symbol>
@@ -28,7 +29,8 @@
         <div class="preview-chip" id="environmentChip"><span></span>環境判定中</div>
         <nav class="nav" aria-label="主導覽">
           <button class="nav-item active" data-page="dashboard"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-dashboard"/></svg></span><span>首頁 Dashboard</span></button>
-          <button class="nav-item" data-page="transactions"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-transactions"/></svg></span><span>交易管理</span></button>
+          <button class="nav-item" data-page="transactions"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-transactions"/></svg></span><span>進出貨管理</span></button>
+          <button class="nav-item" data-page="repairs"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-repairs"/></svg></span><span>維修品管理</span></button>
           <button class="nav-item" data-page="inventory"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-inventory"/></svg></span><span>商品與庫存</span></button>
           <button class="nav-item" data-page="crm"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-crm"/></svg></span><span>客戶與專案</span></button>
           <button class="nav-item" data-page="worklogs"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-worklogs"/></svg></span><span>工作日誌</span></button>
@@ -87,6 +89,12 @@
               <div class="filterbar"><label class="search">⌕<input id="receiptSearch" placeholder="搜尋供應商、日期、品項或備註" /></label><select id="receiptSort"><option value="date:desc">日期：由新到舊</option><option value="date:asc">日期：由舊到新</option><option value="supplier:asc">供應商：升冪</option></select></div>
               <div class="table-card"><table><thead><tr><th data-table-sort="receipt" data-key="date">進貨日期</th><th data-table-sort="receipt" data-key="supplier">供應商</th><th data-table-sort="receipt" data-key="item">品項</th><th data-table-sort="receipt" data-key="quantity">數量</th><th data-table-sort="receipt" data-key="note">備註</th><th>操作</th></tr></thead><tbody id="receiptTable"></tbody></table></div><div id="receiptPagination"></div>
             </div>
+          </section>
+
+          <section class="page" id="repairs" data-page="repairs">
+            <div class="page-actions"><div><h2>維修品管理</h2><p>登錄客戶送修品，追蹤送交供應商與返還客戶進度</p></div><button class="primary" data-open="repairModal">＋ 登錄維修品</button></div>
+            <div class="filterbar"><label class="search">⌕<input id="repairSearch" placeholder="搜尋維修編號、客戶、品項、序號、故障內容或供應商" /></label><select id="repairStatusFilter"><option value="">所有維修狀態</option><option value="received">已收件</option><option value="sent_to_supplier">已送供應商</option><option value="supplier_returned">供應商已返件</option><option value="returned_to_customer">已返還客戶</option><option value="cancelled">已取消</option></select><select id="repairSort"><option value="receivedOn:desc">收件日期：由新到舊</option><option value="receivedOn:asc">收件日期：由舊到新</option><option value="code:asc">維修編號：升冪</option><option value="status:asc">狀態：升冪</option></select></div>
+            <div class="table-card"><table><thead><tr><th data-table-sort="repair" data-key="code">維修編號</th><th data-table-sort="repair" data-key="receivedOn">收件日期</th><th data-table-sort="repair" data-key="customer">送修客戶</th><th data-table-sort="repair" data-key="item">維修品</th><th data-table-sort="repair" data-key="issueDescription">故障內容</th><th data-table-sort="repair" data-key="supplier">送修供應商</th><th data-table-sort="repair" data-key="status">狀態</th><th data-table-sort="repair" data-key="updatedAt">更新時間</th><th>操作</th></tr></thead><tbody id="repairTable"></tbody></table></div><div id="repairPagination"></div>
           </section>
 
           <section class="page" id="inventory" data-page="inventory">

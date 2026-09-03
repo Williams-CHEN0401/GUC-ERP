@@ -7,6 +7,7 @@ files.push(
   "supabase/functions/quotation-gateway/index.ts",
   "supabase/functions/quotation-gateway-preview/index.ts",
   "supabase/migrations/20260902180000_quotation_management_system.sql",
+  "supabase/migrations/20260903090000_repair_item_management.sql",
 );
 for (const file of files) {
   const content = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -14,7 +15,7 @@ for (const file of files) {
 }
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-for (const marker of ["data-page=\"dashboard\"", "data-page=\"transactions\"", "data-page=\"inventory\"", "data-page=\"crm\"", "data-page=\"worklogs\""]) {
+for (const marker of ["data-page=\"dashboard\"", "data-page=\"transactions\"", "data-page=\"repairs\"", "data-page=\"inventory\"", "data-page=\"crm\"", "data-page=\"worklogs\""]) {
   if (!html.includes(marker)) throw new Error(`Missing page marker: ${marker}`);
 }
 for (const marker of ["id=\"worklogCustomerCategoryFilter\"", "id=\"worklogCustomerFilter\"", "id=\"materialCustomerCategory\"", "id=\"customerCategoryFilter\"", "id=\"itemBatchForm\"", "id=\"inventoryPagination\"", "id=\"userTable\"", "id=\"logTable\"", "data-open=\"accountModal\"", "id=\"systemChooser\"", "data-system-choice=\"erp\"", "data-system-choice=\"sites\""]) {
@@ -105,6 +106,9 @@ for (const marker of ["phone_systems", "phone_extensions", "phone_terminal_point
 }
 for (const marker of ["project_workers", "upsert_erp_project_with_workers_v2", "worker_user_ids"]){
   if (!edge.includes(marker)) throw new Error(`Project-owner gateway marker missing: ${marker}`);
+}
+for (const marker of ["repair_items", 'operation === "upsert_repair_item"', 'operation === "delete_repair_item"', "upsert_repair_item_v1", "delete_repair_item_v1"]){
+  if (!edge.includes(marker)) throw new Error(`Repair-item gateway marker missing: ${marker}`);
 }
 if (edge.includes("login_username_ciphertext") || edge.includes("login_password_ciphertext")) throw new Error("Encrypted phone credentials must not be included in the gateway snapshot.");
 if (edge.includes("...(await snapshot(logged.user))")) throw new Error("Login still loads the full database snapshot");
