@@ -35,6 +35,7 @@ const httpUrl = (value: unknown, max = 1000) => {
 const DEVICE_TYPES = ["monitoring_host", "camera", "hub"] as const;
 type MonitoringDeviceType = typeof DEVICE_TYPES[number];
 const monitoringDeviceType = (value: unknown): MonitoringDeviceType | null => DEVICE_TYPES.includes(text(value) as MonitoringDeviceType) ? text(value) as MonitoringDeviceType : null;
+const MAINTENANCE_EVENT_TYPES = ["INSTALLATION","MAINTENANCE","REPAIR","REPLACEMENT","SOFTWARE_CONFIG","PROGRAM_CONFIG","INSPECTION","OTHER"] as const;
 const bytesToBase64 = (value: Uint8Array) => {
   let binary = "";
   for (let index = 0; index < value.length; index += 1) binary += String.fromCharCode(value[index]);
@@ -274,7 +275,7 @@ const datasets: Record<string, DatasetDefinition> = {
   receipts: { path: "stock_receipts?select=id,receipt_date,inventory_item_id,quantity,supplier_id,supplier,note,row_version,created_at,updated_at,source,updated_by&order=receipt_date.desc,created_at.desc,id.desc", paged: true },
   adjustments: { path: "stock_adjustments?select=id,inventory_item_id,before_quantity,after_quantity,difference_quantity,adjusted_at,reason,idempotency_key,source,updated_by,created_at&order=adjusted_at.desc,id.desc", paged: true },
   audit_logs: { path: "audit_logs?select=id,entity_type,entity_id,action,source,actor,created_at&order=created_at.desc&limit=100" },
-  site_audit_logs: { path: "audit_logs?select=id,entity_type,entity_id,action,source,actor,created_at&entity_type=in.(sites,site_work_logs,site_assets,phone_systems,phone_extensions,phone_terminal_points)&order=created_at.desc&limit=200" },
+  site_audit_logs: { path: "audit_logs?select=id,entity_type,entity_id,action,source,actor,created_at&entity_type=in.(sites,site_work_logs,site_assets,phone_systems,phone_extensions,phone_terminal_points,maintenance_events,maintenance_event_equipment,maintenance_event_workers,maintenance_event_result)&order=created_at.desc&limit=200" },
   sync_runs: { path: "sync_runs?select=id,direction,status,source_name,total_records,processed_records,error_message,started_at,finished_at&order=started_at.desc&limit=20" },
   import_batches: { path: "import_batches?select=id,file_name,status,total_rows,valid_rows,error_rows,conflict_rows,created_at,completed_at&order=created_at.desc&limit=20" },
   conflicts: { path: "data_conflicts?select=id,entity_type,entity_id,status,created_at&status=eq.open&order=created_at.desc&limit=20" },
@@ -295,7 +296,7 @@ const datasets: Record<string, DatasetDefinition> = {
   site_devices: { path: "site_devices?select=*&order=site_id.asc,device_no.asc" },
   site_routes: { path: "site_routes?select=*&order=site_id.asc,route_no.asc" },
   site_route_segments: { path: "site_route_segments?select=*&order=route_id.asc,sequence_no.asc" },
-  site_work_logs: { path: "site_work_logs?select=*&order=log_date.desc,created_at.desc,id.desc", paged: true },
+  site_work_logs: { path: "site_work_logs?select=*&deleted_at=is.null&order=log_date.desc,created_at.desc,id.desc", paged: true },
   site_work_log_workers: { path: "site_work_log_workers?select=work_log_id,user_id,created_at&order=created_at.asc,work_log_id.asc,user_id.asc", paged: true },
   site_workers: { path: "app_users?select=id,display_name,is_active&order=display_name.asc,id.asc", paged: true },
   site_notes: { path: "site_notes?select=*&order=importance.desc,created_at.desc" },
@@ -303,7 +304,11 @@ const datasets: Record<string, DatasetDefinition> = {
   phone_systems: { path: "phone_systems?select=id,customer_id,contract_service_type_id,system_name,ip_address,installation_location,device_brand,device_model,notes,credential_configured,source,updated_by,row_version,created_at,updated_at&order=system_name.asc" },
   phone_extensions: { path: "phone_extensions?select=id,customer_id,contract_service_type_id,phone_system_id,line_type,extension_number,extension_name,building_name,floor,installation_location,device_brand,device_model,notes,source_reference,source,updated_by,row_version,created_at,updated_at&order=building_name.asc.nullslast,floor.asc.nullslast,extension_number.asc.nullslast" },
   phone_terminal_points: { path: "phone_terminal_points?select=id,customer_id,contract_service_type_id,phone_extension_id,endpoint_side,frame_name,frame_block,frame_position,terminal_code,slot_identifier,floor,installation_location,notes,source_reference,row_version,created_at,updated_at&order=phone_extension_id.asc,endpoint_side.asc" },
-  phone_credential_access_logs: { path: "phone_credential_access_logs?select=id,phone_system_id,customer_id,contract_service_type_id,action,actor,source,created_at&order=created_at.desc&limit=200", adminOnly: true }
+  phone_credential_access_logs: { path: "phone_credential_access_logs?select=id,phone_system_id,customer_id,contract_service_type_id,action,actor,source,created_at&order=created_at.desc&limit=200", adminOnly: true },
+  equipment_registry: { path: "equipment_registry?select=id,equipment_type,customer_id,service_id,site_id,source_table,source_id,display_name,search_key,status,installation_date,installation_precision,metadata,created_at,updated_at&status=eq.active&order=display_name.asc", paged: true },
+  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,result,notes,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
+  maintenance_event_equipment: { path: "maintenance_event_equipment?select=event_id,equipment_id,created_at&order=created_at.asc", paged: true },
+  maintenance_event_workers: { path: "maintenance_event_workers?select=event_id,user_id,created_at&order=created_at.asc", paged: true }
 };
 const scopes: Record<string, string[]> = {
   dashboard: ["customers", "projects", "items", "pickups", "receipts", "adjustments", "categories"],
@@ -311,7 +316,7 @@ const scopes: Record<string, string[]> = {
   repairs: ["repair_items", "customers", "items", "suppliers", "categories"],
   inventory: ["items", "pickups", "receipts", "adjustments", "suppliers", "categories"],
   crm: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "site_workers", "suppliers"],
-  sites: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "items", "categories", "pickups", "sites", "site_floors", "site_devices", "site_routes", "site_work_logs", "site_work_log_workers", "site_workers", "site_notes", "site_assets", "maintenance_details", "phone_systems", "phone_extensions", "phone_terminal_points", "phone_credential_access_logs", "site_audit_logs"],
+  sites: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "items", "categories", "pickups", "sites", "site_floors", "site_devices", "site_routes", "site_work_logs", "site_work_log_workers", "site_workers", "site_notes", "site_assets", "maintenance_details", "phone_systems", "phone_extensions", "phone_terminal_points", "phone_credential_access_logs", "equipment_registry", "maintenance_events", "maintenance_event_equipment", "maintenance_event_workers", "site_audit_logs"],
   materials: ["customers", "projects", "items", "pickups", "site_work_logs", "site_work_log_workers", "site_workers"],
   settings: ["accounts", "audit_logs"],
   backup: Object.keys(datasets)
@@ -416,6 +421,14 @@ async function monitoringDeviceDetail(params: URLSearchParams) {
   const records = await get(`site_devices?id=eq.${id}&deleted_at=is.null&device_type=not.is.null&select=${MONITORING_DEVICE_SELECT}&limit=1`) as Row[];
   if (records.length !== 1) throw new Error("找不到監控設備。");
   return { record: (await attachMonitoringDeviceDisplayData(records))[0] };
+}
+async function equipmentHistory(params: URLSearchParams) {
+  const sourceTable = text(params.get("source_table"));
+  const sourceId = uuid(params.get("source_id"));
+  if (!["site_devices","phone_systems","phone_extensions","phone_terminal_points"].includes(sourceTable) || !sourceId) {
+    throw new Error("設備履歷來源資料不正確。");
+  }
+  return rpc("get_equipment_history_v1", { p_source_table: sourceTable, p_source_id: sourceId });
 }
 async function monitoringDeviceOptions(user: AppUser) {
   const services = await get("contract_service_types?code=eq.surveillance&is_active=eq.true&select=id&limit=1") as Row[];
@@ -578,6 +591,34 @@ function monitoringDeviceInput(payload: Row) {
     status,
   };
 }
+function maintenanceEventsInput(value: unknown) {
+  if (!Array.isArray(value) || value.length > 20) throw new Error("設備維修事件必須是 0 至 20 筆。");
+  return value.map((candidate,index) => {
+    const row = candidate && typeof candidate === "object" && !Array.isArray(candidate) ? candidate as Row : null;
+    if (!row) throw new Error(`第 ${index+1} 筆設備維修事件格式不正確。`);
+    const id = text(row.id) ? uuid(row.id) : null;
+    const rowVersion = id ? Number(row.row_version) : null;
+    const serviceId = uuid(row.service_id);
+    const occurredAt = date(row.occurred_at);
+    const eventType = text(row.event_type).toUpperCase();
+    const description = limited(row.description,4000);
+    const result = limited(row.result,2000);
+    const cause = nullable(row.cause,2000);
+    const notes = nullable(row.notes,2000);
+    const equipmentIds = Array.isArray(row.equipment_ids) ? row.equipment_ids.map(uuid) : [];
+    const workerIds = Array.isArray(row.worker_user_ids) ? row.worker_user_ids.map(uuid) : [];
+    if ((text(row.id) && !id) || (id && (!Number.isInteger(rowVersion) || Number(rowVersion) < 1)) || !serviceId || !occurredAt
+      || !MAINTENANCE_EVENT_TYPES.includes(eventType as typeof MAINTENANCE_EVENT_TYPES[number]) || !description || !result
+      || cause === null || notes === null || equipmentIds.length < 1 || equipmentIds.length > 100 || equipmentIds.some(item => !item)
+      || new Set(equipmentIds).size !== equipmentIds.length || workerIds.length > 30 || workerIds.some(item => !item)
+      || new Set(workerIds).size !== workerIds.length) {
+      throw new Error(`第 ${index+1} 筆設備維修事件內容、設備或處理人員不完整。`);
+    }
+    return { id, row_version: rowVersion, service_id: serviceId, occurred_at: occurredAt, event_type: eventType,
+      description, cause: cause || null, result, notes: notes || null, equipment_ids: equipmentIds, worker_user_ids: workerIds };
+  });
+}
+
 async function change(operation: string, payload: Row, user: AppUser | null) {
   const actor = user?.username || "site-owner";
   const meta = { source: "web", updated_by: actor };
@@ -797,13 +838,23 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if((text(payload.id)&&!id)||(id&&(!Number.isInteger(rowVersion)||Number(rowVersion)<1))||(text(payload.project_id)&&!project_id)||!customer_id||!project_name||!log_date||!["工程施工","維修紀錄","維護保養"].includes(work_type)||summary===null||worker_user_ids.some(workerId=>!workerId)||new Set(worker_user_ids).size!==worker_user_ids.length||worker_user_ids.length>30) throw new Error("請完整填寫工作日誌、工作類型與有效的施工人員。");
     if(legacyRequest)return rpc("upsert_customer_project_work_log_v2",{p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_actor:actor});
     if(time_period===null||!["in_progress","completed"].includes(status))throw new Error("請完整填寫工作日誌時段與狀態。");
+    if(Object.prototype.hasOwnProperty.call(payload,"maintenance_events")){
+      const maintenance_events=maintenanceEventsInput(payload.maintenance_events);
+      return rpc("upsert_customer_project_work_log_with_maintenance_v1",{p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_maintenance_events:maintenance_events,p_actor:actor});
+    }
     return rpc("upsert_customer_project_work_log_v3",{p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_actor:actor});
   }
   if (operation === "delete_standalone_work_log") {
     requireRole(user,["admin"]);
     const id=uuid(payload.id),rowVersion=Number(payload.row_version);
     if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("工作日誌資料或版本不正確。");
-    return deleteVersioned("site_work_logs",id,rowVersion);
+    return rpc("soft_delete_site_work_log_v1",{p_id:id,p_row_version:rowVersion,p_reason:nullable(payload.reason,500)||"管理員刪除",p_actor_user_id:user!.id,p_actor:actor});
+  }
+  if (operation === "void_maintenance_event") {
+    requireRole(user,["admin"]);
+    const id=uuid(payload.id),rowVersion=Number(payload.row_version),reason=limited(payload.reason,500);
+    if(!id||!Number.isInteger(rowVersion)||rowVersion<1||!reason) throw new Error("請提供有效的維修事件與作廢原因。");
+    return rpc("void_maintenance_event_v1",{p_id:id,p_row_version:rowVersion,p_reason:reason,p_actor_user_id:user!.id,p_actor:actor});
   }
   if (operation === "upsert_contract_site_entry") {
     requireRole(user,["admin","operator"]);
@@ -954,7 +1005,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     }
     return rpc("register_site_attachments_v2",{p_project_id:project_id,p_rows:rows,p_actor:actor});
   }
-  if (operation === "delete_site_entry") { requireRole(user,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version),entity=text(payload.entity); const tables:Record<string,string>={floor:"site_floors",route:"site_routes",device:"site_devices",work_log:"site_work_logs",note:"site_notes",asset:"site_assets"}; if(!id||!Number.isInteger(rowVersion)||rowVersion<1||!tables[entity]) throw new Error("案場明細資料不正確。"); return deleteVersioned(tables[entity],id,rowVersion); }
+  if (operation === "delete_site_entry") { requireRole(user,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version),entity=text(payload.entity); const tables:Record<string,string>={floor:"site_floors",route:"site_routes",device:"site_devices",note:"site_notes",asset:"site_assets"}; if(!id||!Number.isInteger(rowVersion)||rowVersion<1||(!tables[entity]&&entity!=="work_log")) throw new Error("案場明細資料不正確。"); if(entity==="work_log")return rpc("soft_delete_site_work_log_v1",{p_id:id,p_row_version:rowVersion,p_reason:"管理員刪除",p_actor_user_id:user!.id,p_actor:actor}); return deleteVersioned(tables[entity],id,rowVersion); }
   if (operation === "restore_database_backup") { requireRole(user,["admin"]); if(!payload.backup||typeof payload.backup!=="object"||Array.isArray(payload.backup)) throw new Error("請提供已驗證的資料庫備份。"); return rpc("restore_inventory_backup",{p_backup:payload.backup,p_actor:actor}); }
   if (operation === "request_excel_sync") { requireRole(user,["admin"]); return insert("sync_runs",{direction:"database_to_excel",status:"queued",source_name:"網站手動要求"}); }
   if (operation === "create_account") return createAccount(payload, user!);
@@ -971,8 +1022,9 @@ Deno.serve(async request => {
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
       const entity = text(params.get("entity"));
-      if (entity === "monitoring_devices") return json({...(await monitoringDevices(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
-      if (entity === "monitoring_device_detail") return json({...(await monitoringDeviceDetail(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
+       if (entity === "monitoring_devices") return json({...(await monitoringDevices(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
+       if (entity === "monitoring_device_detail") return json({...(await monitoringDeviceDetail(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
+       if (entity === "equipment_history") return json({...(await equipmentHistory(params) as Row),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_options") return json({...(await monitoringDeviceOptions(user)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_dashboard") return json({...(await monitoringDeviceDashboard(user)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_imports") return json({...(await monitoringDeviceImports(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});

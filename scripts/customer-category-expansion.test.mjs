@@ -15,9 +15,10 @@ test("all customer category selectors include social welfare and cleaning team",
   assert.match(app, /\["cleaning_team", "清潔隊"\]/);
 });
 
-test("category inference prioritizes exact customer-name markers", () => {
-  assert.match(app, /value\.includes\("清潔隊"\).*return "cleaning_team"/);
-  assert.match(app, /value\.includes\("社福"\).*return "social_welfare"/);
+test("category display uses persisted values and treats blanks as government", () => {
+  assert.doesNotMatch(app, /function inferCustomerCategory/);
+  assert.match(app, /customer_category\|\|"government"/);
+  assert.match(app, /customerCategoryLabel\(value\)[\s\S]*\|\| "政府機關"/);
 });
 
 test("gateway and database accept only the four configured categories", () => {

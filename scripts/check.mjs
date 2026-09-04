@@ -38,7 +38,7 @@ if (!js.includes("PREVIEW_MODE")) throw new Error("Preview-mode isolation missin
 for (const operation of ["create_account", "update_account", "delete_account"]) {
   if (!js.includes(operation)) throw new Error(`User CRUD flow missing: ${operation}`);
 }
-for (const marker of ["inferCustomerCategory", "create_inventory_item_batch", "collectTransactionBatchRows", "customer_category"]) {
+for (const marker of ['customer_category||"government"', "create_inventory_item_batch", "collectTransactionBatchRows", "customer_category"]) {
   if (!js.includes(marker)) throw new Error(`2026-08-25 specification flow missing: ${marker}`);
 }
 for (const marker of ['["social_welfare", "社福機關"]', '["cleaning_team", "清潔隊"]']) {
