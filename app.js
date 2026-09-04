@@ -507,7 +507,7 @@ function rerenderTable(name){if(["pickup","receipt"].includes(name))renderTransa
 document.addEventListener("click",async(event)=>{
   const nav=event.target.closest("[data-page].nav-item");if(nav&&event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();await switchPage(nav.dataset.page);}
   const go=event.target.closest("[data-goto]");if(go)await switchPage(go.dataset.goto);
-  const open=event.target.closest("[data-open]");if(open){if(open.dataset.open==="projectModal")await openProjectModal();else openModal(open.dataset.open);}
+  const open=event.target.closest("[data-open]");if(open){if(open.dataset.open==="projectModal")await openProjectModal();else if(open.dataset.open==="workLogModal"){const wantsMaintenance=confirm("本次工作日誌是否要登錄設備維修紀錄？\n\n按「確定」：開啟設備維修登錄。\n按「取消」：建立一般工作日誌（表單內仍可切換）。");openModal("workLogModal");const form=document.querySelector("#modalForm");form.elements.hasMaintenance.value=wantsMaintenance?"yes":"no";syncMaintenanceVisibility();if(wantsMaintenance)form.querySelector('[name="eventServiceId"]')?.focus();}else openModal(open.dataset.open);}
   if(event.target.closest("[data-close]"))closeModal();
   const dismiss=event.target.closest("[data-dismiss]");if(dismiss)dismiss.closest(".notice").remove();
   const addTransaction=event.target.closest("[data-add-transaction-row]");if(addTransaction)addTransactionBatchRow(addTransaction.dataset.addTransactionRow);
