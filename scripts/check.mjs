@@ -57,9 +57,10 @@ for (const marker of ["upsert_contract_site_entry", "delete_contract_site_entry"
 for (const marker of ["workLogActionMenu", "data-work-log-row", "syncModalCustomerOptions", "syncAttachmentOptions", "SITE_SYSTEM_TARGET_URL", "Preview 不載入正式 NAS 帳密", "Preview 不使用正式 NAS 環境變數"]) {
   if (!js.includes(marker)) throw new Error(`Correction V1 flow missing: ${marker}`);
 }
-for (const marker of ["projectOwnerPickerField", "projectWorkerIds", "syncWorkLogWorkersFromProject", "const form=event.currentTarget", "form.reset();renderInventory()"]){
+for (const marker of ["projectOwnerPickerField", "projectWorkerIds", "syncWorkLogProjectDefaults", "const form=event.currentTarget", "form.reset();renderInventory()"]){
   if (!js.includes(marker)) throw new Error(`Project-owner or inventory-adjustment fix missing: ${marker}`);
 }
+if (js.includes("syncWorkLogWorkersFromProject") || js.includes("checkbox.checked=ownerIds.has")) throw new Error("Work-log workers must remain independent from project owners");
 for (const marker of ["PROJECT_WORK_TYPES", '["repair", "維修紀錄"]', "result?.result?.work_log?.id", "是否要立即進入", 'openModal("workLogPickupModal",pickupLogId)']) {
   if (!js.includes(marker)) throw new Error(`Project/work-log shared fields or pickup handoff missing: ${marker}`);
 }

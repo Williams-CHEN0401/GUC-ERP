@@ -30,10 +30,16 @@ test("Preview 庫存校正同步更新瀏覽器暫存數量", () => {
   assert.match(js, /difference_quantity:after-before/);
 });
 
-test("新增工作日誌選擇既有專案時帶入專案負責人", () => {
-  assert.match(js, /function syncWorkLogWorkersFromProject/);
-  assert.match(js, /ownerIds=new Set\(project\?\.ownerIds\|\|\[\]\)/);
-  assert.match(js, /checkbox\.checked=ownerIds\.has\(checkbox\.value\)/);
+test("新增工作日誌只同步專案類型與狀態，不帶入專案負責人", () => {
+  assert.match(js, /function syncWorkLogProjectDefaults/);
+  const start = js.indexOf("function syncWorkLogProjectDefaults");
+  const handler = js.slice(start, js.indexOf("async function openProjectModal", start));
+  assert.match(handler, /workTypeFromProjectType\(project\.rawType\)/);
+  assert.match(handler, /form\.elements\.status\.value=project\.status/);
+  assert.doesNotMatch(handler, /ownerIds|workerIds|checkbox\.checked/);
+  assert.doesNotMatch(js, /syncWorkLogWorkersFromProject/);
+  assert.match(js, /本次施工人員請獨立選擇，不會從專案負責人自動帶入/);
+  assert.match(js, /僅用於專案管理，不會帶入工作日誌施工人員/);
   assert.match(js, /event\.target\.name==="projectName"/);
 });
 

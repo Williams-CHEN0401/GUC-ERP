@@ -316,6 +316,7 @@ const scopes: Record<string, string[]> = {
   repairs: ["repair_items", "customers", "items", "suppliers", "categories"],
   inventory: ["items", "pickups", "receipts", "adjustments", "suppliers", "categories"],
   crm: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "site_workers", "suppliers"],
+  worklogs: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "items", "categories", "pickups", "sites", "site_work_logs", "site_work_log_workers", "site_workers", "site_assets", "equipment_registry", "maintenance_events", "maintenance_event_equipment", "maintenance_event_workers"],
   sites: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "items", "categories", "pickups", "sites", "site_floors", "site_devices", "site_routes", "site_work_logs", "site_work_log_workers", "site_workers", "site_notes", "site_assets", "maintenance_details", "phone_systems", "phone_extensions", "phone_terminal_points", "phone_credential_access_logs", "equipment_registry", "maintenance_events", "maintenance_event_equipment", "maintenance_event_workers", "site_audit_logs"],
   materials: ["customers", "projects", "items", "pickups", "site_work_logs", "site_work_log_workers", "site_workers"],
   settings: ["accounts", "audit_logs"],
