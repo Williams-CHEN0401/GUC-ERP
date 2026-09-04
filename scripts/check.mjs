@@ -9,6 +9,7 @@ files.push(
   "supabase/migrations/20260902180000_quotation_management_system.sql",
   "supabase/migrations/20260903090000_repair_item_management.sql",
   "supabase/migrations/20260904090000_product_category_management.sql",
+  "supabase/migrations/20260904232000_verified_stock_adjustment.sql",
 );
 for (const file of files) {
   const content = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
