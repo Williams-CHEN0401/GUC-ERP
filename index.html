@@ -28,15 +28,15 @@
         </div>
         <div class="preview-chip" id="environmentChip"><span></span>環境判定中</div>
         <nav class="nav" aria-label="主導覽">
-          <button class="nav-item active" data-page="dashboard"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-dashboard"/></svg></span><span>首頁 Dashboard</span></button>
-          <button class="nav-item" data-page="transactions"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-transactions"/></svg></span><span>進出貨管理</span></button>
-          <button class="nav-item" data-page="repairs"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-repairs"/></svg></span><span>維修品管理</span></button>
-          <button class="nav-item" data-page="inventory"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-inventory"/></svg></span><span>商品與庫存</span></button>
-          <button class="nav-item" data-page="crm"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-crm"/></svg></span><span>客戶與專案</span></button>
-          <button class="nav-item" data-page="worklogs"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-worklogs"/></svg></span><span>工作日誌</span></button>
-          <button class="nav-item" data-page="materials"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-materials"/></svg></span><span>專案統計報表</span></button>
-          <button class="nav-item" data-page="backup"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-backup"/></svg></span><span>Excel 備份／復原</span></button>
-          <button class="nav-item" data-page="settings"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-settings"/></svg></span><span>系統設定</span></button>
+          <a class="nav-item active" data-page="dashboard" href="/?page=dashboard" aria-current="page"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-dashboard"/></svg></span><span>首頁 Dashboard</span></a>
+          <a class="nav-item" data-page="transactions" href="/?page=transactions"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-transactions"/></svg></span><span>進出貨管理</span></a>
+          <a class="nav-item" data-page="repairs" href="/?page=repairs"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-repairs"/></svg></span><span>維修品管理</span></a>
+          <a class="nav-item" data-page="inventory" href="/?page=inventory"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-inventory"/></svg></span><span>商品與庫存</span></a>
+          <a class="nav-item" data-page="crm" href="/?page=crm"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-crm"/></svg></span><span>客戶與專案</span></a>
+          <a class="nav-item" data-page="worklogs" href="/?page=worklogs"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-worklogs"/></svg></span><span>工作日誌</span></a>
+          <a class="nav-item" data-page="materials" href="/?page=materials"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-materials"/></svg></span><span>專案統計報表</span></a>
+          <a class="nav-item" data-page="backup" href="/?page=backup"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-backup"/></svg></span><span>Excel 備份／復原</span></a>
+          <a class="nav-item" data-page="settings" href="/?page=settings"><span class="nav-icon-shell"><svg aria-hidden="true"><use href="#icon-settings"/></svg></span><span>系統設定</span></a>
         </nav>
         <div class="sidebar-foot">
           <div class="avatar" id="userAvatar">使</div>
@@ -104,7 +104,7 @@
               <div class="filterbar"><label class="search">⌕<input id="inventorySearch" placeholder="搜尋編號、品名、品牌或型號" /></label><select id="categoryFilter"><option value="">所有貨品種類</option></select><select id="inventorySort"><option value="code:asc">編號：升冪</option><option value="code:desc">編號：降冪</option><option value="name:asc">名稱：升冪</option><option value="quantity:asc">庫存：由低到高</option><option value="quantity:desc">庫存：由高到低</option></select></div>
               <div class="table-card"><table><thead><tr><th data-table-sort="inventory" data-key="code">編號</th><th data-table-sort="inventory" data-key="category">貨品種類</th><th data-table-sort="inventory" data-key="name">品名</th><th data-table-sort="inventory" data-key="brand">品牌／型號</th><th data-table-sort="inventory" data-key="unit">單位</th><th data-table-sort="inventory" data-key="quantity">目前庫存</th><th data-table-sort="inventory" data-key="status">狀態</th><th>操作</th></tr></thead><tbody id="inventoryTable"></tbody></table></div><div id="inventoryPagination"></div>
             </div>
-            <div class="tab-pane" data-pane="items"><article class="panel batch-panel"><div class="panel-head"><div><h2>多筆新增品項</h2><p>每次可建立 1–20 筆；品項編號仍由資料庫依分類字首原子產生。</p></div><button class="outline" type="button" data-add-item-row>＋ 新增一列</button></div><form id="itemBatchForm"><div class="batch-table inventory-batch"><div class="batch-head"><span>貨品種類</span><span>品項名稱</span><span>品牌</span><span>型號</span><span>單位</span><span>期初庫存</span><span>操作</span></div><div id="itemBatchRows"></div></div><div class="form-submit batch-submit"><small>同一批次及既有品項均會檢查重複。</small><button class="primary" type="submit">建立全部品項</button></div></form></article></div>
+            <div class="tab-pane" data-pane="items"><article class="panel batch-panel"><div class="panel-head"><div><h2>多筆新增品項</h2><p>每次可建立 1–20 筆；品項編號仍由資料庫依分類字首原子產生。</p></div><div class="panel-head-actions"><button class="outline" type="button" data-open="categoryModal">＋ 新增貨品種類</button><button class="outline" type="button" data-add-item-row>＋ 新增一列</button></div></div><form id="itemBatchForm"><div class="batch-table inventory-batch"><div class="batch-head"><span>貨品種類</span><span>品項名稱</span><span>品牌</span><span>型號</span><span>單位</span><span>期初庫存</span><span>操作</span></div><div id="itemBatchRows"></div></div><div class="form-submit batch-submit"><small>同一批次及既有品項均會檢查重複。</small><button class="primary" type="submit">建立全部品項</button></div></form></article></div>
             <div class="tab-pane" data-pane="adjust"><article class="panel form-panel"><h2>盤點校正</h2><p>校正會保存調整前後數量、差異、原因與操作人員。</p><form id="adjustForm" class="form-grid"><label>選擇品項<select name="item" id="adjustItem"></select></label><label>校正後數量<input name="quantity" type="number" min="0" required /></label><label class="span-2">校正原因<textarea name="reason" placeholder="例如：年度庫存盤點"></textarea></label><div class="form-submit"><button class="primary" type="submit">儲存庫存校正</button></div></form></article></div>
           </section>
 
