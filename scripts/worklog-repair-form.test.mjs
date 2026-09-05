@@ -97,6 +97,7 @@ test('空設備維修明細可被收集，設備有值時保留 UUID 清單',()=
   const card={dataset:{equipmentIds:'[]'},querySelector:selector=>({value:values[selector.match(/name="([^"]+)"/)[1]]})};
   const form={elements:{hasMaintenance:{value:'yes'},summary:{value:'現場檢查'}},querySelectorAll:()=>[card]};
   const context=vm.createContext({document:{querySelector:()=>form}});
+  vm.runInContext(sourceBetween('function isEquipmentRepairEvent','function syncMaintenanceInventoryOptions'),context);
   vm.runInContext(sourceBetween('function collectMaintenanceEvents','function projectOwnerPickerField'),context);
   let events=context.collectMaintenanceEvents();
   assert.equal(events.length,1);

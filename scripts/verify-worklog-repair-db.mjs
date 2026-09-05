@@ -99,6 +99,41 @@ assert.equal(auditRetryResult.created_repair_item_ids.length,1);
 assert.deepEqual(await save([replacement],{key:auditRetryKey}),auditRetryResult);
 assert.deepEqual(await counts(),afterAuditRetry,'retry must not duplicate the log, repair or audit');
 console.log('PASS production audit failure reproduced, schema-only fix, original actions preserved, unknown action rejected and replacement retry deduplicated');
+// This release changes only the existing v1 function body, not data, columns or privileges.
+const beforeMappingCounts=await counts(),beforeMappingRepairs=await rows('repair_items');
+const schemaSnapshot=async()=>(await db.query("select table_name,column_name,data_type,is_nullable,column_default from information_schema.columns where table_schema='public' order by table_name,ordinal_position")).rows;
+const rpcSecurity=async()=>(await db.query("select oid,prosecdef,proconfig,proacl,pg_get_function_identity_arguments(oid) args from pg_proc where pronamespace='public'::regnamespace order by oid")).rows;
+const beforeSchema=await schemaSnapshot(),beforeSecurity=await rpcSecurity();
+await db.exec(await readMigration('20260905111720_worklog_repair_mapping.sql'));
+assert.deepEqual(await counts(),beforeMappingCounts);
+assert.deepEqual(await rows('repair_items'),beforeMappingRepairs);
+assert.deepEqual(await schemaSnapshot(),beforeSchema);
+assert.deepEqual(await rpcSecurity(),beforeSecurity);
+for(const type of ['REPAIR','REPLACEMENT']){
+  for(const cause of ['馬達異常','',null,undefined,'   ']){
+    const saved=await save([{...event([],true),event_type:type,cause}]);
+    const repair=(await rows('repair_items')).find(row=>row.id===saved.created_repair_item_ids[0]);
+    assert.equal(repair.issue_description,cause?.trim()||null);
+  }
+}
+for(const type of ['SOFTWARE_CONFIG','LINE_REPAIR','LINE_REPLACEMENT']){
+  const before=await counts(),data={...event([equipment],true),event_type:type,cause:'馬達異常'},key=randomUUID();
+  const saved=await save([data],{key}),after=await counts();
+  assert.equal(after.repair_items,before.repair_items,'non-equipment event cannot create repairs from stale item IDs');
+  assert.deepEqual(saved.created_repair_item_ids,[]);
+  const stored=(await rows('maintenance_events')).find(row=>row.id===saved.maintenance_event_ids[0]);
+  assert.equal(stored.inventory_item_id,null);assert.equal(stored.inventory_category_id,null);
+  assert.equal(stored.cause,'馬達異常');
+  assert.equal(after.maintenance_event_equipment-before.maintenance_event_equipment,1,'registry/history selection must not be cleared');
+  assert.deepEqual(await save([data],{key}),saved);assert.deepEqual(await counts(),after);
+  await save([{...data,id:stored.id,row_version:1}],{id:saved.work_log.id});
+  assert.equal((await counts()).repair_items,before.repair_items);
+}
+// A previously registered repair remains intact when its event changes to a non-equipment type.
+const preserved=beforeMappingRepairs.find(row=>row.id===auditRetryResult.created_repair_item_ids[0]);
+await save([{...replacement,id:auditRetryResult.maintenance_event_ids[0],row_version:1,event_type:'LINE_REPAIR',cause:'日誌後改'}],{id:auditRetryResult.work_log.id});
+assert.deepEqual((await rows('repair_items')).find(row=>row.id===preserved.id),preserved);
+console.log('PASS function-only migration, fault mapping and blank NULLs, non-equipment stale IDs blocked, equipment history and existing repairs preserved');
 const noEvents=await save([]);
 assert.equal(noEvents.maintenance_event_count,0);
 for(const withEquipment of [false,true]){

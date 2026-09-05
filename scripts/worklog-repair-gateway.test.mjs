@@ -38,6 +38,13 @@ test('舊前端省略新欄位仍走相容 RPC，不將省略值變成清除指�
   assert.equal(h.calls[0].name,'upsert_customer_project_work_log_with_maintenance_v1');
   assert.equal(Object.hasOwn(h.calls[0].parameters.p_maintenance_events[0],'inventory_item_id'),false);
 });
+test('故障內容沿既有 cause 欄位送入同一 RPC，空值不產生預設文字',async()=>{
+  for(const cause of ['馬達異常','',null,undefined,'   ']){
+    const h=harness(),data=payload();data.maintenance_events[0].cause=cause;
+    assert.equal((await h.request(data)).status,201);assert.equal(h.calls.length,1);
+    assert.equal(h.calls[0].parameters.p_maintenance_events[0].cause,cause?.trim()||null);
+  }
+});
 test('API 拒絕不合法品項、種類、識別碼與非陣列設備，不呼叫寫入 RPC',async()=>{
   for(const patch of [
     {inventory_item_id:'bad'}, {inventory_category_id:33}, {inventory_category_id:null},
