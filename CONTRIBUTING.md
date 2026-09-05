@@ -30,7 +30,7 @@ chore(ci): add pull-request quality gate
 2. 執行 `npm run check`。
 3. Push 分支並建立 Pull Request。
 4. 等待 GitHub Actions 與 Vercel Preview 完成。
-5. 至少一位非作者完成 Review。
+5. 不要求非作者 Review；使用者確認發布後，作者或維護者可在自動檢查通過後合併。人工 Review 為選用，不作為發布門檻。
 6. 使用 Squash merge，保留清楚的 Conventional Commit 標題。
 7. 合併後確認 Vercel Production 為 `READY`，再建立 Release Tag。
 
