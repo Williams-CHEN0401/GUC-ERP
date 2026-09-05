@@ -22,7 +22,7 @@ test("工作日誌雙擊整列開啟內容，操作選單不再包含內容入�
   assert.doesNotMatch(menu, /data-edit-work-log/);
   assert.match(js, /data-work-log-row/);
   assert.match(js, /addEventListener\("dblclick"/);
-  assert.match(js, /openModal\("workLogModal",row\.dataset\.workLogRow\)/);
+  assert.match(js, /openWorkLogModal\(row\.dataset\.workLogRow\)/);
   assert.doesNotMatch(menu, /log\.summary/);
   assert.match(js, /<td><strong>\$\{esc\(log\.project\)\}<\/strong><\/td>/);
 });
