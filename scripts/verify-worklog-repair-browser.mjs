@@ -19,9 +19,13 @@ try{
   browser=await chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL?{channel:process.env.BROWSER_CHANNEL}:{})});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
+  // This single-tab fixture has no session to inherit. Finish startup before seeding,
+  // so the asynchronous cross-tab timeout cannot reopen login during form tests.
+  await context.addInitScript(()=>{window.BroadcastChannel=undefined;});
   const page=await context.newPage(),errors=[],dialogs=[];
   page.on('pageerror',error=>errors.push(error.message));
-  page.on('dialog',async dialog=>{dialogs.push(dialog.message());await dialog.dismiss();});
+  let acceptRepairPrompt=false;
+  page.on('dialog',async dialog=>{dialogs.push(dialog.message());if(acceptRepairPrompt&&dialog.message().includes('是否要登錄維修設備'))await dialog.accept();else await dialog.dismiss();});
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
   await page.locator('#loginForm').waitFor({state:'visible'});
@@ -59,7 +63,22 @@ try{
   await form.locator('[name="workerIds"]').check();
   await form.locator('[name="summary"]').fill('現場檢查測試');
   assert.equal(await form.evaluate(node=>node.checkValidity()),true,'hidden repair controls must not block ordinary logs');
-  await form.locator('[name="hasMaintenance"]').selectOption('yes');
+  await form.locator('[name="workType"]').selectOption('維護保養');
+  assert.equal(dialogs.length,0,'other work types do not prompt');
+  await form.locator('[name="workType"]').selectOption('維修紀錄');
+  assert.equal(dialogs.length,1);
+  assert.match(dialogs[0],/是否要登錄維修設備/);
+  assert.equal(await form.locator('[name="hasMaintenance"]').inputValue(),'no');
+  assert.equal(await form.locator('#maintenanceEditor').isHidden(),true);
+  assert.deepEqual(await page.evaluate(()=>collectMaintenanceEvents()),[]);
+  assert.equal(await form.evaluate(node=>node.checkValidity()),true,'declining must not block the ordinary save');
+  await form.locator('[name="workType"]').selectOption('工程施工');
+  acceptRepairPrompt=true;
+  await form.locator('[name="workType"]').selectOption('維修紀錄');
+  assert.equal(dialogs.length,2);
+  assert.equal(await form.locator('[name="hasMaintenance"]').inputValue(),'yes');
+  assert.equal(await form.locator('#maintenanceEditor').isVisible(),true);
+  console.log('PASS repair selection prompts, cancel keeps ordinary log, accept reveals equipment details');
   assert.deepEqual(await form.locator('[name="eventType"] option').allTextContents(),['軟體設定','線路維修','線路更換','設備維修','設備更換']);
   assert.equal(await form.locator('[name="eventType"]').inputValue(),'SOFTWARE_CONFIG');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').isDisabled(),true);
@@ -110,6 +129,11 @@ try{
   assert.equal(await page.evaluate(()=>state.repairItems[0].quantity),2);
   await page.locator('a[data-page="worklogs"]').click();
   await page.locator('[data-work-log-row]').dblclick();
+  const promptsBeforeEdit=dialogs.length;
+  assert.equal(dialogs.filter(message=>message.includes('是否要登錄維修設備')).length,2,'reopening an existing repair log must not prompt');
+  await form.locator('[name="workType"]').selectOption('工程施工');
+  await form.locator('[name="workType"]').selectOption('維修紀錄');
+  assert.equal(dialogs.length,promptsBeforeEdit,'editing an existing log must not prompt');
   assert.equal(await form.locator('[name="eventType"]').inputValue(),'LINE_REPLACEMENT');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').inputValue(),'item-1');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').isDisabled(),true);
