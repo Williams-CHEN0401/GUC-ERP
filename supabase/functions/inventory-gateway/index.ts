@@ -280,7 +280,7 @@ const datasets: Record<string, DatasetDefinition> = {
   import_batches: { path: "import_batches?select=id,file_name,status,total_rows,valid_rows,error_rows,conflict_rows,created_at,completed_at&order=created_at.desc&limit=20" },
   conflicts: { path: "data_conflicts?select=id,entity_type,entity_id,status,created_at&status=eq.open&order=created_at.desc&limit=20" },
   suppliers: { path: "suppliers?select=id,name,contact_name,phone,email,address,note,created_at,updated_at,row_version&order=name.asc" },
-  repair_items: { path: "repair_items?select=id,repair_no,received_on,customer_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,source,updated_by,created_at,updated_at,row_version&order=received_on.desc,created_at.desc,id.desc", paged: true },
+  repair_items: { path: "repair_items?select=id,repair_no,source_maintenance_event_id,received_on,customer_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,source,updated_by,created_at,updated_at,row_version&order=received_on.desc,created_at.desc,id.desc", paged: true },
   customers: { path: "customers?select=id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc,id.asc", paged: true },
   contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,created_at,updated_at&order=sort_order.asc,name.asc" },
   customer_contract_services: { path: "customer_contract_services?select=customer_id,service_type_id,created_at&order=created_at.asc" },
@@ -306,7 +306,7 @@ const datasets: Record<string, DatasetDefinition> = {
   phone_terminal_points: { path: "phone_terminal_points?select=id,customer_id,contract_service_type_id,phone_extension_id,endpoint_side,frame_name,frame_block,frame_position,terminal_code,slot_identifier,floor,installation_location,notes,source_reference,row_version,created_at,updated_at&order=phone_extension_id.asc,endpoint_side.asc" },
   phone_credential_access_logs: { path: "phone_credential_access_logs?select=id,phone_system_id,customer_id,contract_service_type_id,action,actor,source,created_at&order=created_at.desc&limit=200", adminOnly: true },
   equipment_registry: { path: "equipment_registry?select=id,equipment_type,customer_id,service_id,site_id,source_table,source_id,display_name,search_key,status,installation_date,installation_precision,metadata,created_at,updated_at&status=eq.active&order=display_name.asc", paged: true },
-  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,result,notes,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
+  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,result,notes,inventory_category_id,inventory_item_id,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
   maintenance_event_equipment: { path: "maintenance_event_equipment?select=event_id,equipment_id,created_at&order=created_at.asc", paged: true },
   maintenance_event_workers: { path: "maintenance_event_workers?select=event_id,user_id,created_at&order=created_at.asc", paged: true }
 };
@@ -347,7 +347,7 @@ const queryDefinitions: Record<string, { table: string; select: string; search: 
   customers: { table: "customers", select: "id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version", search: ["customer_code","customer_category","name","phone","email","address"], sort: { code:"customer_code", category:"customer_category", name:"name", date:"created_at" } },
   projects: { table: "projects", select: "id,name,project_code,customer_id,project_type,status,assigned_to,description,estimated_cost,note,created_at,updated_at,row_version", search: ["project_code","name","assigned_to","status"], sort: { code:"project_code", name:"name", status:"status", date:"created_at" } },
   suppliers: { table: "suppliers", select: "id,name,contact_name,phone,email,address,note,created_at,updated_at,row_version", search: ["name","contact_name","phone","email","address"], sort: { name:"name", date:"created_at" } },
-  repairs: { table: "repair_items", select: "id,repair_no,received_on,customer_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,created_at,updated_at,row_version", search: ["repair_no","received_on","serial_number","issue_description","status","supplier_reference"], sort: { code:"repair_no", status:"status", date:"received_on", updated:"updated_at" } },
+  repairs: { table: "repair_items", select: "id,repair_no,source_maintenance_event_id,received_on,customer_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,created_at,updated_at,row_version", search: ["repair_no","received_on","serial_number","issue_description","status","supplier_reference"], sort: { code:"repair_no", status:"status", date:"received_on", updated:"updated_at" } },
   pickups: { table: "pickup_records", select: "id,pickup_date,project_id,inventory_item_id,quantity,row_version,created_at,updated_at,created_by_username,work_log_id,request_id,request_row", search: ["pickup_date","created_by_username"], sort: { date:"pickup_date", created:"created_at" } },
   receipts: { table: "stock_receipts", select: "id,receipt_date,inventory_item_id,quantity,supplier_id,supplier,note,row_version,created_at,updated_at", search: ["receipt_date","supplier","note"], sort: { date:"receipt_date", supplier:"supplier", created:"created_at" } },
   sites: { table: "sites", select: "id,site_code,site_name,customer_id,project_id,contract_service_type_id,contact_id,address,phone,status,notes,row_version,created_at,updated_at", search: ["site_code","site_name","address","phone","status"], sort: { code:"site_code", name:"site_name", status:"status", date:"created_at" } }
@@ -599,6 +599,10 @@ function maintenanceEventsInput(value: unknown) {
     if (!row) throw new Error(`第 ${index+1} 筆設備維修事件格式不正確。`);
     const id = text(row.id) ? uuid(row.id) : null;
     const rowVersion = id ? Number(row.row_version) : null;
+    const categoryId = text(row.inventory_category_id) ? uuid(row.inventory_category_id) : null;
+    const inventoryItemId = text(row.inventory_item_id) ? uuid(row.inventory_item_id) : null;
+    if ((row.inventory_category_id != null && row.inventory_category_id !== "" && !categoryId) || (row.inventory_item_id != null && row.inventory_item_id !== "" && !inventoryItemId)
+      || (inventoryItemId && !categoryId)) throw new Error(`第 ${index+1} 筆維修明細：請先選擇有效的設備種類與品項。`);
     const serviceId = uuid(row.service_id);
     const occurredAt = date(row.occurred_at);
     const eventType = text(row.event_type).toUpperCase();
@@ -610,12 +614,16 @@ function maintenanceEventsInput(value: unknown) {
     const workerIds = Array.isArray(row.worker_user_ids) ? row.worker_user_ids.map(uuid) : [];
     if ((text(row.id) && !id) || (id && (!Number.isInteger(rowVersion) || Number(rowVersion) < 1)) || !serviceId || !occurredAt
       || !MAINTENANCE_EVENT_TYPES.includes(eventType as typeof MAINTENANCE_EVENT_TYPES[number]) || !description || !result
-      || cause === null || notes === null || equipmentIds.length < 1 || equipmentIds.length > 100 || equipmentIds.some(item => !item)
+      || cause === null || notes === null || (row.equipment_ids !== undefined && !Array.isArray(row.equipment_ids))
+      || (row.worker_user_ids !== undefined && !Array.isArray(row.worker_user_ids)) || equipmentIds.length > 100 || equipmentIds.some(item => !item)
       || new Set(equipmentIds).size !== equipmentIds.length || workerIds.length > 30 || workerIds.some(item => !item)
       || new Set(workerIds).size !== workerIds.length) {
       throw new Error(`第 ${index+1} 筆設備維修事件內容、設備或處理人員不完整。`);
     }
-    return { id, row_version: rowVersion, service_id: serviceId, occurred_at: occurredAt, event_type: eventType,
+    return {
+      ...(Object.prototype.hasOwnProperty.call(row,"inventory_category_id") ? {inventory_category_id:categoryId} : {}),
+      ...(Object.prototype.hasOwnProperty.call(row,"inventory_item_id") ? {inventory_item_id:inventoryItemId} : {}),
+      id, row_version: rowVersion, service_id: serviceId, occurred_at: occurredAt, event_type: eventType,
       description, cause: cause || null, result, notes: notes || null, equipment_ids: equipmentIds, worker_user_ids: workerIds };
   });
 }
@@ -840,7 +848,12 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(time_period===null||!["in_progress","completed"].includes(status))throw new Error("請完整填寫工作日誌時段與狀態。");
     if(Object.prototype.hasOwnProperty.call(payload,"maintenance_events")){
       const maintenance_events=maintenanceEventsInput(payload.maintenance_events);
-      return rpc("upsert_customer_project_work_log_with_maintenance_v1",{p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_maintenance_events:maintenance_events,p_actor:actor});
+      const requestId = text(payload.request_id) ? uuid(payload.request_id) : null;
+      if (payload.request_id != null && payload.request_id !== "" && !requestId) throw new Error("工作日誌送出識別碼不正確。");
+      const parameters = {p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_maintenance_events:maintenance_events,p_actor:actor};
+      return requestId
+        ? rpc("upsert_customer_project_work_log_with_maintenance_v2",{...parameters,p_request_id:requestId})
+        : rpc("upsert_customer_project_work_log_with_maintenance_v1",parameters);
     }
     return rpc("upsert_customer_project_work_log_v3",{p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_actor:actor});
   }

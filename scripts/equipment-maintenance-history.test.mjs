@@ -37,8 +37,8 @@ test("work log and equipment events save through one atomic database function", 
 });
 
 test("ERP form supports multiple events, multi-device drawer and preview-only simulation", () => {
-  for (const marker of ["本次工作日誌是否要登錄設備維修紀錄", "本次是否有設備維修", "data-add-maintenance-event", "data-open-equipment-picker", "equipment-drawer", "collectMaintenanceEvents", "maintenance_event_count", "內容沿用上方工作內容；可同時連結多台設備"]) assert.ok(`${app}\n${styles}`.includes(marker), marker);
-  assert.match(app, /wantsMaintenance\?"yes":"no";syncMaintenanceVisibility/);
+  for (const marker of ["是否要登錄維修品", "data-add-maintenance-event", "data-open-equipment-picker", "equipment-drawer", "collectMaintenanceEvents", "maintenance_event_count", "內容沿用上方工作內容；可同時連結多台設備"]) assert.ok(`${app}\n${styles}`.includes(marker), marker);
+  assert.doesNotMatch(app, /confirm\("本次工作日誌/);
   assert.match(app, /if\(PREVIEW_MODE\)\{const result=applyPreviewMutation/);
   assert.match(app, /customer_category\|\|"government"/);
   assert.match(app, /永久履歷｜錯誤時由管理員作廢/);
