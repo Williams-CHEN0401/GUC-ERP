@@ -30,7 +30,7 @@ if (html.includes('data-page="sites"') || html.includes('id="siteCustomerCategor
 if (html.includes("安全預覽模式") || html.includes("預覽資料來源") || html.includes("dataNoticeLabel")) throw new Error("Preview notices were not removed");
 
 const js = readFileSync(new URL("../app.js", import.meta.url), "utf8");
-if (js.includes("現場照片") || !js.includes("select:工程施工,工程施工|維修紀錄,維修紀錄|維護保養,維護保養")) throw new Error("Site tabs or work type options are incorrect");
+if (js.includes("現場照片") || !js.includes("select:工程施工,工程施工|維修紀錄,維修/查修|維護保養,維護保養")) throw new Error("Site tabs or work type options are incorrect");
 if (!js.includes("GUC_ERP_ACCESS_TOKEN")) throw new Error("Session namespace missing");
 if (!js.includes('operation:"login"')) throw new Error("Protected login flow missing");
 if (!js.includes('scope:"session"') || !js.includes("PAGE_SCOPES")) throw new Error("Lazy page loading flow missing");
@@ -61,7 +61,7 @@ for (const marker of ["projectOwnerPickerField", "projectWorkerIds", "syncWorkLo
   if (!js.includes(marker)) throw new Error(`Project-owner or inventory-adjustment fix missing: ${marker}`);
 }
 if (js.includes("syncWorkLogWorkersFromProject") || js.includes("checkbox.checked=ownerIds.has")) throw new Error("Work-log workers must remain independent from project owners");
-for (const marker of ["PROJECT_WORK_TYPES", '["repair", "維修紀錄"]', "result?.result?.work_log?.id", "是否要立即進入", 'openModal("workLogPickupModal",pickupLogId)']) {
+for (const marker of ["PROJECT_WORK_TYPES", '["repair", "維修/查修", "維修紀錄"]', "result?.result?.work_log?.id", "是否要立即進入", 'openModal("workLogPickupModal",pickupLogId)']) {
   if (!js.includes(marker)) throw new Error(`Project/work-log shared fields or pickup handoff missing: ${marker}`);
 }
 if (js.includes("preview_site_upsert") || js.includes("preview_site_delete")) throw new Error("Preview-only site CRUD operation remains");

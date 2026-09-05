@@ -21,7 +21,7 @@ test("sidebar pages are real allowlisted links that can use the native new-tab m
 test("deep-linked pages keep tokens out of the URL and lazy-load only their page scope", () => {
   assert.match(js, /function pageUrl\(name\).*searchParams\.set\("page",name\)/);
   assert.doesNotMatch(js, /searchParams\.set\([^\n]*(?:accessToken|SESSION_KEY)/);
-  assert.match(js, /sessionStorage\.setItem\(SESSION_KEY,accessToken\)/);
+  assert.match(js, /function storeAccessToken\(token\)[\s\S]*sessionStorage\.setItem\(SESSION_KEY, accessToken\)/);
   assert.match(js, /continueAfterAuthentication\(\).*switchPage\(requestedPage\)/);
   assert.match(js, /switchPage\(name\).*loadPageData\(name\)/);
   assert.match(js, /function logout\(options=\{\}\).*clearPageUrl\(\)/);
