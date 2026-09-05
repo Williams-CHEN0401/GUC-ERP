@@ -10,6 +10,22 @@ function sourceBetween(start,end){
   return app.slice(first,last);
 }
 
+test('新事件僅顯示五種指定分類；舊事件保留原值，不加入其他舊分類',()=>{
+  const context=vm.createContext({});
+  vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('const MAINTENANCE_EVENT_TYPES')),context);
+  vm.runInContext(sourceBetween('const LEGACY_MAINTENANCE_EVENT_TYPES','function maintenanceEventTypeOptions'),context);
+  vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function maintenanceEventTypeOptions')),context);
+  const expected=[['SOFTWARE_CONFIG','軟體設定'],['LINE_REPAIR','線路維修'],['LINE_REPLACEMENT','線路更換'],['REPAIR','設備維修'],['REPLACEMENT','設備更換']];
+  const options=event=>JSON.parse(JSON.stringify(context.maintenanceEventTypeOptions(event)));
+  assert.deepEqual(options({}),expected);
+  assert.deepEqual(options({eventType:'OTHER'}),expected);
+  for(const [type,label] of [['INSTALLATION','安裝'],['MAINTENANCE','維護保養'],['PROGRAM_CONFIG','程式設定'],['INSPECTION','巡檢'],['OTHER','其他']]){
+    assert.deepEqual(options({id:'existing',eventType:type}),[...expected,[type,label+'（舊分類）']]);
+  }
+  assert.deepEqual(options({id:'existing',eventType:'REPAIR'}),expected);
+  assert.match(app,/selectField\("eventType","事件類型",maintenanceEventTypeOptions\(event\),event.eventType\|\|"SOFTWARE_CONFIG"\)/);
+});
+
 test('開啟新增表單等待施工人員，不在進入前詢問維修品',async()=>{
   let release;
   const ready=new Promise(resolve=>{release=resolve;});
