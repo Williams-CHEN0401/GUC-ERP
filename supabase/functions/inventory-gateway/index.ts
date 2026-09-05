@@ -382,7 +382,7 @@ async function attachMonitoringDeviceDisplayData(records: Row[]) {
   const siteIds = [...new Set(records.map(row => uuid(row.site_id)).filter((value): value is string => !!value))];
   const [credentials, sites] = await Promise.all([
     deviceIds.length ? get(`site_device_credentials?device_id=in.(${deviceIds.join(",")})&select=device_id,masked_username`) as Promise<Row[]> : Promise.resolve([]),
-    siteIds.length ? get(`sites?id=in.(${siteIds.join(",")})&select=id,site_code,site_name`) as Promise<Row[]> : Promise.resolve([]),
+    siteIds.length ? get(`sites?id=in.(${siteIds.join(",")})&select=id,site_code,site_name,customer_id,contract_service_type_id`) as Promise<Row[]> : Promise.resolve([]),
   ]);
   const credentialByDevice = new Map(credentials.map(row => [String(row.device_id), row.masked_username]));
   const siteById = new Map(sites.map(row => [String(row.id), row]));
@@ -390,7 +390,20 @@ async function attachMonitoringDeviceDisplayData(records: Row[]) {
     ...row,
     masked_username: credentialByDevice.get(String(row.id)) || null,
     site: siteById.get(String(row.site_id)) || null,
+    customer_id: siteById.get(String(row.site_id))?.customer_id || null,
+    contract_service_type_id: siteById.get(String(row.site_id))?.contract_service_type_id || null,
   }));
+}
+async function monitoringCustomerScope(customerId: string) {
+  const services = await get("contract_service_types?code=eq.surveillance&is_active=eq.true&select=id&limit=1") as Row[];
+  const serviceId = services.length ? uuid(services[0].id) : null;
+  if (!serviceId) throw new Error("監控承攬服務尚未啟用。");
+  const [links, sites] = await Promise.all([
+    get(`customer_contract_services?customer_id=eq.${customerId}&service_type_id=eq.${serviceId}&select=customer_id&limit=1`) as Promise<Row[]>,
+    get(`sites?customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}&status=neq.closed&select=id,customer_id,contract_service_type_id&order=created_at.asc`) as Promise<Row[]>,
+  ]);
+  if (links.length !== 1) throw new Error("此客戶沒有有效的監控承攬關聯。");
+  return { service_id: serviceId, sites };
 }
 async function monitoringDevices(params: URLSearchParams) {
   const page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
@@ -400,12 +413,28 @@ async function monitoringDevices(params: URLSearchParams) {
   const sortField = MONITORING_SORTS[sort] || MONITORING_SORTS.updated;
   const search = text(params.get("search")).replace(/[,*()]/g, " ").slice(0, 80);
   let path = `site_devices?select=${MONITORING_DEVICE_SELECT}&deleted_at=is.null&device_type=not.is.null&order=${sortField}.${direction},id.asc&limit=${pageSize}&offset=${(page - 1) * pageSize}`;
-  const siteId = uuid(params.get("site_id"));
+  const rawSiteId = text(params.get("site_id"));
+  const siteId = rawSiteId ? uuid(rawSiteId) : null;
+  if (rawSiteId && !siteId) throw new Error("案場編號不正確。");
+  if (siteId) path += `&site_id=eq.${siteId}`;
+  const rawCustomerId = text(params.get("customer_id"));
+  const customerId = rawCustomerId ? uuid(rawCustomerId) : null;
+  if (rawCustomerId && !customerId) throw new Error("客戶編號不正確。");
   const type = monitoringDeviceType(params.get("type"));
   const brand = text(params.get("brand")).slice(0, 120);
   const model = text(params.get("model")).slice(0, 160);
   const cabinet = text(params.get("cabinet")).slice(0, 160);
-  if (siteId) path += `&site_id=eq.${siteId}`;
+  if (customerId) {
+    const scope = await monitoringCustomerScope(customerId);
+    if (!scope.sites.length) {
+      return {
+        records: [],
+        pagination: { page, page_size: pageSize, total: 0, page_count: 1 },
+        query: { search, customer_id: customerId, type: type || "", brand, model, cabinet, sort: sort || "updated", direction },
+      };
+    }
+    path += `&site_id=in.(${scope.sites.map(row => row.id).join(",")})`;
+  }
   if (type) path += `&device_type=eq.${type}`;
   if (brand) path += `&device_brand=eq.${encodeURIComponent(brand)}`;
   if (model) path += `&device_model=eq.${encodeURIComponent(model)}`;
@@ -415,7 +444,7 @@ async function monitoringDevices(params: URLSearchParams) {
   return {
     records: await attachMonitoringDeviceDisplayData(result.records),
     pagination: { page, page_size: pageSize, total: result.total, page_count: Math.max(1, Math.ceil(result.total / pageSize)) },
-    query: { search, site_id: siteId || "", type: type || "", brand, model, cabinet, sort: sort || "updated", direction },
+    query: { search, customer_id: customerId || "", type: type || "", brand, model, cabinet, sort: sort || "updated", direction },
   };
 }
 async function monitoringDeviceDetail(params: URLSearchParams) {
@@ -436,15 +465,19 @@ async function equipmentHistory(params: URLSearchParams) {
 async function monitoringDeviceOptions(user: AppUser) {
   const services = await get("contract_service_types?code=eq.surveillance&is_active=eq.true&select=id&limit=1") as Row[];
   const serviceId = services.length ? uuid(services[0].id) : null;
-  const [types, sites, devices] = await Promise.all([
+  const [types, sites, devices, links] = await Promise.all([
     get("monitoring_device_types?is_active=eq.true&select=code,name,sort_order&order=sort_order.asc") as Promise<Row[]>,
     serviceId ? get(`sites?contract_service_type_id=eq.${serviceId}&status=neq.closed&select=id,site_code,site_name&order=site_code.asc`) as Promise<Row[]> : Promise.resolve([]),
     get("site_devices?deleted_at=is.null&device_type=not.is.null&select=device_brand,device_model,cabinet,network_cable_no") as Promise<Row[]>,
+    serviceId ? get(`customer_contract_services?service_type_id=eq.${serviceId}&select=customer_id`) as Promise<Row[]> : Promise.resolve([]),
   ]);
+  const customerIds = [...new Set(links.map(row => uuid(row.customer_id)).filter((value): value is string => !!value))];
+  const customers = customerIds.length ? await get(`customers?id=in.(${customerIds.join(",")})&select=id,customer_code,customer_category,name&order=customer_code.asc`) as Row[] : [];
   const values = (key: string) => [...new Set(devices.map(row => text(row[key])).filter(Boolean))].sort((a,b) => a.localeCompare(b,"zh-Hant"));
   return {
     types,
     sites,
+    customers,
     filters: { brands: values("device_brand"), models: values("device_model"), cabinets: values("cabinet"), network_cables: values("network_cable_no") },
     current_user: publicUser(user),
   };
@@ -828,6 +861,37 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     const id=uuid(payload.id),rowVersion=Number(payload.row_version);
     if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("電話資料或版本不正確。");
     return rpc("delete_phone_extension_v1",{p_id:id,p_row_version:rowVersion,p_actor:actor});
+  }
+  if (operation === "batch_update_phone_extensions" || operation === "batch_delete_phone_extensions") {
+    requireRole(user, operation === "batch_delete_phone_extensions" ? ["admin"] : ["admin","operator"]);
+    const customer_id=uuid(payload.customer_id),service_type_id=uuid(payload.contract_service_type_id);
+    if(!customer_id||!service_type_id||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>100) throw new Error("請選擇目前頁面的 1 至 100 筆電話資料。");
+    const rows=payload.rows.map((value,index)=>{
+      if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆選取資料格式不正確。`);
+      const row=value as Row,id=uuid(row.id),row_version=Number(row.row_version);
+      if(!id||!Number.isInteger(row_version)||row_version<1) throw new Error(`第 ${index+1} 筆電話資料或版本不正確。`);
+      return {id,row_version};
+    });
+    if(new Set(rows.map(row=>row.id)).size!==rows.length) throw new Error("選取資料包含重複電話，請重新選取。");
+    await ensurePhoneContract(customer_id,service_type_id);
+    if(operation==="batch_delete_phone_extensions") return rpc("batch_delete_phone_extensions_v1",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_rows:rows,p_actor:actor});
+    if(!payload.patch||typeof payload.patch!=="object"||Array.isArray(payload.patch)) throw new Error("請勾選至少一個要批次修改的欄位。");
+    const rawPatch=payload.patch as Row,allowed=["building_name","floor","installation_location","source_terminal_group","source_terminal_board"];
+    const invalidKeys=Object.keys(rawPatch).filter(key=>!allowed.includes(key));
+    if(invalidKeys.length) throw new Error("批次修改包含不支援的欄位。");
+    const limits:Record<string,number>={building_name:80,floor:80,installation_location:300,source_terminal_group:160,source_terminal_board:80};
+    const patch:Row={};
+    for(const key of allowed){
+      if(!Object.prototype.hasOwnProperty.call(rawPatch,key)) continue;
+      if(rawPatch[key] !== null && typeof rawPatch[key] !== "string") throw new Error("批次修改欄位格式不正確。");
+      const value=nullable(rawPatch[key],limits[key]);
+      if(value===null) throw new Error("批次修改欄位超過長度限制。");
+      patch[key]=value||null;
+    }
+    if(!Object.keys(patch).length) throw new Error("請勾選至少一個要批次修改的欄位。");
+    if(Object.prototype.hasOwnProperty.call(patch,"source_terminal_board")&&!Object.prototype.hasOwnProperty.call(patch,"source_terminal_group")) throw new Error("修改來源端子板時，請一併勾選來源端子群組。");
+    if(Object.prototype.hasOwnProperty.call(patch,"source_terminal_group")&&!patch.source_terminal_group) throw new Error("來源端子群組不可清空。");
+    return rpc("batch_update_phone_extensions_v1",{p_customer_id:customer_id,p_contract_service_type_id:service_type_id,p_rows:rows,p_patch:patch,p_actor:actor});
   }
   if (operation === "set_phone_system_credential") {
     requireRole(user,["admin"]);
