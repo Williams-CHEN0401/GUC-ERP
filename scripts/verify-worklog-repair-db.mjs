@@ -22,7 +22,12 @@ create table maintenance_event_workers(event_id uuid references maintenance_even
 create table customer_contract_services(customer_id uuid,service_type_id uuid);
 create table equipment_registry(id uuid primary key,customer_id uuid,service_id uuid,status text,source_table text,source_id uuid);
 create table app_users(id uuid primary key,is_active boolean,display_name text);
-create table audit_logs(entity_type text,entity_id uuid,action text,before_data jsonb,after_data jsonb,source text,actor text);
+-- Match the production audit restriction: repair actions were missing from this allowlist.
+create table audit_logs(id bigint generated always as identity primary key,
+entity_type text not null,entity_id uuid not null,action text not null,before_data jsonb,after_data jsonb,
+source text not null default 'system',actor text,created_at timestamptz not null default now(),
+constraint audit_logs_action_check check(action in ('insert','update','delete','import','export',
+'UPDATE_CREDENTIAL','IMPORT_DEVICES','BATCH_UPDATE','BATCH_DELETE')));
 -- Only the pre-existing project/work-log writer is stubbed. All changed SQL and repair RPCs are real.
 create function public.upsert_customer_project_work_log_v3(uuid,integer,uuid,uuid,text,date,text,text,text,text,uuid[],uuid,text)
 returns jsonb language plpgsql as $$ declare v_id uuid:=coalesce($1,gen_random_uuid()); begin
@@ -77,6 +82,23 @@ for(const type of oldTypes)await unchangedAfterFailure(()=>save([{...event(),eve
 await unchangedAfterFailure(()=>save([{...event(),event_type:'UNKNOWN'}]),/類型/);
 await assert.rejects(db.query("update maintenance_events set event_type='UNKNOWN' where id=$1",[oldEvents[0].id]),/maintenance_events_type_check/);
 console.log('PASS five event types, migration preserves historical data, legacy retained only on original event, invalid writes roll back');
+// Reproduce the production failure: replacement + inventory item, without registry equipment.
+// The failed request must roll back entirely and remain retryable after the schema-only fix.
+const auditRetryKey=randomUUID(),replacement={...event([],true),event_type:'REPLACEMENT',cause:'POE無供電功能'};
+await unchangedAfterFailure(()=>save([replacement],{key:auditRetryKey}),/audit_logs_action_check/);
+const existingActions=['insert','update','delete','import','export','UPDATE_CREDENTIAL','IMPORT_DEVICES','BATCH_UPDATE','BATCH_DELETE'];
+for(const action of existingActions)await db.query("insert into audit_logs(entity_type,entity_id,action) values('test',$1,$2)",[randomUUID(),action]);
+const beforeAuditMigration=await rows('audit_logs'),beforeFixCounts=await counts();
+await db.exec(await readMigration('20260905094955_repair_audit_actions.sql'));
+assert.deepEqual(await rows('audit_logs'),beforeAuditMigration,'migration must preserve audit history');
+assert.deepEqual(await counts(),beforeFixCounts,'migration must not change business data');
+for(const action of existingActions)await db.query("insert into audit_logs(entity_type,entity_id,action) values('test',$1,$2)",[randomUUID(),action]);
+await assert.rejects(db.query("insert into audit_logs(entity_type,entity_id,action) values('test',$1,'UNKNOWN_ACTION')",[randomUUID()]),/audit_logs_action_check/);
+const auditRetryResult=await save([replacement],{key:auditRetryKey}),afterAuditRetry=await counts();
+assert.equal(auditRetryResult.created_repair_item_ids.length,1);
+assert.deepEqual(await save([replacement],{key:auditRetryKey}),auditRetryResult);
+assert.deepEqual(await counts(),afterAuditRetry,'retry must not duplicate the log, repair or audit');
+console.log('PASS production audit failure reproduced, schema-only fix, original actions preserved, unknown action rejected and replacement retry deduplicated');
 const noEvents=await save([]);
 assert.equal(noEvents.maintenance_event_count,0);
 for(const withEquipment of [false,true]){
@@ -134,6 +156,14 @@ const laterEvent=(await rows('maintenance_events')).find(row=>row.work_log_id===
 const later=await save([{...event([],true),id:laterEvent.id,row_version:1}],{id:laterEvent.work_log_id});
 assert.equal(later.created_repair_item_ids.length,1);
 console.log('PASS existing manual completion, edit preservation, legacy compatibility, stale-version rollback and no resurrection');
+// Exercise the original manual create RPC as well as automatic creation/update/delete.
+await db.query("select public.upsert_repair_item_v1(null,null,'2026-09-05',$1,$2,1,null,'故障',null,null,null,null,'received',null,null,'test')",[customer,item]);
+const repairAudit=(await rows('audit_logs')).filter(row=>row.entity_type==='repair_items');
+for(const action of ['CREATE_REPAIR_ITEM','UPDATE_REPAIR_ITEM','DELETE_REPAIR_ITEM']){
+  assert.ok(repairAudit.some(row=>row.action===action),action+' must remain audited');
+}
+assert.ok(repairAudit.some(row=>row.action==='CREATE_REPAIR_ITEM'&&row.source==='work_log'),'automatic registration must remain audited');
+console.log('PASS manual repair create/update/delete and automatic registration all retain audit entries');
 
 // Missing mandatory fields stay forbidden for ordinary manually-created repairs.
 await assert.rejects(db.query("select public.upsert_repair_item_v1(null,null,null,$1,$2,null,null,null,null,null,null,null,null,null,null,'test')",[customer,item]),/完整填寫/);
