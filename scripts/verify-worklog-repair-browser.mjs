@@ -60,8 +60,15 @@ try{
   await form.locator('[name="summary"]').fill('現場檢查測試');
   assert.equal(await form.evaluate(node=>node.checkValidity()),true,'hidden repair controls must not block ordinary logs');
   await form.locator('[name="hasMaintenance"]').selectOption('yes');
+  assert.deepEqual(await form.locator('[name="eventType"] option').allTextContents(),['軟體設定','線路維修','線路更換','設備維修','設備更換']);
+  assert.equal(await form.locator('[name="eventType"]').inputValue(),'SOFTWARE_CONFIG');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').isDisabled(),true);
   await form.locator('[name="eventServiceId"]').selectOption('service-1');
+  for(const type of ['SOFTWARE_CONFIG','LINE_REPAIR','LINE_REPLACEMENT','REPAIR','REPLACEMENT']){
+    await form.locator('[name="eventType"]').selectOption(type);
+    assert.equal(await page.evaluate(()=>collectMaintenanceEvents()[0].event_type),type);
+  }
+  await form.locator('[name="eventType"]').selectOption('LINE_REPLACEMENT');
   await form.locator('[name="eventInventoryCategoryId"]').selectOption('category-1');
   assert.equal(await form.locator('[name="eventInventoryItemId"] option').count(),2);
   await form.locator('[name="eventInventoryItemId"]').selectOption('item-1');
@@ -87,6 +94,7 @@ try{
   assert.equal(saved.repairs[0].receivedOn,null);assert.equal(saved.repairs[0].quantity,null);
   assert.equal(saved.repairs[0].status,'');assert.equal(saved.repairs[0].issueDescription,'');
   assert.equal(saved.logs[0].workerIds[0],'worker-1');
+  assert.equal(saved.events[0].eventType,'LINE_REPLACEMENT');
   console.log('PASS real form entry, worker selection, category filter, mobile width, item-only save and NULL fields');
   await page.setViewportSize({width:1440,height:1000});
   await page.locator('a[data-page="repairs"]').click();
@@ -102,6 +110,7 @@ try{
   assert.equal(await page.evaluate(()=>state.repairItems[0].quantity),2);
   await page.locator('a[data-page="worklogs"]').click();
   await page.locator('[data-work-log-row]').dblclick();
+  assert.equal(await form.locator('[name="eventType"]').inputValue(),'LINE_REPLACEMENT');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').inputValue(),'item-1');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').isDisabled(),true);
   await form.locator('[name="summary"]').fill('日誌後續修改');
@@ -109,6 +118,16 @@ try{
   await page.locator('#simpleModal').waitFor({state:'hidden'});
   assert.equal(await page.evaluate(()=>state.repairItems.length),1);
   assert.equal(await page.evaluate(()=>state.repairItems[0].issueDescription),'人工補充故障');
+  // Simulate a historical record only in isolated preview state, then edit it normally.
+  await page.evaluate(()=>{state.maintenanceEvents[0].eventType='INSPECTION';});
+  await page.locator('[data-work-log-row]').dblclick();
+  assert.equal(await form.locator('[name="eventType"]').inputValue(),'INSPECTION');
+  assert.deepEqual(await form.locator('[name="eventType"] option').allTextContents(),['軟體設定','線路維修','線路更換','設備維修','設備更換','巡檢（舊分類）']);
+  await form.locator('[name="eventNotes"]').fill('保留既有巡檢分類');
+  await form.locator('button[type="submit"]').click();
+  await page.locator('#simpleModal').waitFor({state:'hidden'});
+  assert.equal(await page.evaluate(()=>state.maintenanceEvents[0].eventType),'INSPECTION');
+  console.log('PASS exact five labels, selected type survives save/reopen, historical type remains unchanged');
   assert.deepEqual(errors,[]);
   console.log('PASS repair manual completion and work-log edits preserve the repair, no browser runtime errors');
 }finally{

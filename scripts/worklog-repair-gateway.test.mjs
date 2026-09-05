@@ -63,3 +63,23 @@ test('手動維修品流程仍要求收件日期、數量、狀態與故障內�
   assert.equal(h.calls.length,0);
 });
 
+test('五種事件類型皆可通過 API，未知或新建舊分類不能寫入',async()=>{
+  for(const type of ['SOFTWARE_CONFIG','LINE_REPAIR','LINE_REPLACEMENT','REPAIR','REPLACEMENT']){
+    const h=harness(),data=payload();data.maintenance_events[0].event_type=type;
+    assert.equal((await h.request(data)).status,201);
+    assert.equal(h.calls[0].parameters.p_maintenance_events[0].event_type,type);
+  }
+  for(const type of ['INSTALLATION','MAINTENANCE','PROGRAM_CONFIG','INSPECTION','OTHER','UNKNOWN','']){
+    const h=harness(),data=payload();data.maintenance_events[0].event_type=type;
+    assert.equal((await h.request(data)).status,400);assert.equal(h.calls.length,0);
+  }
+});
+
+test('已存在的舊分類交由 RPC 檢查是否保留原值，未知類型仍拒絕',async()=>{
+  for(const type of ['INSTALLATION','MAINTENANCE','PROGRAM_CONFIG','INSPECTION','OTHER','UNKNOWN']){
+    const h=harness(),data=payload();
+    Object.assign(data.maintenance_events[0],{id:randomUUID(),row_version:1,event_type:type});
+    assert.equal((await h.request(data)).status,type==='UNKNOWN'?400:201);
+    assert.equal(h.calls.length,type==='UNKNOWN'?0:1);
+  }
+});

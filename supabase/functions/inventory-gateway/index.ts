@@ -35,7 +35,9 @@ const httpUrl = (value: unknown, max = 1000) => {
 const DEVICE_TYPES = ["monitoring_host", "camera", "hub"] as const;
 type MonitoringDeviceType = typeof DEVICE_TYPES[number];
 const monitoringDeviceType = (value: unknown): MonitoringDeviceType | null => DEVICE_TYPES.includes(text(value) as MonitoringDeviceType) ? text(value) as MonitoringDeviceType : null;
-const MAINTENANCE_EVENT_TYPES = ["INSTALLATION","MAINTENANCE","REPAIR","REPLACEMENT","SOFTWARE_CONFIG","PROGRAM_CONFIG","INSPECTION","OTHER"] as const;
+const MAINTENANCE_EVENT_TYPES = ["SOFTWARE_CONFIG","LINE_REPAIR","LINE_REPLACEMENT","REPAIR","REPLACEMENT"] as const;
+// Existing records may retain a deprecated type; the RPC verifies it is unchanged.
+const LEGACY_MAINTENANCE_EVENT_TYPES = ["INSTALLATION","MAINTENANCE","PROGRAM_CONFIG","INSPECTION","OTHER"] as const;
 const bytesToBase64 = (value: Uint8Array) => {
   let binary = "";
   for (let index = 0; index < value.length; index += 1) binary += String.fromCharCode(value[index]);
@@ -606,6 +608,8 @@ function maintenanceEventsInput(value: unknown) {
     const serviceId = uuid(row.service_id);
     const occurredAt = date(row.occurred_at);
     const eventType = text(row.event_type).toUpperCase();
+    const validEventType = MAINTENANCE_EVENT_TYPES.includes(eventType as typeof MAINTENANCE_EVENT_TYPES[number])
+      || (id && LEGACY_MAINTENANCE_EVENT_TYPES.includes(eventType as typeof LEGACY_MAINTENANCE_EVENT_TYPES[number]));
     const description = limited(row.description,4000);
     const result = limited(row.result,2000);
     const cause = nullable(row.cause,2000);
@@ -613,7 +617,7 @@ function maintenanceEventsInput(value: unknown) {
     const equipmentIds = Array.isArray(row.equipment_ids) ? row.equipment_ids.map(uuid) : [];
     const workerIds = Array.isArray(row.worker_user_ids) ? row.worker_user_ids.map(uuid) : [];
     if ((text(row.id) && !id) || (id && (!Number.isInteger(rowVersion) || Number(rowVersion) < 1)) || !serviceId || !occurredAt
-      || !MAINTENANCE_EVENT_TYPES.includes(eventType as typeof MAINTENANCE_EVENT_TYPES[number]) || !description || !result
+      || !validEventType || !description || !result
       || cause === null || notes === null || (row.equipment_ids !== undefined && !Array.isArray(row.equipment_ids))
       || (row.worker_user_ids !== undefined && !Array.isArray(row.worker_user_ids)) || equipmentIds.length > 100 || equipmentIds.some(item => !item)
       || new Set(equipmentIds).size !== equipmentIds.length || workerIds.length > 30 || workerIds.some(item => !item)

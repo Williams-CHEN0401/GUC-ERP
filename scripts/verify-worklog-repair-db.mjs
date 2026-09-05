@@ -50,6 +50,33 @@ const counts=async()=>Object.fromEntries(await Promise.all(['site_work_logs','ma
 const unchangedAfterFailure=async(work,error)=>{
   const before=await counts();await assert.rejects(work(),error);assert.deepEqual(await counts(),before);
 };
+// Seed all deprecated classifications using the previously released RPC.
+await db.exec("alter table maintenance_events add constraint maintenance_events_type_check check(event_type in ('INSTALLATION','MAINTENANCE','REPAIR','REPLACEMENT','SOFTWARE_CONFIG','PROGRAM_CONFIG','INSPECTION','OTHER'))");
+const oldTypes=['INSTALLATION','MAINTENANCE','PROGRAM_CONFIG','INSPECTION','OTHER'];
+const oldEvents=[];
+for(const type of oldTypes){
+  const saved=await save([{...event(),event_type:type}]);
+  oldEvents.push({type,id:saved.maintenance_event_ids[0],logId:saved.work_log.id});
+}
+const beforeTypeMigration=await rows('maintenance_events');
+await db.exec(await readMigration('20260905081650_maintenance_event_types.sql'));
+assert.deepEqual(await rows('maintenance_events'),beforeTypeMigration,'migration must not rewrite existing events');
+for(const type of ['SOFTWARE_CONFIG','LINE_REPAIR','LINE_REPLACEMENT','REPAIR','REPLACEMENT']){
+  const saved=await save([{...event([equipment]),event_type:type}]);
+  assert.equal((await rows('maintenance_events')).find(row=>row.id===saved.maintenance_event_ids[0]).event_type,type);
+}
+for(const old of oldEvents){
+  await save([{...event(),event_type:old.type,id:old.id,row_version:1}],{id:old.logId});
+  assert.equal((await rows('maintenance_events')).find(row=>row.id===old.id).event_type,old.type);
+  const differentOld=oldTypes.find(type=>type!==old.type);
+  await unchangedAfterFailure(()=>save([{...event(),event_type:differentOld,id:old.id,row_version:2}],{id:old.logId}),/舊分類僅可保留/);
+  await save([{...event(),event_type:'LINE_REPAIR',id:old.id,row_version:2}],{id:old.logId});
+  await unchangedAfterFailure(()=>save([{...event(),event_type:old.type,id:old.id,row_version:3}],{id:old.logId}),/舊分類僅可保留/);
+}
+for(const type of oldTypes)await unchangedAfterFailure(()=>save([{...event(),event_type:type}]),/舊分類僅可保留/);
+await unchangedAfterFailure(()=>save([{...event(),event_type:'UNKNOWN'}]),/類型/);
+await assert.rejects(db.query("update maintenance_events set event_type='UNKNOWN' where id=$1",[oldEvents[0].id]),/maintenance_events_type_check/);
+console.log('PASS five event types, migration preserves historical data, legacy retained only on original event, invalid writes roll back');
 const noEvents=await save([]);
 assert.equal(noEvents.maintenance_event_count,0);
 for(const withEquipment of [false,true]){
