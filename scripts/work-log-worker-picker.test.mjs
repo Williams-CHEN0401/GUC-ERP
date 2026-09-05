@@ -16,7 +16,7 @@ test("新增工作日誌會在開啟前確認並補載施工人員清單", () =>
   assert.match(handler, /loadScope\(scope,\{force:true,silent:true\}\)/);
   assert.match(handler, /error\.dataset==="site_workers"/);
   assert.match(handler, /openModal\("workLogModal",id\)/);
-  assert.match(app, /dataset\.open==="workLogModal"\)await openWorkLogModal\("",\{askMaintenance:true\}\)/);
+  assert.match(app, /dataset\.open==="workLogModal"\)await openWorkLogModal\(\)/);
 });
 
 test("施工人員選項保留原生複選、選取計數與手機觸控區域", () => {
