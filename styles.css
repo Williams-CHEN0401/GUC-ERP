@@ -92,6 +92,7 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .maintenance-question{padding:14px;border:1px solid #a8d3c5;border-radius:11px;background:#f2faf7}
 .maintenance-editor{display:grid;gap:12px;border:1px solid var(--line);border-radius:12px;background:#f6f9f8;padding:14px}
 .maintenance-editor[hidden]{display:none}
+.maintenance-event-grid [data-maintenance-inventory-field][hidden]{display:none}
 .maintenance-editor-head,.maintenance-event-card>header{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .maintenance-editor-head b,.maintenance-editor-head small,.maintenance-event-card>header b,.maintenance-event-card>header span{display:block}
 .maintenance-editor-head small,.maintenance-event-card>header span{color:var(--muted);font-size:12px}
