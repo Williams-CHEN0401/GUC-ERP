@@ -44,6 +44,40 @@ test('開啟新增表單等待施工人員，不在進入前詢問維修品',asy
   assert.deepEqual(calls,[['workLogModal','']]);
 });
 
+test('新增日誌選維修/查修才詢問；確認展開、取消隱藏，既有日誌與唯讀不詢問',()=>{
+  const modal={dataset:{type:'workLogModal',id:''}};
+  const form={elements:{workType:{value:'維修紀錄'},hasMaintenance:{value:'no'}}};
+  let answer=true,writable=true,syncs=0;
+  const messages=[];
+  const context=vm.createContext({
+    document:{querySelector:selector=>selector==='#simpleModal'?modal:form},
+    canWrite:()=>writable,
+    confirm:message=>{messages.push(message);return answer;},
+    syncMaintenanceVisibility:()=>syncs++,
+  });
+  vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('const PROJECT_WORK_TYPES')),context);
+  vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function projectTypeFromWorkType')),context);
+  vm.runInContext(sourceBetween('function promptWorkLogRepairRegistration','function syncMaintenanceVisibility'),context);
+  context.promptWorkLogRepairRegistration();
+  assert.equal(form.elements.hasMaintenance.value,'yes');
+  assert.match(messages[0],/是否要登錄維修設備/);
+  answer=false;
+  context.promptWorkLogRepairRegistration();
+  assert.equal(form.elements.hasMaintenance.value,'no');
+  assert.equal(syncs,2);
+  for(const type of ['工程施工','維護保養']){
+    form.elements.workType.value=type;
+    context.promptWorkLogRepairRegistration();
+  }
+  form.elements.workType.value='維修紀錄';
+  modal.dataset.id='existing-log';context.promptWorkLogRepairRegistration();
+  modal.dataset.id='';writable=false;context.promptWorkLogRepairRegistration();
+  writable=true;modal.dataset.type='projectModal';context.promptWorkLogRepairRegistration();
+  assert.equal(messages.length,2);
+  assert.equal(syncs,2);
+  assert.match(app,/event\.target\.closest\("#modalForm"\)&&event\.target\.name==="workType"\)promptWorkLogRepairRegistration\(\)/);
+});
+
 test('切換種類清除上一種類品項，清除種類後停用品項選取',()=>{
   const item={innerHTML:'old item',disabled:false};
   const context=vm.createContext({inventoryItemOptions:category=>`options:${category}`});
