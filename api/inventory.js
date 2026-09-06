@@ -1,5 +1,5 @@
 const SUPABASE_BASE = "https://bfgjdxhhnfotkjrbdckr.supabase.co/functions/v1";
-const UPSTREAM = process.env.VERCEL_ENV === 'production' ? `${SUPABASE_BASE}/inventory-gateway` : `${SUPABASE_BASE}/inventory-gateway-preview`;
+const UPSTREAM = process.env.VERCEL_ENV === 'production' ? `${SUPABASE_BASE}/inventory-gateway` : `${SUPABASE_BASE}/inventory-gateway-preview-optimization`;
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
 module.exports = async function handler(request, response) {
@@ -14,7 +14,7 @@ module.exports = async function handler(request, response) {
 
   if (process.env.VERCEL_ENV !== 'production' && request.method === 'POST') {
     const operation = request.body && typeof request.body === 'object' ? request.body.operation : '';
-    if (operation !== 'login') {
+    if (operation !== 'login' && operation !== 'check_monitoring_ip_conflicts') {
       return response.status(403).json({ error: '安全預覽模式禁止寫入正式資料庫。' });
     }
   }
@@ -22,6 +22,9 @@ module.exports = async function handler(request, response) {
   const incomingUrl = new URL(request.url, 'https://local.invalid');
   const target = `${UPSTREAM}${incomingUrl.search}`;
   const headers = { 'Content-Type': 'application/json' };
+  headers['user-agent']=request.headers['user-agent']||'';
+  headers['x-forwarded-for']=request.headers['x-forwarded-for']||'';
+  headers['x-guc-system']='erp';
   if (request.headers.authorization) headers.Authorization = request.headers.authorization;
 
   const controller = new AbortController();

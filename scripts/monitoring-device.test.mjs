@@ -17,8 +17,8 @@ test("monitoring credential key is generated in Vault and exposed only to the se
   assert.match(edge,/rpc\("get_monitoring_device_key_v1", \{\}\)/);
 });
 
-test("preview gateway blocks every non-login POST at the Edge boundary",()=>{
-  assert.match(edge,/endsWith\("\/inventory-gateway-preview"\)/);
+test("preview gateway blocks mutation POSTs at the Edge boundary",()=>{
+  assert.match(edge,/includes\("\/inventory-gateway-preview"\)/);
   assert.match(edge,/if \(isPreviewGateway\) return json\([^;]*PREVIEW_READ_ONLY/s);
   assert.ok(edge.indexOf("if (isPreviewGateway)")<edge.indexOf("const user = await currentUser(request)",edge.indexOf("if (isPreviewGateway)")));
 });
@@ -41,4 +41,3 @@ test("import history stores only sanitized credential indicators",()=>{
   assert.match(sanitized,/password_provided/);
   assert.doesNotMatch(sanitized,/ciphertext|authentication_tag|login_password|password_ciphertext/);
 });
-

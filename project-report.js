@@ -6,11 +6,6 @@
     return !!date && (!from || date >= from) && (!to || date <= to);
   }
   function compareDate(left, right) { return String(left).localeCompare(String(right)); }
-  function csvCell(value) {
-    let result = String(value ?? "");
-    if (/^[\t\r\n ]*[=+\-@]/.test(result)) result = `'${result}`;
-    return `"${result.replaceAll('"', '""')}"`;
-  }
 
   function buildProjectReport({ projectId, pickups = [], logs = [], workers = [], inventory = [], from = "", to = "" } = {}) {
     const dateFrom = text(from), dateTo = text(to);
@@ -105,5 +100,5 @@
     };
   }
 
-  globalObject.GUCProjectReport = Object.freeze({ buildProjectReport, inDateRange, csvCell });
+  globalObject.GUCProjectReport = Object.freeze({ buildProjectReport, inDateRange });
 })(globalThis);

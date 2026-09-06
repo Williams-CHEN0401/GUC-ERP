@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from "node:async_hooks";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
@@ -6,14 +7,14 @@ import vm from 'node:vm';
 import {randomUUID} from 'node:crypto';
 
 const source=readFileSync(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8');
-const compiled=stripTypeScriptTypes(source,{mode:'strip'});
+const compiled=stripTypeScriptTypes(source.replace(/^import .*node:async_hooks.*;\r?\n/m,""),{mode:'strip'});
 const user={id:randomUUID(),username:'test',display_name:'測試員',role:'operator',is_active:true};
 const category=randomUUID(),item=randomUUID(),customer=randomUUID(),service=randomUUID();
 const event=()=>({service_id:service,event_type:'REPAIR',occurred_at:'2026-09-05',description:'工作內容',result:'處理結果',notes:'備註',equipment_ids:[],worker_user_ids:[],inventory_category_id:category,inventory_item_id:item});
 const payload=()=>({request_id:randomUUID(),customer_id:customer,project_name:'測試專案',log_date:'2026-09-05',work_type:'維修紀錄',summary:'工作內容',time_period:'',status:'in_progress',worker_user_ids:[user.id],maintenance_events:[event()]});
 function harness(role='operator'){
   let handler;const calls=[];
-  const context=vm.createContext({Deno:{env:{get:()=>''},serve:callback=>{handler=callback;}},URL,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});
+  const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:callback=>{handler=callback;}},URL,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});
   vm.runInContext(compiled,context);
   context.currentUser=async()=>role?{...user,role}:null;
   context.rpc=async(name,parameters)=>{calls.push({name,parameters});return{work_log:{id:customer},maintenance_event_ids:[item],created_repair_item_ids:[category]};};

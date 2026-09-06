@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 type Row = Record<string, unknown>;
 type Role = "admin" | "operator" | "viewer";
 type AppUser = { id: string; auth_user_id: string; username: string; display_name: string; role: Role; is_active: boolean; row_version: number };
@@ -141,7 +143,7 @@ async function timedFetch(resource: string, init: RequestInit = {}, label = "資
     clearTimeout(timer);
   }
 }
-async function db(path: string, init: RequestInit = {}) { const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); return timedFetch(`${url}/rest/v1/${path}`, { ...init, headers }, "資料庫"); }
+async function db(path: string, init: RequestInit = {}) { const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); const context=auditContext.getStore(); if(context)headers.set("x-guc-audit-context",JSON.stringify(context).replace(/[\u007f-\uffff]/g,char=>"\\u"+char.charCodeAt(0).toString(16).padStart(4,"0"))); return timedFetch(`${url}/rest/v1/${path}`, { ...init, headers }, "資料庫"); }
 async function authApi(path: string, init: RequestInit = {}) { const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); return timedFetch(`${url}${path}`, { ...init, headers }, "身分驗證服務"); }
 async function get(path: string) { const response = await db(path); if (!response.ok) throw new Error("讀取資料失敗。"); return response.json(); }
 async function getAll(path: string, pageSize = 1000) {
@@ -313,7 +315,7 @@ const datasets: Record<string, DatasetDefinition> = {
   maintenance_event_workers: { path: "maintenance_event_workers?select=event_id,user_id,created_at&order=created_at.asc", paged: true }
 };
 const scopes: Record<string, string[]> = {
-  dashboard: ["customers", "projects", "items", "pickups", "receipts", "adjustments", "categories"],
+  dashboard: [], // Dedicated bounded dashboardSnapshot query below.
   transactions: ["customers", "projects", "items", "pickups", "receipts", "suppliers", "categories"],
   repairs: ["repair_items", "customers", "items", "suppliers", "categories"],
   inventory: ["items", "pickups", "receipts", "adjustments", "suppliers", "categories"],
@@ -321,10 +323,11 @@ const scopes: Record<string, string[]> = {
   worklogs: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "items", "categories", "pickups", "sites", "site_work_logs", "site_work_log_workers", "site_workers", "site_assets", "equipment_registry", "maintenance_events", "maintenance_event_equipment", "maintenance_event_workers"],
   sites: ["customers", "contract_service_types", "customer_contract_services", "projects", "project_workers", "items", "categories", "pickups", "sites", "site_floors", "site_devices", "site_routes", "site_work_logs", "site_work_log_workers", "site_workers", "site_notes", "site_assets", "maintenance_details", "phone_systems", "phone_extensions", "phone_terminal_points", "phone_credential_access_logs", "equipment_registry", "maintenance_events", "maintenance_event_equipment", "maintenance_event_workers", "site_audit_logs"],
   materials: ["customers", "projects", "items", "pickups", "site_work_logs", "site_work_log_workers", "site_workers"],
-  settings: ["accounts", "audit_logs"],
+  settings: ["accounts"],
   backup: Object.keys(datasets)
 };
 async function scopedSnapshot(user: AppUser, scopeName: string) {
+  if(scopeName === "dashboard")return dashboardSnapshot(user);
   const names = scopes[scopeName];
   if (!names) throw new Error("不支援的資料載入範圍。");
   const requests = names.map(async name => {
@@ -1088,21 +1091,121 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   }
   if (operation === "delete_site_entry") { requireRole(user,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version),entity=text(payload.entity); const tables:Record<string,string>={floor:"site_floors",route:"site_routes",device:"site_devices",note:"site_notes",asset:"site_assets"}; if(!id||!Number.isInteger(rowVersion)||rowVersion<1||(!tables[entity]&&entity!=="work_log")) throw new Error("案場明細資料不正確。"); if(entity==="work_log")return rpc("soft_delete_site_work_log_v1",{p_id:id,p_row_version:rowVersion,p_reason:"管理員刪除",p_actor_user_id:user!.id,p_actor:actor}); return deleteVersioned(tables[entity],id,rowVersion); }
   if (operation === "restore_database_backup") { requireRole(user,["admin"]); if(!payload.backup||typeof payload.backup!=="object"||Array.isArray(payload.backup)) throw new Error("請提供已驗證的資料庫備份。"); return rpc("restore_inventory_backup",{p_backup:payload.backup,p_actor:actor}); }
-  if (operation === "request_excel_sync") { requireRole(user,["admin"]); return insert("sync_runs",{direction:"database_to_excel",status:"queued",source_name:"網站手動要求"}); }
+
   if (operation === "create_account") return createAccount(payload, user!);
   if (operation === "update_account") return updateAccount(payload, user!);
   if (operation === "delete_account") return deleteAccount(payload, user!);
   throw new Error("不支援的操作。");
 }
-Deno.serve(async request => {
+type AuditContext = { actor: string; actorId: string; requestId: string; sourceIp: string; userAgent: string; system: string };
+const auditContext = new AsyncLocalStorage<AuditContext>();
+function auditHeaders(request: Request, user?: AppUser): AuditContext {
+  return { actor:user?.display_name||user?.username||"",actorId:user?.id||"",requestId:crypto.randomUUID(),sourceIp:(request.headers.get("x-forwarded-for")||"").split(",")[0].trim().slice(0,64),userAgent:(request.headers.get("user-agent")||"").slice(0,512),system:request.headers.get("x-guc-system")==="site"?"site":"erp" };
+}
+function auditProjection(record: Row): Row {
+  return {...record,before_data:redactAuditValue(record.before_data),after_data:redactAuditValue(record.after_data)};
+}
+function redactAuditValue(value: unknown, depth=0): unknown {
+  if(depth>12)return "[已省略]";
+  if(Array.isArray(value))return value.map(item=>redactAuditValue(item,depth+1));
+  if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,/password|passwd|pwd|token|authorization|cookie|secret|credential|cipher|encryption|private.?key|service.?role|api.?key|密碼|金鑰/i.test(key)?"[已遮蔽]":redactAuditValue(item,depth+1)]));
+  if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
+  return value;
+}
+const AUDIT_ENTITIES:Record<string,string[]>={customers:["customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_details","maintenance_details","project_costs"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session"]};
+async function auditRecords(params: URLSearchParams, user: AppUser) {
+  requireRole(user,["admin"]);
+  const page=Math.max(1,Math.min(10000,Number(params.get("page"))||1)),size=Math.max(1,Math.min(100,Number(params.get("page_size"))||25));
+  if(!Number.isInteger(page)||!Number.isInteger(size))throw new Error("分頁格式不正確。");
+  const query=new URLSearchParams({select:"*",order:"created_at.desc,id.desc",limit:String(size),offset:String((page-1)*size)});
+  const from=params.get("from"),to=params.get("to"),moduleName=params.get("module")||"",action=params.get("action")||"";
+  if((from&&!date(from))||(to&&!date(to))||(from&&to&&from>to))throw new Error("日期區間不正確。");
+  if(from)query.append("created_at",`gte.${from}T00:00:00+08:00`);
+  if(to)query.append("created_at",`lt.${new Date(Date.parse(to)+86400000).toISOString().slice(0,10)}T00:00:00+08:00`);
+  if(moduleName){if(!AUDIT_ENTITIES[moduleName])throw new Error("日誌模組不正確。");query.set("entity_type",`in.(${AUDIT_ENTITIES[moduleName].join(',')})`);}
+  const actions:Record<string,string>={create:"*insert*,*create*,*add*",update:"*update*,*edit*,*set*",delete:"*delete*,*remove*",import:"*import*",export:"*export*",login:"login",logout:"logout",batch:"*batch*,*bulk*"};
+  if(action){if(!actions[action])throw new Error("操作類型不正確。");query.set("action",`ilike(any).{${actions[action]}}`);}
+  const safe=(v:string)=>v.replace(/[(),.*{}"\\%_]/g," ").trim().slice(0,100);
+  const actor=safe(params.get("actor")||""),keyword=safe(params.get("q")||"");
+  if(actor)query.set("actor",`ilike.*${actor}*`);
+  // Search only metadata in SQL; JSON casts are not accepted as PostgREST filter columns.
+  if(keyword){
+    const aliases:Record<string,string[]>={新增:["insert","create"],修改:["update"],刪除:["delete"],登入:["login"],登出:["logout"],匯入:["import"],批次:["batch","bulk"],客戶:["customers","customer_contract_services"],工作日誌:["site_work_logs","site_work_log_workers"],電話:["phone_"],監控:["site_devices","monitoring_"],承攬:["contract_service"],維修:["repair","maintenance_"]};
+    const terms=[keyword,...(aliases[keyword]||[])];
+    query.set("or",`(${terms.flatMap(term=>["actor","entity_type","action","source"].map(field=>`${field}.ilike.*${term}*`)).join(',')})`);
+  }
+  if(params.get("id")){if(!/^\d+$/.test(params.get("id")!))throw new Error("日誌識別碼不正確。");query.set("id",`eq.${params.get("id")}`);}
+  const response=await db(`audit_logs?${query}`,{headers:{Prefer:"count=exact"}});
+  if(!response.ok)throw new Error("日誌查詢失敗。");
+  const records=(await response.json() as Row[]).map(auditProjection),total=Number(response.headers.get("content-range")?.split('/')[1]||0);
+  await auditDisplayNames(records);
+  return {records,pagination:{page,page_size:size,total,page_count:Math.max(1,Math.ceil(total/size))}};
+}
+async function auditDisplayNames(records: Row[]) {
+  const definitions: [string,string,string[]][] = [
+    ["app_users","display_name",["user_id","worker_user_ids","reporter_user_id"]],
+    ["customers","name",["customer_id"]],["projects","name",["project_id"]],
+    ["contract_service_types","name",["service_type_id","service_id","contract_service_type_id"]],
+    ["inventory_items","item_name",["inventory_item_id"]]
+  ];
+  const objects=records.flatMap(record=>[record.before_data,record.after_data]).filter(value=>value&&typeof value==="object"&&!Array.isArray(value)) as Row[];
+  const lookups=await Promise.all(definitions.map(async([table,label,fields])=>{
+    const ids=[...new Set(objects.flatMap(row=>fields.flatMap(field=>Array.isArray(row[field])?row[field] as unknown[]:[row[field]])).map(uuid).filter(Boolean))].slice(0,250);
+    const rows=ids.length?await get(`${table}?select=id,${label}&id=in.(${ids})`) as Row[]:[];
+    return {fields,names:new Map(rows.map(row=>[row.id,row[label]]))};
+  }));
+  for(const record of records)for(const side of ["before","after"]){
+    const original=record[`${side}_data`];if(!original||typeof original!=="object"||Array.isArray(original))continue;
+    const display={...original as Row};
+    for(const {fields,names} of lookups)for(const field of fields){const value=display[field];if(Array.isArray(value))display[field]=value.map(id=>names.get(id)||id);else if(names.has(value))display[field]=names.get(value);}
+    record[`display_${side}`]=display;
+  }
+}
+async function dashboardSnapshot(user: AppUser) {
+  const started=performance.now();
+  const [projects,repairs,logs]=await Promise.all([
+    get("projects?select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
+    get("repair_items?select=id,repair_no,received_on,customer_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
+    get("site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&order=log_date.desc,created_at.desc,id.desc&limit=15")
+  ]) as Row[][];
+  const unique=(rows:Row[],field:string)=>[...new Set(rows.map(row=>uuid(row[field])).filter(Boolean))];
+  const projectIds=unique(logs,"project_id"),itemIds=unique(repairs,"inventory_item_id"),logIds=unique(logs,"id");
+  const [logProjects,items,workers]=await Promise.all([
+    projectIds.length?get(`projects?select=id,name,customer_id&id=in.(${projectIds})`):[],
+    itemIds.length?get(`inventory_items?select=id,item_name,brand,model&id=in.(${itemIds})`):[],
+    logIds.length?get(`site_work_log_workers?select=work_log_id,user_id&work_log_id=in.(${logIds})`):[]
+  ]) as Row[][];
+  const customerIds=unique([...projects,...repairs,...logs,...logProjects],"customer_id"),workerIds=unique(workers,"user_id");
+  const [customers,users]=await Promise.all([
+    customerIds.length?get(`customers?select=id,name&id=in.(${customerIds})`):[],
+    workerIds.length?get(`app_users?select=id,display_name&id=in.(${workerIds})`):[]
+  ]) as Row[][];
+  const lookup=(rows:Row[],id:unknown,field:string)=>rows.find(row=>row.id===id)?.[field]||"—";
+  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,p.customer_id||lookup(logProjects,p.project_id,"customer_id"),"name"),project:lookup(logProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")}))},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
+}
+async function monitoringIpConflicts(payload: Row) {
+  const customerId=uuid(payload.customer_id),ips=Array.isArray(payload.ips)?[...new Set(payload.ips.map(v=>ipAddress(v)).filter(Boolean))]:[];
+  if(!customerId||ips.length>250)throw new Error("客戶或 IP 批次格式不正確（每批最多 250 筆）。");
+  const services=await get("contract_service_types?select=id&code=eq.surveillance&is_active=eq.true&limit=1") as Row[];
+  if(!services[0])throw new Error("找不到監控承攬分類。");
+  const links=await get(`customer_contract_services?select=customer_id&customer_id=eq.${customerId}&service_type_id=eq.${services[0].id}&limit=1`) as Row[];
+  if(!links.length)throw new Error("找不到有效的客戶承攬關聯。");
+  const sites=await get(`sites?select=id&customer_id=eq.${customerId}&contract_service_type_id=eq.${services[0].id}`) as Row[];
+  if(!sites.length||!ips.length)return {ips:[]};
+  const records=await getAll(`site_devices?select=id,ip_address&order=id.asc&deleted_at=is.null&site_id=in.(${sites.map(s=>s.id)})&ip_address=in.(${ips.map(ip=>`"${ip}"`).join(',')})`);
+  return {ips:[...new Set(records.map(row=>row.ip_address))]};
+}
+
+async function handleRequest(request: Request) {
   try {
     const requestUrl = new URL(request.url);
-    const isPreviewGateway = requestUrl.pathname.replace(/\/+$/, "").endsWith("/inventory-gateway-preview");
+    const isPreviewGateway = requestUrl.pathname.replace(/\/+$/, "").includes("/inventory-gateway-preview");
     if(request.method === "GET") {
       const user = await currentUser(request);
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
       const entity = text(params.get("entity"));
+      if(entity === "audit_logs")return json(await auditRecords(params,user));
        if (entity === "monitoring_devices") return json({...(await monitoringDevices(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
        if (entity === "monitoring_device_detail") return json({...(await monitoringDeviceDetail(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
        if (entity === "equipment_history") return json({...(await equipmentHistory(params) as Row),current_user:publicUser(user),preview_readonly:isPreviewGateway});
@@ -1117,7 +1220,8 @@ Deno.serve(async request => {
     if(request.method !== "POST") return json({error:"僅支援 GET 與 POST。"},405);
     const body=await request.json() as {operation?:unknown;payload?:unknown};
     const operation = text(body.operation), payload = body.payload&&typeof body.payload==="object"&&!Array.isArray(body.payload)?body.payload as Row:{};
-    if (operation === "login") { const logged = await login(payload); return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
+    if (operation === "login") { const logged = await login(payload); if(!isPreviewGateway){Object.assign(auditContext.getStore()!,auditHeaders(request,logged.user));await insert("audit_logs",{entity_type:"session",entity_id:logged.user.id,action:"LOGIN",actor:logged.user.username,source:"web"});} return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
+    if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);return json(await monitoringIpConflicts(payload));}
     if (isPreviewGateway) return json({error:"Preview 環境僅允許登入與讀取；所有寫入均已封鎖。",code:"PREVIEW_READ_ONLY"},403);
     if (operation === "bootstrap_admin") {
       const existing = await get("app_users?select=id&limit=1") as Row[];
@@ -1127,6 +1231,8 @@ Deno.serve(async request => {
     }
     const user = await currentUser(request);
     if (!user) return json({error:"請先以有效帳號登入。"},401);
+    Object.assign(auditContext.getStore()!,auditHeaders(request,user));
+    if(operation === "logout"){await insert("audit_logs",{entity_type:"session",entity_id:user.id,action:"LOGOUT",actor:user.username,source:"web"});return json({ok:true});}
     const result = await change(operation,payload,user);
     if (operation === "reveal_phone_system_credential") {
       const credential = Array.isArray(result) ? result[0] : null;
@@ -1142,4 +1248,5 @@ Deno.serve(async request => {
     const status=message.includes("沒有執行")?403:message.startsWith("找不到")?404:message.includes("其他使用者")||message.includes("已被其他有效設備")?409:400;
     return json({error:message,code:status===403?"FORBIDDEN":status===404?"NOT_FOUND":status===409?"CONFLICT":"VALIDATION_ERROR"},status);
   }
-});
+}
+Deno.serve(request => auditContext.run(auditHeaders(request), () => handleRequest(request)));

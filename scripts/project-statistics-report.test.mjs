@@ -69,9 +69,3 @@ test("反向日期不產生假統計", () => {
   const report = buildProjectReport({ ...base, from: "2026-08-03", to: "2026-08-01" });
   assert.equal(report.error, "起始日期不可晚於結束日期。");
 });
-
-test("CSV 匯出中和公式前綴並保留雙引號", () => {
-  assert.equal(csvCell("=HYPERLINK(\"https://example.invalid\")"), '"\'=HYPERLINK(""https://example.invalid"")"');
-  assert.equal(csvCell("  +1+1"), '"\'  +1+1"');
-  assert.equal(csvCell("normal"), '"normal"');
-});

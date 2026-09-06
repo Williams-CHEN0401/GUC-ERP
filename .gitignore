@@ -33,6 +33,7 @@ yarn-error.log*
 pnpm-debug.log*
 tmp/
 temp/
+supabase/.temp/
 *.tmp
 
 # IDE and operating-system files

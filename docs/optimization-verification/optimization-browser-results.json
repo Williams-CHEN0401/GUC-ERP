@@ -1,0 +1,58 @@
+[
+  {
+    "table": "pickupTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "table": "receiptTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "table": "repairTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "table": "inventoryTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "table": "customerTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "table": "projectTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "table": "supplierTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "table": "userTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "table": "worklogTable",
+    "doubleClick": "PASS"
+  },
+  {
+    "width": 1440,
+    "dashboard": "PASS",
+    "auditPagination": "PASS",
+    "redaction": "PASS",
+    "dialogEscape": "PASS",
+    "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans TC\", \"PingFang TC\", \"Microsoft JhengHei\", sans-serif",
+    "horizontalOverflow": false,
+    "pageErrors": []
+  },
+  {
+    "width": 390,
+    "dashboard": "PASS",
+    "auditPagination": "PASS",
+    "redaction": "PASS",
+    "dialogEscape": "PASS",
+    "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans TC\", \"PingFang TC\", \"Microsoft JhengHei\", sans-serif",
+    "horizontalOverflow": false,
+    "pageErrors": []
+  }
+]

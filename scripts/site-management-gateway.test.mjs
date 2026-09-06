@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from "node:async_hooks";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -5,11 +6,11 @@ import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import {randomUUID} from 'node:crypto';
 
-const code=stripTypeScriptTypes(readFileSync(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8'),{mode:'strip'});
+const code=stripTypeScriptTypes(readFileSync(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8').replace(/^import .*node:async_hooks.*;\r?\n/m,""),{mode:'strip'});
 const customer=randomUUID(),service=randomUUID(),site=randomUUID(),phone=randomUUID();
 function harness(role='operator'){
   let handler;const calls=[],reads=[];
-  const context=vm.createContext({URL,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto,Deno:{env:{get:()=>''},serve:fn=>{handler=fn;}}});
+  const context=vm.createContext({AsyncLocalStorage,performance,URL,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto,Deno:{env:{get:()=>''},serve:fn=>{handler=fn;}}});
   vm.runInContext(code,context);
   context.currentUser=async()=>role?{id:randomUUID(),username:'fixture',display_name:'測試員',role,is_active:true}:null;
   context.get=async path=>{
