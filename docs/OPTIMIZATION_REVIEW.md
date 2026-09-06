@@ -88,8 +88,15 @@ ERP 現有試算表匯出實際為 CSV（庫存與專案報表）；移除按鈕
 
 Windows Chrome 實際載入前端程式、使用隔離 HTTP fixture：1440px／390px、首頁 3 區與各 15 筆、9 清單雙擊、日誌查詢／第二頁／詳細／Escape、字型 computed style、無整頁橫向溢出與 JS pageerror 均通過。Fixture 不存放真實客戶資料或帳密。
 
-第二輪部署驗證結果於交付前補入本節。macOS Safari／iPhone Safari 實機未執行；Windows 窄視窗不冒稱 iPhone 實機。正式寫入 E2E 未執行，待核准正式發布與 migration 後另驗。
+第二輪：ERP 142 tests、案場 70 tests、TypeScript／Next production build／Gateway TypeScript 全數通過；隔離 PostgreSQL 6 組再驗通過。Windows Edge 1440px／390px 重跑 9 清單雙擊、首頁筆數、日誌篩選／分頁／詳細、Escape、字型、橫向溢出，無 JS pageerror。此輪以最後建置重新啟動伺服器後驗證；未把重新建置期間的舊伺服器快取當成產品測試結果。Vercel 兩站 READY，ERP GitHub Actions 品質檢查成功；案場 repository 未回傳此 commit 的 PR workflow。已在 Codex 瀏覽器開啟兩站登入頁並確認新版本。乾淨的自動化瀏覽器仍受 Vercel Authentication 保護，因此線上登入後流程、線上 API 效能與跨站 SSO 尚未完成驗證；本機 fixture 測試不冒稱真實帳號端到端測試。macOS Safari／iPhone Safari 實機未執行；Windows 窄視窗不冒稱 iPhone 實機。正式寫入 E2E 未執行，待核准正式發布與 migration 後另驗。
 
 ## 發布與回復
 
 本次新建獨立 `inventory-gateway-preview-optimization`；它沿用已驗證的自訂登入／角色權限，所有預覽業務寫入封鎖。正式 Gateway 未替換。正式發布時先套前向相容 migration，再部署 Gateway 與兩站；如需回復前端／Gateway，保留新增欄位及已遮蔽稽核資料，不還原敏感明文或刪除歷史資料。
+
+## 測試站與 PR
+
+- ERP：[Preview](https://guc-erp-vercel-rebuild-git-cod-8a3a0a-sam5321051-5955s-projects.vercel.app/)；[PR #25](https://github.com/Williams-CHEN0401/GUC-ERP/pull/25)。
+- 案場：[Preview](https://guc-site-data-system-git-codex-9e854d-sam5321051-5955s-projects.vercel.app/)；[PR #16](https://github.com/Williams-CHEN0401/GUC-Site-Data/pull/16)。
+- 若顯示 Vercel 存取驗證，使用專案擁有者的 Vercel 帳號登入；進站後再以既有 ERP 帳號登入。兩站 Preview 的系統切換預設網址已指向這次配套分支，正式網址不變。
+- Vercel 已驗證的程式提交：ERP 3b7e04a、案場 56b582e；之後的報告提交僅更新文件，不更動執行程式。
