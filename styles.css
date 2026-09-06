@@ -45,12 +45,12 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 @media(max-width:780px){.system-chooser{padding:24px 18px}.system-choice-grid{grid-template-columns:1fr}.system-choice{min-height:94px}}
 
 /* Semantic ERP navigation icons */
-.icon-sprite{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+.sidebar{overflow-y:auto}.sidebar>.brand,.sidebar>.preview-chip,.sidebar>.nav,.sidebar>.sidebar-foot{flex-shrink:0}
 .nav{gap:7px}
-.nav-item{min-height:48px;padding:7px 9px;gap:10px;border:1px solid transparent;text-decoration:none;transition:background-color .18s ease,color .18s ease,border-color .18s ease,transform .18s ease,box-shadow .18s ease}
+.nav-item{min-height:56px;padding:7px 9px;gap:10px;border:1px solid transparent;text-decoration:none;transition:background-color .18s ease,color .18s ease,border-color .18s ease,transform .18s ease,box-shadow .18s ease}
 .nav-item:hover{transform:translateX(2px);border-color:rgba(255,255,255,.08)}
-.nav-icon-shell{width:34px;height:34px;display:grid;place-items:center;flex:0 0 34px;border:1px solid rgba(255,255,255,.08);border-radius:9px;background:rgba(255,255,255,.05);color:#b8d2c9;transition:background-color .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease}
-.nav-icon-shell svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav-icon-shell{width:40px;height:40px;display:grid;place-items:center;flex:0 0 40px;overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:9px;background:rgba(255,255,255,.05);color:#b8d2c9;transition:background-color .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease}
+.nav-icon{display:block;width:100%;height:100%;object-fit:contain}
 .nav-item:hover .nav-icon-shell{color:#fff;border-color:rgba(255,255,255,.17);background:rgba(255,255,255,.09)}
 .nav-item.active{border-color:#d6e2de;background:#fff;box-shadow:0 8px 22px rgba(0,0,0,.14)}
 .nav-item.active .nav-icon-shell{color:#fff;border-color:var(--green-800);background:var(--green-800);box-shadow:0 5px 13px rgba(12,79,62,.24)}
