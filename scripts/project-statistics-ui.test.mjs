@@ -14,7 +14,7 @@ test("project statistics keeps the existing route and exposes the requested tabs
   assert.match(html, /id="materialDateFrom" type="date"/);
   assert.match(html, /id="materialDateTo" type="date"/);
   assert.match(app, /data-edit-work-log/);
-  assert.match(app, /function exportProjectMaterials/);
+  assert.doesNotMatch(app, /exportProjectMaterials|exportInventory|exportMaterials/);
 });
 
 test("materials scope includes work-log worker data and paginates growing datasets", () => {

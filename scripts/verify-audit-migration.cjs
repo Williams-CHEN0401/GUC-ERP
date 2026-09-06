@@ -1,0 +1,35 @@
+const {PGlite}=require(process.env.PGLITE_MODULE || '@electric-sql/pglite');
+const fs=require('node:fs');const assert=require('node:assert/strict');
+(async()=>{
+ const db=new PGlite();
+ await db.exec(`create role anon;create role authenticated;create role service_role;
+ create table audit_logs(id bigserial primary key,entity_type text,entity_id uuid,action text constraint audit_logs_action_check check(action in ('insert','update','delete','import','export','UPDATE_CREDENTIAL','IMPORT_DEVICES','BATCH_UPDATE','BATCH_DELETE','CREATE_REPAIR_ITEM','UPDATE_REPAIR_ITEM','DELETE_REPAIR_ITEM')),before_data jsonb,after_data jsonb,source text,actor text,created_at timestamptz default now());
+ create table contract_service_types(id uuid primary key,name text);
+ create table customer_contract_services(customer_id uuid,service_type_id uuid);
+ create table site_work_log_workers(work_log_id uuid,user_id uuid);
+ create table project_workers(project_id uuid,user_id uuid);
+ create table phone_terminal_import_logs(id uuid,customer_id uuid,source_rows jsonb);
+ create table site_work_logs(id uuid,log_date date,created_at timestamptz,deleted_at timestamptz);
+ create table repair_items(id uuid,received_on date,created_at timestamptz);
+ insert into audit_logs(entity_type,action,before_data) values('app_user','update','{"password":"historic-secret","notes":"password=freeform-secret"}');`);
+ const migration=fs.readFileSync(require('node:path').join(__dirname,'../supabase/migrations/20260906152432_audit_context_and_query_indexes.sql'),'utf8');
+ await db.exec(migration);await db.exec(migration);
+ const sessionMigration=fs.readFileSync(require('node:path').join(__dirname,'../supabase/migrations/20260906163230_allow_session_audit_events.sql'),'utf8');
+ await db.exec(sessionMigration);await db.exec(sessionMigration);
+ const context={actor:'測試員',actorId:'10000000-0000-4000-8000-000000000001',requestId:'10000000-0000-4000-8000-000000000002',sourceIp:'192.0.2.1',userAgent:'Isolated PostgreSQL audit test',system:'site'};
+ await db.query(`select set_config('request.headers',$1,false),set_config('request.jwt.claims','{"role":"service_role"}',false)`,[JSON.stringify({'x-guc-audit-context':JSON.stringify(context)})]);
+ await db.exec(`insert into customer_contract_services values('10000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000004');
+ update customer_contract_services set service_type_id='10000000-0000-4000-8000-000000000005';delete from customer_contract_services;
+ insert into phone_terminal_import_logs values('10000000-0000-4000-8000-000000000006',null,'[{"device_password":"secret-should-not-persist"}]');`);
+ const {rows}=await db.query('select * from audit_logs order by id');
+ assert.equal(rows.length,5);assert.ok(!JSON.stringify(rows).includes('historic-secret'));assert.ok(!JSON.stringify(rows).includes('freeform-secret'));assert.ok(!JSON.stringify(rows).includes('secret-should-not-persist'));
+ assert.deepEqual(rows.slice(1,4).map(row=>row.action),['insert','update','delete']);
+ for(const row of rows.slice(1)){assert.equal(row.actor,context.actor);assert.equal(row.actor_user_id,context.actorId);assert.equal(row.source_ip,context.sourceIp);assert.equal(row.user_agent,context.userAgent);assert.equal(row.request_id,context.requestId);assert.equal(row.system_module,'site');}
+ await db.exec(`select set_config('request.jwt.claims','{"role":"authenticated"}',false);insert into audit_logs(entity_type,action,actor) values('session','LOGIN','original');`);
+ const untrusted=(await db.query('select * from audit_logs order by id desc limit 1')).rows[0];assert.equal(untrusted.actor,'original');assert.equal(untrusted.actor_user_id,null);
+ const grants=await db.query(`select has_table_privilege('anon','audit_logs','INSERT') as anon_insert,has_table_privilege('authenticated','audit_logs','UPDATE') as client_update`);assert.equal(grants.rows[0].anon_insert,false);assert.equal(grants.rows[0].client_update,false);
+ await db.exec(`insert into audit_logs(entity_type,action) values('session','LOGOUT');`);
+ await assert.rejects(db.exec(`insert into audit_logs(entity_type,action) values('session','INVALID_EVENT');`));
+ console.log(JSON.stringify({database:'Isolated PGlite PostgreSQL',checks:['both migrations execute twice','historic and nested secrets redacted before storage','insert/update/delete link identity','trusted actor and request metadata','forged client context ignored','browser writes revoked','LOGIN/LOGOUT accepted; invalid event rejected'],passed:7}));
+ await db.close();
+})().catch(e=>{console.error(e);process.exitCode=1;});

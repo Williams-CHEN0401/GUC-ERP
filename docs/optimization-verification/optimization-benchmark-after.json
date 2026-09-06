@@ -1,0 +1,9 @@
+{
+  "runtime": "v24.20.0",
+  "platform": "win32",
+  "rows": 1000,
+  "fileBytes": 231265,
+  "parseValidationMedianMs": 48.88440000000003,
+  "runs": 10,
+  "phase": "after"
+}
