@@ -133,6 +133,7 @@ const internalEmail = (name: string) => `${name}@inventory.local`;
 const UPSTREAM_TIMEOUT_MS = 12_000;
 async function timedFetch(resource: string, init: RequestInit = {}, label = "資料服務") {
   const controller = new AbortController();
+  const started = performance.now();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   try {
     return await fetch(resource, { ...init, signal: controller.signal });
@@ -141,6 +142,7 @@ async function timedFetch(resource: string, init: RequestInit = {}, label = "資
     throw error;
   } finally {
     clearTimeout(timer);
+    const metrics=requestMetrics.getStore();if(metrics){metrics.requests++;metrics.transportMs+=performance.now()-started;}
   }
 }
 async function db(path: string, init: RequestInit = {}) { const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); const context=auditContext.getStore(); if(context)headers.set("x-guc-audit-context",JSON.stringify(context).replace(/[\u007f-\uffff]/g,char=>"\\u"+char.charCodeAt(0).toString(16).padStart(4,"0"))); return timedFetch(`${url}/rest/v1/${path}`, { ...init, headers }, "資料庫"); }
@@ -218,7 +220,7 @@ async function ensureContractSite(customerId: string, serviceTypeId: string, act
 }
 async function ensurePhoneContract(customerId: string, serviceTypeId: string) {
   const [links, services] = await Promise.all([
-    get(`customer_contract_services?customer_id=eq.${customerId}&service_type_id=eq.${serviceTypeId}&select=customer_id`) as Promise<{customer_id:string}[]>,
+    get(`customer_contract_services?is_active=eq.true&customer_id=eq.${customerId}&service_type_id=eq.${serviceTypeId}&select=customer_id`) as Promise<{customer_id:string}[]>,
     get(`contract_service_types?id=eq.${serviceTypeId}&code=eq.phone_system&is_active=eq.true&select=id`) as Promise<{id:string}[]>,
   ]);
   if (links.length !== 1 || services.length !== 1) throw new Error("此客戶未承攬啟用中的電話系統服務。");
@@ -287,7 +289,7 @@ const datasets: Record<string, DatasetDefinition> = {
   repair_items: { path: "repair_items?select=id,repair_no,source_maintenance_event_id,received_on,customer_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,source,updated_by,created_at,updated_at,row_version&order=received_on.desc,created_at.desc,id.desc", paged: true },
   customers: { path: "customers?select=id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc,id.asc", paged: true },
   contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,created_at,updated_at&order=sort_order.asc,name.asc" },
-  customer_contract_services: { path: "customer_contract_services?select=customer_id,service_type_id,created_at&order=created_at.asc" },
+  customer_contract_services: { path: "customer_contract_services?is_active=eq.true&select=customer_id,service_type_id,created_at&order=created_at.asc" },
   customer_contacts: { path: "customer_contacts?select=id,customer_id,name,title,phone,email,is_primary,note,created_at,updated_at,row_version&order=is_primary.desc,name.asc" },
   construction_details: { path: "construction_details?select=project_id,scope,planned_start_on,planned_end_on,actual_start_on,actual_end_on,acceptance_on,acceptance_note" },
   maintenance_details: { path: "maintenance_details?select=project_id,reported_at,scheduled_at,arrived_at,issue_description,resolution,warranty_status" },
@@ -315,6 +317,7 @@ const datasets: Record<string, DatasetDefinition> = {
   maintenance_event_workers: { path: "maintenance_event_workers?select=event_id,user_id,created_at&order=created_at.asc", paged: true }
 };
 const scopes: Record<string, string[]> = {
+  site_navigation: ["customers", "contract_service_types", "customer_contract_services"],
   dashboard: [], // Dedicated bounded dashboardSnapshot query below.
   transactions: ["customers", "projects", "items", "pickups", "receipts", "suppliers", "categories"],
   repairs: ["repair_items", "customers", "items", "suppliers", "categories"],
@@ -326,6 +329,27 @@ const scopes: Record<string, string[]> = {
   settings: ["accounts"],
   backup: Object.keys(datasets)
 };
+
+async function siteCustomerSnapshot(params: URLSearchParams, user: AppUser, isPreviewGateway: boolean) {
+  const customerId = uuid(params.get("customer_id")), serviceId = uuid(params.get("service_id"));
+  if (!customerId || !serviceId) throw new Error("請選擇客戶與承攬內容。");
+  const links = await get(`customer_contract_services?is_active=eq.true&customer_id=eq.${customerId}&service_type_id=eq.${serviceId}&select=customer_id`) as Row[];
+  if (!links.length) throw new Error("此客戶沒有有效承攬內容。");
+  const services = await get(`contract_service_types?id=eq.${serviceId}&is_active=eq.true&select=code`) as Row[];
+  if (!services.length) throw new Error("承攬內容已停用。");
+  const phone = services[0].code === "phone_system";
+  const result: Row = {current_user:publicUser(user),preview_readonly:isPreviewGateway,refreshed_at:new Date().toISOString(),errors:[],sites:[],site_devices:[],phone_systems:[],phone_extensions:[],phone_terminal_points:[],phone_credential_access_logs:[]};
+  if (phone) {
+    const names = ["phone_systems","phone_extensions","phone_terminal_points",...(user.role === "admin" ? ["phone_credential_access_logs"] : [])];
+    await Promise.all(names.map(async name => { const path = datasets[name].path + `&customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}`; result[name] = await (name === "phone_credential_access_logs" ? get(path) : getAll(path)); }));
+  } else {
+    const sites = await getAll(`sites?customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}&select=id,site_name,customer_id,contract_service_type_id,status&order=id.asc`) as Row[];
+    result.sites = sites;
+    if (sites.length) result.site_devices = await getAll(`site_devices?site_id=in.(${sites.map(row=>row.id).join(",")})&deleted_at=is.null&select=${MONITORING_DEVICE_SELECT},notes&order=id.asc`);
+  }
+  return result;
+}
+
 async function scopedSnapshot(user: AppUser, scopeName: string) {
   if(scopeName === "dashboard")return dashboardSnapshot(user);
   const names = scopes[scopeName];
@@ -402,7 +426,7 @@ async function monitoringCustomerScope(customerId: string) {
   const serviceId = services.length ? uuid(services[0].id) : null;
   if (!serviceId) throw new Error("監控承攬服務尚未啟用。");
   const [links, sites] = await Promise.all([
-    get(`customer_contract_services?customer_id=eq.${customerId}&service_type_id=eq.${serviceId}&select=customer_id&limit=1`) as Promise<Row[]>,
+    get(`customer_contract_services?is_active=eq.true&customer_id=eq.${customerId}&service_type_id=eq.${serviceId}&select=customer_id&limit=1`) as Promise<Row[]>,
     get(`sites?customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}&status=neq.closed&select=id,customer_id,contract_service_type_id&order=created_at.asc`) as Promise<Row[]>,
   ]);
   if (links.length !== 1) throw new Error("此客戶沒有有效的監控承攬關聯。");
@@ -472,7 +496,7 @@ async function monitoringDeviceOptions(user: AppUser) {
     get("monitoring_device_types?is_active=eq.true&select=code,name,sort_order&order=sort_order.asc") as Promise<Row[]>,
     serviceId ? get(`sites?contract_service_type_id=eq.${serviceId}&status=neq.closed&select=id,site_code,site_name&order=site_code.asc`) as Promise<Row[]> : Promise.resolve([]),
     get("site_devices?deleted_at=is.null&device_type=not.is.null&select=device_brand,device_model,cabinet,network_cable_no") as Promise<Row[]>,
-    serviceId ? get(`customer_contract_services?service_type_id=eq.${serviceId}&select=customer_id`) as Promise<Row[]> : Promise.resolve([]),
+    serviceId ? get(`customer_contract_services?is_active=eq.true&service_type_id=eq.${serviceId}&select=customer_id`) as Promise<Row[]> : Promise.resolve([]),
   ]);
   const customerIds = [...new Set(links.map(row => uuid(row.customer_id)).filter((value): value is string => !!value))];
   const customers = customerIds.length ? await get(`customers?id=in.(${customerIds.join(",")})&select=id,customer_code,customer_category,name&order=customer_code.asc`) as Row[] : [];
@@ -701,7 +725,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     for(let index=0;index<payload.rows.length;index+=1){
       const candidate=payload.rows[index];
       if(!candidate||typeof candidate!=="object"||Array.isArray(candidate)) throw new Error(`第 ${index+2} 列資料格式不正確。`);
-      const row=candidate as Row,values=monitoringDeviceInput({...row,site_id:siteId});
+      const row=candidate as Row,values=monitoringDeviceInput({...row,site_id:siteId,status:"active",supports_audio:undefined,resolution_width:undefined,resolution_height:undefined,fps:undefined});
       const sourceRow=Number(row.source_row);
       if(!Number.isInteger(sourceRow)||sourceRow<2) throw new Error(`第 ${index+2} 列來源列號不正確。`);
       const credential=await deviceCredentialEnvelope(row.login_username,row.login_password);
@@ -726,6 +750,18 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     return rpc("upsert_repair_item_v1",{p_id:id,p_row_version:rowVersion,p_received_on:received_on,p_customer_id:customer_id,p_inventory_item_id:inventory_item_id,p_quantity:quantity,p_serial_number:serial_number||null,p_issue_description:issue_description,p_supplier_id:supplier_id,p_sent_to_supplier_on:sent_to_supplier_on||null,p_returned_from_supplier_on:returned_from_supplier_on||null,p_returned_to_customer_on:returned_to_customer_on||null,p_status:status,p_supplier_reference:supplier_reference||null,p_notes:notes||null,p_actor:actor});
   }
   if (operation === "delete_repair_item") { requireRole(user,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version); if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("維修品資料或版本不正確。"); return rpc("delete_repair_item_v1",{p_id:id,p_row_version:rowVersion,p_actor:actor}); }
+  if (operation === "manage_customer_service") {
+    requireRole(user,["admin"]);
+    const customer=uuid(payload.customer_id),service=uuid(payload.service_id),action=text(payload.action),version=Number(payload.row_version),notes=nullable(payload.notes,2000);
+    if(!customer||!service||!["create","update","delete"].includes(action)||notes===null||typeof payload.is_active!=="boolean"||(action!=="create"&&(!Number.isInteger(version)||version<1)))throw new Error("承攬內容資料不正確。");
+    return rpc("manage_customer_service_v1",{p_customer_id:customer,p_service_id:service,p_action:action,p_row_version:action==="create"?null:version,p_is_active:payload.is_active,p_notes:notes,p_actor_user_id:user!.id});
+  }
+  if (operation === "save_equipment_history") {
+    requireRole(user,["admin","operator"]);
+    const equipmentId=uuid(payload.equipment_id),requestId=uuid(payload.request_id),event=payload.event as Row;
+    if(!equipmentId||!requestId||!event||Array.isArray(event)||!date(event.occurred_at)||!limited(event.description,4000)||!limited(event.result,2000)||nullable(event.cause,2000)===null||nullable(event.notes,2000)===null||!Array.isArray(event.worker_user_ids)||event.worker_user_ids.length<1||event.worker_user_ids.length>30||event.worker_user_ids.some(id=>!uuid(id)))throw new Error("請填寫日期、處理方式、結果及有效處理人員。");
+    return rpc("save_equipment_history_v1",{p_equipment_id:equipmentId,p_event:event,p_actor_user_id:user!.id,p_request_id:requestId});
+  }
   if (operation === "create_customer") { requireRole(user,["admin"]); const category=customerCategory(payload.customer_category),name=limited(payload.name,160),phone=nullable(payload.phone,50),email=optionalEmail(payload.email),address=nullable(payload.address,500),note=nullable(payload.note,1000),service_codes=Array.isArray(payload.contract_service_codes)?payload.contract_service_codes.map(text):[]; if(!category||!name||phone===null||email===null||address===null||note===null||service_codes.some(code=>!/^[a-z0-9_]{2,64}$/.test(code))||new Set(service_codes).size!==service_codes.length) throw new Error("請完整填寫客戶分類、承攬內容及有效的客戶資料。"); return rpc("create_customer_with_contracts_v1",{p_customer_category:category,p_name:name,p_phone:phone||null,p_email:email||null,p_address:address||null,p_note:note||null,p_service_codes:service_codes,p_actor:actor}); }
   if (operation === "update_customer") { requireRole(user,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version),category=customerCategory(payload.customer_category),name=limited(payload.name,160),phone=nullable(payload.phone,50),email=optionalEmail(payload.email),address=nullable(payload.address,500),note=nullable(payload.note,1000),service_codes=Array.isArray(payload.contract_service_codes)?payload.contract_service_codes.map(text):[]; if(!id||!Number.isInteger(rowVersion)||rowVersion<1||!category||!name||phone===null||email===null||address===null||note===null||service_codes.some(code=>!/^[a-z0-9_]{2,64}$/.test(code))||new Set(service_codes).size!==service_codes.length) throw new Error("請完整填寫客戶分類、承攬內容及有效的客戶資料。"); return rpc("update_customer_with_contracts_v1",{p_id:id,p_row_version:rowVersion,p_customer_category:category,p_name:name,p_phone:phone||null,p_email:email||null,p_address:address||null,p_note:note||null,p_service_codes:service_codes,p_actor:actor}); }
   if (operation === "delete_customer") { requireRole(user,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version); if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("客戶資料或版本不正確。"); return rpc("delete_customer_record",{p_id:id,p_row_version:rowVersion,p_actor:actor}); }
@@ -1042,7 +1078,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!customer_id||!service_type_id||!project_id||values.length<1||values.length>10) throw new Error("承攬附件缺少客戶、承攬內容或專案資料。");
     const customers=await get(`customers?id=eq.${customer_id}&select=id,name`) as {id:string;name:string}[];
     const services=await get(`contract_service_types?id=eq.${service_type_id}&is_active=eq.true&select=id,name`) as {id:string;name:string}[];
-    const links=await get(`customer_contract_services?customer_id=eq.${customer_id}&service_type_id=eq.${service_type_id}&select=customer_id`) as {customer_id:string}[];
+    const links=await get(`customer_contract_services?is_active=eq.true&customer_id=eq.${customer_id}&service_type_id=eq.${service_type_id}&select=customer_id`) as {customer_id:string}[];
     const projects=await get(`projects?id=eq.${project_id}&customer_id=eq.${customer_id}&select=id,name`) as {id:string;name:string}[];
     if(customers.length!==1||services.length!==1||links.length!==1||projects.length!==1) throw new Error("找不到客戶、承攬內容與專案的有效關聯。");
     let uploadFolder="";
@@ -1099,6 +1135,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
 }
 type AuditContext = { actor: string; actorId: string; requestId: string; sourceIp: string; userAgent: string; system: string };
 const auditContext = new AsyncLocalStorage<AuditContext>();
+const requestMetrics = new AsyncLocalStorage<{started:number;requests:number;transportMs:number}>();
 function auditHeaders(request: Request, user?: AppUser): AuditContext {
   return { actor:user?.display_name||user?.username||"",actorId:user?.id||"",requestId:crypto.randomUUID(),sourceIp:(request.headers.get("x-forwarded-for")||"").split(",")[0].trim().slice(0,64),userAgent:(request.headers.get("user-agent")||"").slice(0,512),system:request.headers.get("x-guc-system")==="site"?"site":"erp" };
 }
@@ -1188,7 +1225,7 @@ async function monitoringIpConflicts(payload: Row) {
   if(!customerId||ips.length>250)throw new Error("客戶或 IP 批次格式不正確（每批最多 250 筆）。");
   const services=await get("contract_service_types?select=id&code=eq.surveillance&is_active=eq.true&limit=1") as Row[];
   if(!services[0])throw new Error("找不到監控承攬分類。");
-  const links=await get(`customer_contract_services?select=customer_id&customer_id=eq.${customerId}&service_type_id=eq.${services[0].id}&limit=1`) as Row[];
+  const links=await get(`customer_contract_services?is_active=eq.true&select=customer_id&customer_id=eq.${customerId}&service_type_id=eq.${services[0].id}&limit=1`) as Row[];
   if(!links.length)throw new Error("找不到有效的客戶承攬關聯。");
   const sites=await get(`sites?select=id&customer_id=eq.${customerId}&contract_service_type_id=eq.${services[0].id}`) as Row[];
   if(!sites.length||!ips.length)return {ips:[]};
@@ -1208,12 +1245,23 @@ async function handleRequest(request: Request) {
       if(entity === "audit_logs")return json(await auditRecords(params,user));
        if (entity === "monitoring_devices") return json({...(await monitoringDevices(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
        if (entity === "monitoring_device_detail") return json({...(await monitoringDeviceDetail(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
+       if (entity === "customer_service_management") {
+         const customer=uuid(params.get("customer_id"));if(!customer)throw new Error("客戶編號不正確。");
+         const [records,services]=await Promise.all([get(`customer_contract_services?customer_id=eq.${customer}&select=customer_id,service_type_id,is_active,notes,created_at,updated_at,row_version&order=created_at.asc`),get(datasets.contract_service_types.path)]);
+         return json({records,services,current_user:publicUser(user),preview_readonly:isPreviewGateway});
+       }
+       if (entity === "equipment_history_search") {
+         const customer=uuid(params.get("customer_id")),service=uuid(params.get("service_id"));if(!customer||!service)throw new Error("請選擇客戶與承攬內容。");
+         return json({...await rpc("search_equipment_history_v1",{p_customer_id:customer,p_service_id:service,p_search:text(params.get("search")).slice(0,160),p_type:text(params.get("type")).slice(0,60),p_page:Math.max(1,Number(params.get("page"))||1)}) as Row,preview_readonly:isPreviewGateway});
+       }
+       if (entity === "maintenance_workers") return json({records:await get("app_users?is_active=eq.true&select=id,display_name&order=display_name.asc")});
        if (entity === "equipment_history") return json({...(await equipmentHistory(params) as Row),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_options") return json({...(await monitoringDeviceOptions(user)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_dashboard") return json({...(await monitoringDeviceDashboard(user)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_imports") return json({...(await monitoringDeviceImports(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (params.has("entity")) return json(await queryRecords(params));
       const scopeName = text(params.get("scope")) || "dashboard";
+      if (scopeName === "site_customer") return json(await siteCustomerSnapshot(params,user,isPreviewGateway));
       if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
       return json(await scopedSnapshot(user, scopeName));
     }
@@ -1249,4 +1297,8 @@ async function handleRequest(request: Request) {
     return json({error:message,code:status===403?"FORBIDDEN":status===404?"NOT_FOUND":status===409?"CONFLICT":"VALIDATION_ERROR"},status);
   }
 }
-Deno.serve(request => auditContext.run(auditHeaders(request), () => handleRequest(request)));
+Deno.serve(request => auditContext.run(auditHeaders(request), () => requestMetrics.run({started:performance.now(),requests:0,transportMs:0},async()=>{
+  const response=await handleRequest(request),metrics=requestMetrics.getStore()!;
+  response.headers.set("Server-Timing",`gateway;dur=${(performance.now()-metrics.started).toFixed(2)}, upstream;dur=${metrics.transportMs.toFixed(2)};desc="auth and database transport sum", upstream_requests;desc="${metrics.requests}"`);
+  return response;
+})));
