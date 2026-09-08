@@ -18,7 +18,7 @@ test("new-item tab exposes an admin-only product-category flow", () => {
 
 test("gateway and database restrict category creation to the trusted admin path", () => {
   assert.match(edge, /operation === "create_product_category"/);
-  assert.match(edge, /create_product_category[\s\S]*?requireRole\(user,\["admin"\]\)/);
+  assert.match(edge, /create_product_category[\s\S]*?requireOperation\(user,operation,payload,\["admin"\]\)/);
   assert.match(edge, /rpc\("create_product_category_v1"/);
   assert.match(migration, /security invoker/i);
   assert.match(migration, /set search_path = ''/i);

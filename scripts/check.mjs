@@ -88,7 +88,7 @@ if (!nas.includes('root !== "/GUC-ERP"')) throw new Error("NAS root path guard m
 
 const edge = readFileSync(new URL("../supabase/functions/inventory-gateway/index.ts", import.meta.url), "utf8");
 if (!edge.includes("const user = await currentUser(request)")) throw new Error("Supabase user-token verification is missing");
-if (!edge.includes('requireRole(user,["admin","operator"])')) throw new Error("Supabase role verification is missing");
+if (!edge.includes('requireOperation(user,operation,payload,["admin","operator"])')) throw new Error("Supabase role verification is missing");
 if (!edge.includes("scopedSnapshot") || !edge.includes("Promise.allSettled")) throw new Error("Scoped data isolation missing");
 if (!edge.includes("UPSTREAM_TIMEOUT_MS") || !edge.includes("timedFetch")) throw new Error("Supabase upstream timeout guard missing");
 if (!edge.includes('operation === "create_contract_site_attachment_batch"')) throw new Error("Contract attachment index persistence is missing");

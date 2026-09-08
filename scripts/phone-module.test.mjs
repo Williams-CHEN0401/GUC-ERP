@@ -33,7 +33,7 @@ test("phone Excel import is row-rollback safe, logged, service-role only, and pr
   assert.match(phoneImport, /security definer/);
   assert.match(phoneImport, /revoke all on function public\.import_phone_terminal_rows_v1[\s\S]*from public, anon, authenticated/);
   assert.match(phoneImport, /grant execute on function public\.import_phone_terminal_rows_v1[\s\S]*to service_role/);
-  assert.match(edge, /operation === "import_phone_terminal_rows"[\s\S]*requireRole\(user,\["admin","operator"\]\)/);
+  assert.match(edge, /operation === "import_phone_terminal_rows"[\s\S]*requireOperation\(user,operation,payload,\["admin","operator"\]\)/);
   assert.match(edge, /preview_status/);
   assert.match(edge, /eligibleRows/);
   for (const marker of ["phone_type_match_status", "normalizeMatch", "typesBySource", "phone_type_matched", "failure_reasons", 'operation === "import_phone_terminal_rows"']) assert.ok(edge.includes(marker), `missing exact type matching/result marker: ${marker}`);
@@ -79,11 +79,11 @@ test("credentials are encrypted and inaccessible through the regular snapshot", 
 });
 
 test("gateway enforces phone module RBAC", () => {
-  assert.match(edge, /operation === "upsert_phone_system"[\s\S]*requireRole\(user,\["admin","operator"\]\)/);
-  assert.match(edge, /operation === "upsert_phone_extension"[\s\S]*requireRole\(user,\["admin","operator"\]\)/);
-  assert.match(edge, /operation === "delete_phone_system"[\s\S]*requireRole\(user,\["admin"\]\)/);
-  assert.match(edge, /operation === "set_phone_system_credential"[\s\S]*requireRole\(user,\["admin"\]\)/);
-  assert.match(edge, /operation === "reveal_phone_system_credential"[\s\S]*requireRole\(user,\["admin"\]\)/);
+  assert.match(edge, /operation === "upsert_phone_system"[\s\S]*requireOperation\(user,operation,payload,\["admin","operator"\]\)/);
+  assert.match(edge, /operation === "upsert_phone_extension"[\s\S]*requireOperation\(user,operation,payload,\["admin","operator"\]\)/);
+  assert.match(edge, /operation === "delete_phone_system"[\s\S]*requireOperation\(user,operation,payload,\["admin"\]\)/);
+  assert.match(edge, /operation === "set_phone_system_credential"[\s\S]*requireOperation\(user,operation,payload,\["admin"\]\)/);
+  assert.match(edge, /operation === "reveal_phone_system_credential"[\s\S]*requireOperation\(user,operation,payload,\["admin"\]\)/);
   assert.match(edge, /upsert_phone_extension_v3/);
   assert.match(edge, /p_building_name/);
   assert.match(edge, /extension_number=nullable/);

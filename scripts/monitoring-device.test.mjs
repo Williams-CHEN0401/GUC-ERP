@@ -24,7 +24,7 @@ test("preview gateway blocks mutation POSTs at the Edge boundary",()=>{
 });
 
 test("gateway enforces monitoring roles and does not expose credential material",()=>{
-  for(const marker of ['operation === "upsert_monitoring_device"','operation === "delete_monitoring_device"','operation === "import_monitoring_devices"','requireRole(user,["admin","operator"])','requireRole(user,["admin"])'])assert.ok(edge.includes(marker),`missing ${marker}`);
+  for(const marker of ['operation === "upsert_monitoring_device"','operation === "delete_monitoring_device"','operation === "import_monitoring_devices"','requireOperation(user,operation,payload,["admin","operator"])','requireOperation(user,operation,payload,["admin"])'])assert.ok(edge.includes(marker),`missing ${marker}`);
   const select=edge.match(/const MONITORING_DEVICE_SELECT = ([^;]+);/)?.[1]||"";
   assert.doesNotMatch(select,/password|username|ciphertext|authentication_tag|iv/);
 });

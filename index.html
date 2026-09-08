@@ -64,7 +64,7 @@
             <div class="tab-pane" data-pane="receipts">
               <div class="page-actions"><div><h2>進貨管理</h2><p>供應商須由主檔下拉選擇，支援多筆登錄</p></div><button class="primary" data-open="receiptModal">＋ 新增進貨</button></div>
               <div class="filterbar"><label class="search">⌕<input id="receiptSearch" placeholder="搜尋供應商、日期、品項或備註" /></label><select id="receiptSort"><option value="date:desc">日期：由新到舊</option><option value="date:asc">日期：由舊到新</option><option value="supplier:asc">供應商：升冪</option></select></div>
-              <p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="receipt" data-key="date">進貨日期</th><th data-table-sort="receipt" data-key="supplier">供應商</th><th data-table-sort="receipt" data-key="item">品項</th><th data-table-sort="receipt" data-key="quantity">數量</th><th data-table-sort="receipt" data-key="note">備註</th><th>操作</th></tr></thead><tbody id="receiptTable"></tbody></table></div><div id="receiptPagination"></div>
+              <p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="receipt" data-key="date">進貨日期</th><th data-table-sort="receipt" data-key="supplier">供應商</th><th data-table-sort="receipt" data-key="item">品項</th><th data-table-sort="receipt" data-key="quantity">數量</th><th>訂貨客戶</th><th data-table-sort="receipt" data-key="note">備註</th><th>操作</th></tr></thead><tbody id="receiptTable"></tbody></table></div><div id="receiptPagination"></div>
             </div>
           </section>
 
@@ -119,8 +119,8 @@
           </section>
 
           <section class="page" id="settings" data-page="settings">
-            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="logs">系統日誌</button></div>
-            <div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／專案與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
+            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="permissions">角色／專案權限</button><button data-tab="logs">系統日誌</button></div>
+            <div class="tab-pane" data-pane="permissions" id="permissionSettings"></div><div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／專案與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
             <div class="tab-pane" data-pane="users">
               <div class="page-actions"><div><h2>使用者管理</h2><p>可新增、查詢、修改及刪除使用者；僅管理員可執行異動。</p></div><button class="primary" data-open="accountModal">＋ 新增使用者</button></div>
               <div class="filterbar"><label class="search">⌕<input id="userSearch" placeholder="搜尋帳號、顯示名稱、角色或狀態" /></label><select id="userSort"><option value="updatedRaw:desc">最新日期優先</option><option value="username:asc">帳號：升冪</option><option value="username:desc">帳號：降冪</option><option value="displayName:asc">名稱：升冪</option><option value="role:asc">角色：升冪</option></select></div>
@@ -180,6 +180,8 @@
     <script src="/project-report.js" defer></script>
     <dialog id="auditDialog" class="audit-dialog"><header><h2 id="auditDetailTitle"></h2><button type="button" onclick="this.closest('dialog').close()">關閉</button></header><div id="auditDetailBody"></div></dialog>
     <script src="/audit-ui.js" defer></script>
+    <script src="/permissions-ui.js" defer></script>
+    <script src="/receipt-customers.js" defer></script>
     <script src="/app.js" defer></script>
     <script src="/customer-services.js" defer></script>
   </body>
