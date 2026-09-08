@@ -806,4 +806,4 @@ document.addEventListener("keydown",event=>{
 });
 
 initEnvironment();preparePageLinks();setupTabs();addItemBatchRow();renderAll();applyUserState();sessionChannelInstance();
-(async()=>{if(!accessToken)storeAccessToken(await requestSessionFromOtherTab());if(!accessToken)return showLogin();try{const session=await apiRequest({method:"GET",scope:"session"});hydrateSnapshot(session);hideLogin();await continueAfterAuthentication();}catch{logout({preservePage:true});}})();
+(async()=>{if(!accessToken){const recoveredToken=await requestSessionFromOtherTab();if(accessToken)return;storeAccessToken(recoveredToken);}if(!accessToken)return showLogin();try{const session=await apiRequest({method:"GET",scope:"session"});hydrateSnapshot(session);hideLogin();await continueAfterAuthentication();}catch{logout({preservePage:true});}})();
