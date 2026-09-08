@@ -22,8 +22,8 @@ test("repair UI links customer and product categories to canonical records",()=>
 
 test("gateway loads and validates the repair workflow with least-privilege roles",()=>{
   for(const marker of ['repair_items: { path: "repair_items?select=','repairs: ["repair_items", "customers", "items", "suppliers", "categories"]','operation === "upsert_repair_item"','operation === "delete_repair_item"','rpc("upsert_repair_item_v1"','rpc("delete_repair_item_v1"'])assert.ok(gateway.includes(marker),`missing ${marker}`);
-  assert.match(gateway,/operation === "upsert_repair_item"[\s\S]*?requireRole\(user,\["admin","operator"\]\)/);
-  assert.match(gateway,/operation === "delete_repair_item"[\s\S]*?requireRole\(user,\["admin"\]\)/);
+  assert.match(gateway,/operation === "upsert_repair_item"[\s\S]*?requireOperation\(user,operation,payload,\["admin","operator"\]\)/);
+  assert.match(gateway,/operation === "delete_repair_item"[\s\S]*?requireOperation\(user,operation,payload,\["admin"\]\)/);
   assert.match(gateway,/維修流程日期順序不正確/);
 });
 

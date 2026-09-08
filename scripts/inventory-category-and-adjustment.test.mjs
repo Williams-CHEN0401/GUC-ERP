@@ -12,7 +12,7 @@ test("商品與庫存可由管理員新增貨品種類", () => {
   assert.match(app, /type==="categoryModal"/);
   assert.match(app, /mutate\("create_product_category"/);
   assert.match(app, /data-open="categoryModal"[\s\S]*role!=="admin"/);
-  assert.match(gateway, /operation === "create_product_category"[\s\S]*requireRole\(user,\["admin"\]\)/);
+  assert.match(gateway, /operation === "create_product_category"[\s\S]*requireOperation\(user,operation,payload,\["admin"\]\)/);
   assert.equal([...gateway.matchAll(/operation === "create_product_category"/g)].length, 1);
   assert.match(gateway, /rpc\("create_product_category_v1",\{p_name:name,p_code_prefix:code_prefix,p_actor:actor\}\)/);
   assert.equal([...app.matchAll(/type==="categoryModal"/g)].length, 2);

@@ -35,7 +35,7 @@ function harness(role='operator'){
 test('monitoring options include eligible customers and retain the expected filter contract',async()=>{
   const h=harness(),r=await h.request({method:'GET',query:'?entity=monitoring_device_options'});
   assert.equal(r.status,200);assert.equal(r.body.customers[0].id,customer);
-  assert.deepEqual(r.body.filters,{brands:[],models:[],cabinets:[],network_cables:[]});
+  assert.deepEqual(r.body.filters,{types:[],brands:[],models:[],cabinets:[],network_cables:[]});
   assert.ok(h.reads.some(path=>path.includes('service_type_id=eq.'+service)));
   assert.ok(h.reads.some(path=>path.includes('customers?id=in.('+customer+')')));
 });

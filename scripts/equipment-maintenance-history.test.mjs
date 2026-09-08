@@ -30,7 +30,7 @@ test("work log and equipment events save through one atomic database function", 
   assert.match(migration, /registry\.customer_id = p_customer_id/);
   assert.match(gateway, /maintenanceEventsInput/);
   assert.match(gateway, /p_maintenance_events:maintenance_events/);
-  assert.match(gateway, /requireRole\(user,\["admin"\]\).*void_maintenance_event/s);
+  assert.match(gateway, /requireOperation\(user,operation,payload,\["admin"\]\).*void_maintenance_event/s);
   assert.match(migration, /'maintenance_event_equipment'[\s\S]*'equipment_ids'/);
   assert.match(migration, /'maintenance_event_workers'[\s\S]*'user_ids'/);
   assert.match(migration, /'maintenance_event_result'/);

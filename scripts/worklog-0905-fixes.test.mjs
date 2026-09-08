@@ -19,7 +19,7 @@ test("native sidebar new tabs securely request the existing same-origin session"
   assert.match(app, /SESSION_REQUEST_MESSAGE/);
   assert.match(app, /SESSION_RESPONSE_MESSAGE/);
   assert.match(app, /requestId: message\.requestId, accessToken/);
-  assert.match(app, /storeAccessToken\(await requestSessionFromOtherTab\(\)\)/);
+  assert.match(app, /const recoveredToken=await requestSessionFromOtherTab\(\);if\(accessToken\)return;storeAccessToken\(recoveredToken\)/);
   assert.doesNotMatch(app, /localStorage\.(?:getItem|setItem)\(SESSION_KEY/);
   assert.doesNotMatch(html, /access_token|GUC_ERP_ACCESS_TOKEN/);
 });
