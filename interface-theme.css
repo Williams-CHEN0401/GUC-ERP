@@ -87,6 +87,7 @@ button:disabled { cursor: not-allowed; }
 .panel-head { margin-bottom: 20px; gap: 18px; align-items: center; }
 .panel-head p, .page-actions p { font-size: 13px; line-height: 1.65; }
 .page-actions { margin: 0 0 24px; gap: 20px; }
+.page-actions > .primary { flex-shrink: 0; white-space: nowrap; }
 .page-actions h2 { font-size: 28px; font-weight: 600; }
 .dashboard-focus > .panel { border-top: 3px solid #879273; }
 .dashboard-pair > .panel { border-top: 3px solid #c8cdbb; }
@@ -203,6 +204,7 @@ input[type=checkbox] { accent-color: var(--green-800); }
   .filterbar { flex-wrap: wrap; }
   .filterbar .search { min-width: 0; flex: 1 1 240px; }
   .filterbar select { max-width: 100%; }
+  .page-actions { flex-wrap: wrap; }
 }
 @media (max-width: 780px) {
   .sidebar { overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
