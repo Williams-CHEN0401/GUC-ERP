@@ -1,0 +1,38 @@
+const {PGlite}=require(process.env.PGLITE_MODULE||'@electric-sql/pglite');
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const id=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+(async()=>{const db=new PGlite();try{
+await db.exec(`create role anon;create role authenticated;create role service_role;
+create table public.app_users(id uuid primary key,username text,role text,is_active boolean);
+create table public.customers(id uuid primary key,name text,address text,phone text);
+create table public.contract_service_types(id uuid primary key,code text,is_active boolean);
+create table public.customer_contract_services(customer_id uuid,service_type_id uuid,is_active boolean);
+create table public.sites(id uuid primary key,customer_id uuid,contract_service_type_id uuid,status text,created_at timestamptz default now(),source text,updated_by text);
+create table public.monitoring_device_types(code text,is_active boolean);
+create sequence public.site_device_monitoring_no_seq;
+create table public.site_devices(id uuid primary key default gen_random_uuid(),site_id uuid,device_no text,device_name text,ip_address text,device_type text,network_cable_no text,cabinet text,device_brand text,device_model text,details text,http_port integer,supports_audio boolean,resolution_width integer,resolution_height integer,fps integer,manual_url text,status text,notes text,credential_configured boolean,source text,created_by text,updated_by text,row_version integer default 1,deleted_at timestamptz);
+create table public.site_device_credentials(device_id uuid primary key,username_ciphertext bytea,username_iv bytea,username_authentication_tag bytea,password_ciphertext bytea,password_iv bytea,password_authentication_tag bytea,masked_username text,key_version text,updated_by text);
+create table public.audit_logs(entity_type text,entity_id uuid,action text,before_data jsonb,after_data jsonb,source text,actor text);
+create function public.fixture_audit() returns trigger language plpgsql as $$begin new.row_version=old.row_version+1;insert into public.audit_logs values('site_devices',new.id,'UPDATE',to_jsonb(old),to_jsonb(new),'site_data',current_setting('app.actor',true));return new;end$$;
+create trigger fixture_audit before update on public.site_devices for each row execute function public.fixture_audit();
+insert into public.app_users values('${id(1)}','admin','admin',true),('${id(2)}','operator','operator',true),('${id(3)}','viewer','viewer',true);
+insert into public.customers values('${id(10)}','Customer',null,null),('${id(11)}','Other',null,null);
+insert into public.contract_service_types values('${id(20)}','surveillance',true);
+insert into public.customer_contract_services values('${id(10)}','${id(20)}',true),('${id(11)}','${id(20)}',true);
+insert into public.sites(id,customer_id,contract_service_type_id,status) values('${id(30)}','${id(10)}','${id(20)}','active'),('${id(31)}','${id(11)}','${id(20)}','active');
+insert into public.monitoring_device_types values('camera',true),('hub',true),('monitoring_host',true);`);
+await db.exec(fs.readFileSync(require('node:path').join(__dirname,'fixtures/monitoring-existing-functions.sql'),'utf8'));
+await db.exec(fs.readFileSync(require('node:path').join(__dirname,'../supabase/migrations/20260908040056_monitoring_bulk_edit.sql'),'utf8'));
+for(let i=0;i<3;i++)await db.query('insert into site_devices(id,site_id,device_name,device_type,ip_address,device_brand,device_model,cabinet,network_cable_no,resolution_width,resolution_height,fps,http_port,status,credential_configured) values($1,$2,$3,\'camera\',$4,\'Brand\',\'Model\',\'Old\',\'Cable\',1920,1080,30,80,\'active\',true)',[id(40+i),id(i===2?31:30),'Cam '+i,'192.0.2.'+(i+1)]);
+const batch=(rows,patch,actor=id(2),customer=id(10))=>db.query('select batch_update_monitoring_devices_v1($1,$2,$3,$4) result',[customer,JSON.stringify(rows),JSON.stringify(patch),actor]);
+const rows=[{id:id(40),row_version:1},{id:id(41),row_version:1}];
+const result=await batch(rows,{cabinet:'',network_cable_no:'',device_brand:'New'});assert.equal(result.rows[0].result.updated,2);
+let devices=(await db.query('select * from site_devices order by id')).rows;for(const d of devices.slice(0,2)){assert.equal(d.cabinet,null);assert.equal(d.network_cable_no,null);assert.equal(d.device_brand,'New');assert.equal(d.row_version,2);assert.equal(d.http_port,80);assert.equal(d.fps,30);assert.equal(d.resolution_width,1920);assert.equal(d.credential_configured,true);}assert.equal(devices[2].device_brand,'Brand');
+const snapshot=async()=>JSON.stringify((await db.query('select * from site_devices order by id')).rows);
+const before=await snapshot();for(const [r,p,a,c] of [[[{id:id(40),row_version:2},{id:id(41),row_version:1}],{cabinet:'MustRollback'}],[rows,{cabinet:'x'},id(3)],[[],{cabinet:'x'}],[rows,{}],[rows,{fps:50}],[rows,{login_password:'no'}],[rows,{device_brand:''}],[ [{id:id(40),row_version:2},{id:id(40),row_version:2}],{cabinet:'x'}],[ [{id:id(40),row_version:2},{id:id(42),row_version:1}],{cabinet:'x'}]]){await assert.rejects(batch(r,p,a,c));assert.equal(await snapshot(),before);}
+await db.exec('update customer_contract_services set is_active=false');await assert.rejects(batch([{id:id(40),row_version:2}],{cabinet:'No'}));await db.exec('update customer_contract_services set is_active=true');
+const values={device_name:'New device',device_type:'camera',device_brand:'Brand',device_model:'Model',network_cable_no:'',cabinet:'',details:'',ip_address:'',http_port:8080,supports_audio:false,status:'active'};
+const created=await db.query('select * from save_monitoring_device_v4(null,null,$1,$2,null,$3)',[id(10),JSON.stringify(values),id(2)]);assert.equal(created.rows[0].cabinet,null);assert.equal(created.rows[0].network_cable_no,null);assert.equal(created.rows[0].fps,null);assert.equal(created.rows[0].http_port,8080);
+const grants=await db.query("select has_function_privilege('authenticated','batch_update_monitoring_devices_v1(uuid,jsonb,jsonb,uuid)','execute') as browser,has_function_privilege('service_role','batch_update_monitoring_devices_v1(uuid,jsonb,jsonb,uuid)','execute') as service");assert.equal(grants.rows[0].browser,false);assert.equal(grants.rows[0].service,true);
+console.log('PASS actual new SQL + existing v2/v3: batch commit, optional clearing, unchanged fields, legacy values retained, stale version rollback, cross-customer rollback, forbidden fields, roles, inactive contracts, new device with blank fields, RPC grants. Synthetic schema/audit trigger; no production writes.');
+}finally{await db.close();}})().catch(e=>{console.error(e.message);process.exitCode=1;});

@@ -395,7 +395,7 @@ async function queryRecords(params: URLSearchParams) {
   return { records: await get(path), entity: params.get("entity"), sort: params.get("sort"), direction };
 }
 
-const MONITORING_DEVICE_SELECT = "id,site_id,device_no,device_name,ip_address,device_type,network_cable_no,cabinet,device_brand,device_model,details,manual_url,status,credential_configured,created_by,updated_by,created_at,updated_at,row_version";
+const MONITORING_DEVICE_SELECT = "id,site_id,device_no,device_name,ip_address,device_type,network_cable_no,cabinet,device_brand,device_model,details,http_port,supports_audio,manual_url,status,credential_configured,created_by,updated_by,created_at,updated_at,row_version";
 const MONITORING_SORTS: Record<string,string> = {
   updated: "updated_at",
   name: "device_name",
@@ -626,33 +626,11 @@ async function deleteAccount(payload: Row, actor: AppUser) {
   if (!response.ok) throw new Error("刪除帳號失敗。");
 }
 function monitoringDeviceInput(payload: Row) {
-  const siteId = uuid(payload.site_id);
-  const deviceName = limited(payload.device_name, 160);
-  const address = ipAddress(payload.ip_address);
-  const type = monitoringDeviceType(payload.device_type);
-  const cable = nullable(payload.network_cable_no, 120);
-  const cabinet = limited(payload.cabinet, 160);
-  const brand = limited(payload.device_brand, 120);
-  const model = limited(payload.device_model, 160);
-  const details = limited(payload.details, 4000);
-  const manualUrl = httpUrl(payload.manual_url);
-  const status = text(payload.status) || "active";
-  if (!siteId || !deviceName || !address || !type || cable === null || !cabinet || !brand || !model || !details || manualUrl === null || !["active", "inactive", "maintenance"].includes(status)) {
-    throw new Error("請完整填寫有效的監控設備資料。");
-  }
-  return {
-    site_id: siteId,
-    device_name: deviceName,
-    ip_address: address,
-    device_type: type,
-    network_cable_no: cable || null,
-    cabinet,
-    device_brand: brand,
-    device_model: model,
-    details,
-    manual_url: manualUrl || null,
-    status,
-  };
+  const values=monitoringImportInput(payload),status=text(payload.status)||"active",audio=payload.supports_audio;
+  if(!["active","inactive","maintenance"].includes(status))throw new Error("設備狀態不正確。");
+  const supportsAudio=audio===null||audio===undefined||audio===""?null:audio===true||audio==="true"?true:audio===false||audio==="false"?false:undefined;
+  if(supportsAudio===undefined)throw new Error("音訊欄位不正確。");
+  return {...values,status,supports_audio:supportsAudio};
 }
 function monitoringImportInput(payload: Row) {
   const deviceName=limited(payload.device_name,160),address=ipAddress(payload.ip_address),type=monitoringDeviceType(payload.device_type);
@@ -711,12 +689,21 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     const credentialRequested = typeof payload.login_username === "string" || typeof payload.login_password === "string";
     if (credentialRequested) requireRole(user,["admin"]);
     const credential = credentialRequested ? await deviceCredentialEnvelope(payload.login_username, payload.login_password) : null;
-    return rpc("upsert_monitoring_device_v1",{
-      p_id:id,p_row_version:rowVersion,p_site_id:values.site_id,p_device_name:values.device_name,
-      p_ip_address:values.ip_address,p_device_type:values.device_type,p_network_cable_no:values.network_cable_no,
-      p_cabinet:values.cabinet,p_device_brand:values.device_brand,p_device_model:values.device_model,
-      p_details:values.details,p_manual_url:values.manual_url,p_status:values.status,p_credential:credential,p_actor:actor,
-    });
+    const customerId=uuid(payload.customer_id);
+    if(!customerId)throw new Error("請選擇有效客戶。");
+    return rpc("save_monitoring_device_v4",{p_id:id,p_row_version:rowVersion,p_customer_id:customerId,p_values:values,p_credential:credential,p_actor_user_id:user!.id});
+  }
+  if(operation === "batch_update_monitoring_devices") {
+    requireRole(user,["admin","operator"]);
+    const customerId=uuid(payload.customer_id),patch=payload.patch;
+    if(!customerId||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>200||!patch||typeof patch!=="object"||Array.isArray(patch))throw new Error("請選擇客戶、1 至 200 筆設備與修改欄位。");
+    const rows=payload.rows.map(candidate=>{const row=candidate as Row;const id=uuid(row?.id),version=Number(row?.row_version);if(!id||!Number.isInteger(version)||version<1)throw new Error("設備編號或版本不正確。");return{id,row_version:version};});
+    if(new Set(rows.map(row=>row.id)).size!==rows.length)throw new Error("設備清單不可重複。");
+    const fields=Object.keys(patch),allowed=["device_type","device_brand","device_model","network_cable_no","cabinet","http_port","supports_audio","status","manual_url","details"];
+    if(!fields.length||fields.some(field=>!allowed.includes(field)))throw new Error("請勾選有效的批次修改欄位。");
+    const normalized=monitoringDeviceInput({device_name:"批次修改",device_type:"camera",device_brand:"未修改",device_model:"未修改",...patch as Row});
+    const values=Object.fromEntries(fields.map(field=>[field,normalized[field as keyof typeof normalized]]));
+    return rpc("batch_update_monitoring_devices_v1",{p_customer_id:customerId,p_rows:rows,p_patch:values,p_actor_user_id:user!.id});
   }
   if (operation === "delete_monitoring_device") {
     requireRole(user,["admin"]);
