@@ -654,6 +654,13 @@ function monitoringDeviceInput(payload: Row) {
     status,
   };
 }
+function monitoringImportInput(payload: Row) {
+  const deviceName=limited(payload.device_name,160),address=ipAddress(payload.ip_address),type=monitoringDeviceType(payload.device_type);
+  const cable=nullable(payload.network_cable_no,120),cabinet=nullable(payload.cabinet,160),brand=limited(payload.device_brand,120),model=limited(payload.device_model,160),details=nullable(payload.details,4000),manualUrl=httpUrl(payload.manual_url);
+  const port=payload.http_port===null||payload.http_port===undefined||payload.http_port===""?null:Number(payload.http_port);
+  if(!deviceName||address===null||!type||cable===null||cabinet===null||!brand||!model||details===null||manualUrl===null||(port!==null&&(!Number.isInteger(port)||port<1||port>65535)))throw new Error("請完整填寫有效的監控設備匯入資料。");
+  return {device_name:deviceName,ip_address:address,device_type:type,network_cable_no:cable||null,cabinet:cabinet||null,device_brand:brand,device_model:model,details:details||null,http_port:port,manual_url:manualUrl||null,status:"active"};
+}
 function maintenanceEventsInput(value: unknown) {
   if (!Array.isArray(value) || value.length > 20) throw new Error("設備維修事件必須是 0 至 20 筆。");
   return value.map((candidate,index) => {
@@ -719,19 +726,22 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   }
   if (operation === "import_monitoring_devices") {
     requireRole(user,["admin"]);
-    const fileName=limited(payload.file_name,255),sheetName=limited(payload.sheet_name,120),fileHash=text(payload.file_hash).toLowerCase(),siteId=uuid(payload.site_id);
-    if(!fileName||!sheetName||!/^[0-9a-f]{64}$/.test(fileHash)||!siteId||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>1000) throw new Error("監控設備匯入資料不完整。");
+    const fileName=limited(payload.file_name,255),sheetName=limited(payload.sheet_name,120),fileHash=text(payload.file_hash).toLowerCase(),customerId=uuid(payload.customer_id);
+    if(!fileName||!sheetName||!/^[0-9a-f]{64}$/.test(fileHash)||!customerId||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>1000) throw new Error("監控設備匯入資料不完整。");
+    await monitoringCustomerScope(customerId);
     const rows=[] as Row[];
     for(let index=0;index<payload.rows.length;index+=1){
       const candidate=payload.rows[index];
       if(!candidate||typeof candidate!=="object"||Array.isArray(candidate)) throw new Error(`第 ${index+2} 列資料格式不正確。`);
-      const row=candidate as Row,values=monitoringDeviceInput({...row,site_id:siteId,status:"active",supports_audio:undefined,resolution_width:undefined,resolution_height:undefined,fps:undefined});
+      const row=candidate as Row,values=monitoringImportInput(row);
       const sourceRow=Number(row.source_row);
       if(!Number.isInteger(sourceRow)||sourceRow<2) throw new Error(`第 ${index+2} 列來源列號不正確。`);
-      const credential=await deviceCredentialEnvelope(row.login_username,row.login_password);
-      rows.push({...values,source_row:sourceRow,credential});
+      const loginUsername=text(row.login_username),loginPassword=typeof row.login_password==="string"?row.login_password:"";
+      if(loginUsername.length>256||loginPassword.length>512||(loginPassword&&!loginUsername))throw new Error(`第 ${sourceRow} 列登入帳號或密碼不正確。`);
+      const credential=loginUsername&&loginPassword?await deviceCredentialEnvelope(loginUsername,loginPassword):null;
+      rows.push({...values,source_row:sourceRow,...(credential?{credential}:{}),masked_username:loginUsername?maskedDeviceUsername(loginUsername):null,password_provided:Boolean(loginPassword)});
     }
-    return rpc("import_monitoring_devices_v1",{p_file_name:fileName,p_sheet_name:sheetName,p_file_hash:fileHash,p_site_id:siteId,p_rows:rows,p_actor:actor});
+    return rpc("import_monitoring_devices_v3",{p_file_name:fileName,p_sheet_name:sheetName,p_file_hash:fileHash,p_customer_id:customerId,p_rows:rows,p_actor:actor});
   }
   if (operation === "create_project") { requireRole(user,["admin","operator"]); const name = limited(payload.name,120); if (!name) throw new Error("請輸入 1 至 120 個字的專案名稱。"); return insert("projects", {name,...meta}); }
   if (operation === "create_supplier") { requireRole(user,["admin"]); const name=limited(payload.name,160),contact_name=nullable(payload.contact_name,120),phone=nullable(payload.phone,50),email=optionalEmail(payload.email),address=nullable(payload.address,500),note=nullable(payload.note,1000); if(!name||contact_name===null||phone===null||email===null||address===null||note===null) throw new Error("請完整填寫有效的供應商資料。"); return insert("suppliers",{name,contact_name:contact_name||null,phone:phone||null,email:email||null,address:address||null,note:note||null,...meta}); }
