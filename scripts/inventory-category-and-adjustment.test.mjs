@@ -10,7 +10,7 @@ const migration = readFileSync(new URL("../supabase/migrations/20260904232000_ve
 test("商品與庫存可由管理員新增貨品種類", () => {
   assert.match(html, /data-open="categoryModal"/);
   assert.match(app, /type==="categoryModal"/);
-  assert.match(app, /mutate\("create_product_category"/);
+  assert.match(app, /mutate\(id\?"update_product_category":"create_product_category"/);
   assert.match(app, /data-open="categoryModal"[\s\S]*role!=="admin"/);
   assert.match(gateway, /operation === "create_product_category"[\s\S]*requireOperation\(user,operation,payload,\["admin"\]\)/);
   assert.equal([...gateway.matchAll(/operation === "create_product_category"/g)].length, 1);

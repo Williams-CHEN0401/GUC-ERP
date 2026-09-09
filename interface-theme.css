@@ -258,3 +258,10 @@ input[type=checkbox] { accent-color: var(--green-800); }
 .brand:has(.company-logo) strong { font-size: 19px; }
 .brand:has(.company-logo) small { font-size: 11px; }
 .login-card > .company-logo, .system-chooser > .company-logo { width: 100px; height: auto; margin-bottom: 24px; }
+/* The four-column category list fits on phones without changing other inventory tables. */
+#inventory [data-pane="categories"] table { min-width: 0; width: 100%; table-layout: fixed; }
+#inventory [data-pane="categories"] th, #inventory [data-pane="categories"] td { padding: 12px 6px; white-space: normal; overflow-wrap: anywhere; }
+#inventory [data-pane="categories"] th:first-child { width: 44%; }
+#inventory [data-pane="categories"] th:nth-child(2) { width: 19%; }
+#inventory [data-pane="categories"] th:nth-child(3) { width: 16%; }
+#inventory [data-pane="categories"] th:last-child { width: 21%; }
