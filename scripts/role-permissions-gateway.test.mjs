@@ -24,6 +24,21 @@ test('product category CRUD uses inventory grants and stale versions reach the a
  }
  const h=harness([permission('inventory','view','update')]);assert.equal((await h.write('update_product_category',{...payload,row_version:0})).status,400);assert.equal(h.calls.length,0);
 });
+
+test('NAS context uses the existing upload grants and only bounded selected-record queries',async()=>{
+ const query=`scope=nas_upload_context&customer_id=${id(2)}&contract_service_type_id=${id(3)}&project_id=${id(4)}`;
+ for(const [grants,scoped] of [[[permission('site','view')],false],[[permission('equipment','create')],false],[[permission('site','view'),permission('equipment','create')],true]]){
+  const h=harness(grants,scoped);assert.equal((await h.read(query)).status,403);assert.equal(h.calls.length,0);
+ }
+ const h=harness([permission('site','view'),permission('equipment','create')]);
+ h.context.get=async path=>{h.calls.push(path);return path.startsWith('customers?')?[{id:id(2),name:'Customer'}]:path.startsWith('contract_service_types?')?[{id:id(3),name:'Service',is_active:true}]:path.startsWith('customer_contract_services?')?[{customer_id:id(2),service_type_id:id(3),is_active:true}]:[{id:id(4),name:'Project',customer_id:id(2)}];};
+ const result=await h.read(query);assert.equal(result.status,200);const data=await result.json();assert.equal(data.customers.length,1);assert.equal(data.projects.length,1);assert.equal(h.calls.length,4);
+ assert.ok(h.calls.every(path=>path.includes('limit=1')&&path.includes('=eq.')));
+ assert.ok(h.calls.find(path=>path.startsWith('projects?')).includes('customer_id=eq.'+id(2)));
+ assert.ok(h.calls.find(path=>path.startsWith('customer_contract_services?')).includes('is_active=eq.true'));
+ h.calls.length=0;assert.equal((await h.read(query.replace(id(2),'invalid'))).status,400);assert.equal(h.calls.length,0);
+ h.context.get=async()=>[];assert.equal((await h.read(query)).status,404,'Deleted/revoked business relationships fail closed');
+});
 test('loaded worker permissions reject every unrelated scope and direct entity URL',async()=>{
  const h=harness([permission('worklogs','view','create','update','delete')],true);
  for(const query of ['scope=crm','scope=settings','scope=transactions','scope=dashboard','scope=site_navigation','entity=projects&customer_id='+id(3)])assert.equal((await h.read(query)).status,403,query);
