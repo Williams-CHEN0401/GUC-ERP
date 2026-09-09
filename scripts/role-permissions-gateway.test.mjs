@@ -14,6 +14,16 @@ function harness(permissions,scoped=false){let handler;const calls=[];
  context.get=async path=>{calls.push(path);return[];};context.rpc=async(name,args)=>{calls.push({name,args});return{};};
  return {context,calls,user,read:query=>handler(new Request('https://example.test/inventory-gateway?'+query)),write:(operation,payload)=>handler(new Request('https://example.test/inventory-gateway',{method:'POST',body:JSON.stringify({operation,payload})}))};
 }
+
+test('product category CRUD uses inventory grants and stale versions reach the atomic RPC',async()=>{
+ const payload={id:id(2),row_version:3,name:'New category',code_prefix:'ZZ',is_active:true};
+ for(const [operation,action,rpc] of [['create_product_category','create','create_product_category_v1'],['update_product_category','update','update_product_category_v1'],['delete_product_category','delete','delete_product_category_v1']]){
+  const denied=harness([permission('inventory','view')]);assert.equal((await denied.write(operation,payload)).status,403);assert.equal(denied.calls.length,0);
+  const allowed=harness([permission('inventory','view',action)]);assert.equal((await allowed.write(operation,payload)).status,201);assert.equal(allowed.calls[0].name,rpc);
+  if(action!=='create')assert.equal(allowed.calls[0].args.p_row_version,3);
+ }
+ const h=harness([permission('inventory','view','update')]);assert.equal((await h.write('update_product_category',{...payload,row_version:0})).status,400);assert.equal(h.calls.length,0);
+});
 test('loaded worker permissions reject every unrelated scope and direct entity URL',async()=>{
  const h=harness([permission('worklogs','view','create','update','delete')],true);
  for(const query of ['scope=crm','scope=settings','scope=transactions','scope=dashboard','scope=site_navigation','entity=projects&customer_id='+id(3)])assert.equal((await h.read(query)).status,403,query);

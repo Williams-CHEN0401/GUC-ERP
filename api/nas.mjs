@@ -10,6 +10,8 @@ const REQUEST_TIMEOUT_MS = 45_000;
 const MAX_FOLDER_ATTEMPTS = 100;
 const PREFLIGHT_TICKET_TTL_MS = 2 * 60 * 1000;
 const NAS_CONCURRENCY = 3;
+const CHUNK_BYTES = 3 * 1024 * 1024;
+const CHUNK_TICKET_TTL_MS = 15 * 60 * 1000;
 const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "docx", "xlsx"]);
 
 export class HttpError extends Error {
@@ -155,7 +157,11 @@ async function currentUser(request) {
   const response = await gatewayRequest("?scope=session", authorization, "ERP 登入服務");
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.current_user) throw new HttpError(401, "ERP 登入狀態已失效，請重新登入。", "AUTH_EXPIRED");
-  if (!["admin", "operator"].includes(data.current_user.role)) throw new HttpError(403, "目前帳號沒有附件上傳權限。", "ROLE_FORBIDDEN");
+  const user = data.current_user;
+  const permitted = user.role === "admin" || (Array.isArray(user.permissions)
+    ? user.permissions.some(p => p.module === "equipment" && p.can_create === true) && user.permissions.some(p => p.module === "site" && p.can_view === true)
+    : ["admin", "operator"].includes(user.role));
+  if (!permitted || user.project_scoped) throw new HttpError(403, "目前帳號沒有附件上傳權限。", "ROLE_FORBIDDEN");
   return { user: data.current_user, authorization };
 }
 
@@ -406,6 +412,86 @@ async function uploadFile(config, targetFolder, file, conflictAction = "new", re
   return { id, originalName, storedName, nasPath, conflictResolution: resolution, size: buffer.length, sha256, timing: { read_ms: readMs, conflict_ms: conflictMs, put_ms: putMs, verify_ms: verifyMs, hash_ms: hashMs, total_ms: elapsedMs(totalStartedAt) } };
 }
 
+// Each browser request stays below the hosting payload limit; NAS keeps the original bytes.
+export function verifyChunkTicket(config, value, expected, authorization, now = Date.now()) {
+  if (typeof value !== "string" || value.length > 16000) throw ticketError();
+  const [encoded, signature, ...extra] = value.split(".");
+  if (!encoded || !signature || extra.length) throw ticketError();
+  const validSignature = signTicketPayload(config, encoded);
+  if (signature.length !== validSignature.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(validSignature))) throw ticketError();
+  let ticket;
+  try { ticket = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")); } catch { throw ticketError(); }
+  if (ticket.version !== 2 || ticket.purpose !== "nas-chunks" || !Number.isFinite(ticket.expires_at) || ticket.expires_at <= now || ticket.expires_at - ticket.issued_at !== CHUNK_TICKET_TTL_MS || ticket.issued_at > now + 30000) throw ticketError();
+  if (ticket.authorization_hash !== authorizationHash(authorization) || ticket.actor !== expected.actor) throw ticketError();
+  for (const key of ["customer_id", "contract_service_type_id", "project_id"]) if (ticket[key] !== expected[key]) throw ticketError();
+  if (!/^[a-f0-9-]{36}$/.test(ticket.nonce) || !/^[a-f0-9]{64}$/.test(ticket.sha256) || !Number.isInteger(ticket.size) || ticket.size < 1 || ticket.size > MAX_FILE_BYTES) throw ticketError();
+  validateFileNames([ticket.name]);
+  if (!Array.isArray(ticket.folder_parts) || ticket.folder_parts.length !== 4 || ticket.folder_parts.some(part => part !== safePart(part))) throw ticketError();
+  if (ticket.target_folder !== `${config.root}/${ticket.folder_parts.join("/")}`) throw ticketError();
+  return ticket;
+}
+
+async function handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId }) {
+  const expected = { actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId };
+  if (mode === "begin_file") {
+    const name = firstText(form.get("file_name")), size = Number(form.get("file_size")), sha256 = firstText(form.get("sha256"));
+    validateUploadFiles([{ name, size }]);
+    if (!Number.isInteger(size) || !/^[a-f0-9]{64}$/.test(sha256)) throw new HttpError(400, "附件大小或校驗資料不正確。", "FILE_METADATA_INVALID");
+    const preflight = verifyPreflightTicket(config, firstText(form.get("preflight_ticket")), { ...expected, file_names: [name] }, authorization);
+    const conflict = firstText(form.get("conflict_action")) || "new";
+    if (!["new", "rename", "overwrite"].includes(conflict)) throw new HttpError(400, "同名檔案處理選項不正確。", "CONFLICT_ACTION_INVALID");
+    const now = Date.now(), ticket = {
+      ...expected, version: 2, purpose: "nas-chunks", issued_at: now, expires_at: now + CHUNK_TICKET_TTL_MS,
+      authorization_hash: authorizationHash(authorization), nonce: randomUUID(), name, size, sha256,
+      mime_type: firstText(form.get("mime_type")).slice(0, 150) || "application/octet-stream",
+      description: firstText(form.get("description")).slice(0, 1000), asset_type: firstText(form.get("attachment_type")) === "document" ? "document" : "photo",
+      conflict, folder_parts: preflight.folder_parts, target_folder: preflight.target_folder
+    };
+    const stage = `${config.root}/.erp-upload-${ticket.nonce}`;
+    const created = await davRequest(config, "MKCOL", stage);
+    if (created.status !== 201) throw statusError(created.status, "上傳暫存建立");
+    const encoded = Buffer.from(JSON.stringify(ticket)).toString("base64url");
+    return json({ ok: true, upload_ticket: `${encoded}.${signTicketPayload(config, encoded)}`, chunk_bytes: CHUNK_BYTES });
+  }
+  const ticket = verifyChunkTicket(config, firstText(form.get("upload_ticket")), expected, authorization);
+  const stage = `${config.root}/.erp-upload-${ticket.nonce}`, count = Math.ceil(ticket.size / CHUNK_BYTES);
+  if (mode === "cancel_file") {
+    const removed = await davRequest(config, "DELETE", stage);
+    if (![200, 204, 404].includes(removed.status)) throw statusError(removed.status, "上傳暫存清除");
+    return json({ ok: true });
+  }
+  if (mode === "upload_chunk") {
+    const index = Number(form.get("chunk_index")), chunk = form.get("chunk");
+    if (!form.has("chunk_index") || !Number.isInteger(index) || index < 0 || index >= count || !chunk || typeof chunk.arrayBuffer !== "function" || chunk.size !== Math.min(CHUNK_BYTES, ticket.size - index * CHUNK_BYTES)) throw new HttpError(400, "照片分段大小或順序不正確。", "CHUNK_INVALID");
+    const response = await davRequest(config, "PUT", `${stage}/${index}.part`, Buffer.from(await chunk.arrayBuffer()), { "Content-Type": "application/octet-stream", "Content-Length": String(chunk.size) });
+    if (![200, 201, 204].includes(response.status)) throw statusError(response.status, "照片分段傳送");
+    return json({ ok: true, chunk_index: index });
+  }
+  // Recheck current customer/service/project access before creating a final attachment.
+  await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization);
+  const parts = await mapWithConcurrency(Array.from({ length: count }, (_, i) => i), NAS_CONCURRENCY, async index => {
+    const response = await davRequest(config, "GET", `${stage}/${index}.part`);
+    if (response.status === 404) throw new HttpError(409, "照片尚未傳送完整，請重新上傳。", "CHUNK_MISSING");
+    if (!response.ok) throw statusError(response.status, "照片分段讀取");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length !== Math.min(CHUNK_BYTES, ticket.size - index * CHUNK_BYTES)) throw new HttpError(409, "照片分段不完整，請重新上傳。", "CHUNK_SIZE_MISMATCH");
+    return bytes;
+  });
+  const bytes = Buffer.concat(parts);
+  if (createHash("sha256").update(bytes).digest("hex") !== ticket.sha256) throw new HttpError(409, "照片內容校驗失敗，請重新上傳。", "FILE_HASH_MISMATCH");
+  await ensureNestedFolder(config, ticket.folder_parts);
+  const result = await uploadFile(config, ticket.target_folder, new File([bytes], ticket.name, { type: ticket.mime_type }), ticket.conflict);
+  const uploaded = { id: result.id, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId,
+    log_date: ticket.folder_parts[3], title: result.originalName, description: ticket.description, asset_type: ticket.asset_type,
+    original_name: result.originalName, mime_type: ticket.mime_type, file_size: result.size, nas_path: result.nasPath,
+    stored_name: result.storedName, conflict_resolution: result.conflictResolution, upload_status: "uploaded", uploaded_by: user.username,
+    uploaded_at: new Date().toISOString(), sha256: result.sha256 };
+  try { const removed = await davRequest(config, "DELETE", stage); if (![200, 204, 404].includes(removed.status)) logEvent("warn", "chunk_cleanup_failed"); }
+  catch { logEvent("warn", "chunk_cleanup_failed"); }
+  logEvent("info", "chunk_upload_completed", { bytes: result.size, chunks: count });
+  return json({ ok: true, upload_folder: ticket.target_folder, uploaded: [uploaded], failed: [] }, 201);
+}
+
 export default {
   async fetch(request) {
     const requestId = request.headers.get("x-vercel-id") || randomUUID(), requestStartedAt = Date.now();
@@ -436,6 +522,10 @@ export default {
       const description = firstText(form.get("description")).slice(0, 1000);
       const assetType = firstText(form.get("attachment_type")) === "document" ? "document" : "photo";
       if (!customerId || !contractServiceTypeId || !projectId) throw new HttpError(400, "缺少客戶、承攬內容或專案資料；附件未上傳。", "UPLOAD_CONTEXT_REQUIRED");
+
+      if (["begin_file", "upload_chunk", "complete_file", "cancel_file"].includes(mode)) {
+        return await handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId });
+      }
 
       if (mode === "preflight") {
         let fileNames;

@@ -26,7 +26,7 @@ const config = { root: "/GUC-ERP" };
 const now = new Date("2026-08-28T00:06:00.000Z");
 
 test("前端沿用簽章預檢票證並顯示分階段進度", () => {
-  const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../app.js", import.meta.url), "utf8") + readFileSync(new URL("../attachment-upload.js", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(app, /body\.append\("preflight_ticket",preflight\.preflight_ticket\)/);
   assert.match(app, /attachmentUploadProgress/);

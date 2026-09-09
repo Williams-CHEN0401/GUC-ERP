@@ -29,7 +29,7 @@ if (html.includes('data-tab="maintenance"') || html.includes('data-pane="mainten
 if (html.includes('data-page="sites"') || html.includes('id="siteCustomerCategory"') || html.includes('data-site-module="floors"')) throw new Error("Internal ERP site-data page was not removed");
 if (html.includes("安全預覽模式") || html.includes("預覽資料來源") || html.includes("dataNoticeLabel")) throw new Error("Preview notices were not removed");
 
-const js = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+const js = readFileSync(new URL("../app.js", import.meta.url), "utf8") + readFileSync(new URL("../attachment-upload.js", import.meta.url), "utf8");
 if (js.includes("現場照片") || !js.includes("select:工程施工,工程施工|維修紀錄,維修/查修|維護保養,維護保養")) throw new Error("Site tabs or work type options are incorrect");
 if (!js.includes("GUC_ERP_ACCESS_TOKEN")) throw new Error("Session namespace missing");
 if (!js.includes('operation:"login"')) throw new Error("Protected login flow missing");
@@ -95,7 +95,7 @@ if (!edge.includes('operation === "create_contract_site_attachment_batch"')) thr
 for (const marker of ['operation === "upsert_contract_site_entry"', 'operation === "delete_contract_site_entry"', 'operation === "delete_standalone_work_log"', "ensure_customer_contract_site_v1", "register_contract_site_attachments_v2"]) {
   if (!edge.includes(marker)) throw new Error(`Contract-centric gateway marker missing: ${marker}`);
 }
-for (const marker of ['operation === "upsert_project_site_entry"', 'operation === "delete_project_site_entry"', "ensure_project_site_v1", '["工程施工","維修紀錄","維護保養"]']) {
+for (const marker of ['operation === "upsert_project_site_entry"', 'operation === "delete_project_site_entry"', "ensure_project_site_v1", '["工程施工","維修紀錄","維護保養","送貨"]']) {
   if (!edge.includes(marker)) throw new Error(`Formal site gateway marker missing: ${marker}`);
 }
 for (const marker of ["site_work_log_workers", "site_workers", "upsert_project_site_work_log_v1", "create_pickup_records_batch_v2", "p_work_log_id", "p_request_id"]) {

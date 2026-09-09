@@ -7,12 +7,12 @@ const gateway = readFileSync(new URL("../supabase/functions/inventory-gateway/in
 const migration = readFileSync(new URL("../supabase/migrations/20260902110557_sync_project_type_status_with_work_logs.sql", import.meta.url), "utf8");
 
 test("project and work-log types share labels while preserving canonical database values", () => {
-  assert.match(app, /PROJECT_WORK_TYPES\s*=\s*\[\["construction", "工程施工", "工程施工"\], \["repair", "維修\/查修", "維修紀錄"\], \["maintenance", "維護保養", "維護保養"\]\]/);
+  assert.match(app, /PROJECT_WORK_TYPES\s*=\s*\[\["construction", "工程施工", "工程施工"\], \["repair", "維修\/查修", "維修紀錄"\], \["maintenance", "維護保養", "維護保養"\], \["delivery", "送貨", "送貨"\]\]/);
   assert.match(app, /WORK_LOG_TYPES = PROJECT_WORK_TYPES\.map\(\(\[,label,storedValue\]\)=>\[storedValue,label\]\)/);
   assert.ok(app.includes('selectField("type","專案類型",PROJECT_WORK_TYPES'));
   assert.ok(app.includes('selectField("workType","工作類型",WORK_LOG_TYPES'));
-  assert.match(gateway, /\["construction","repair","maintenance"\]/);
-  assert.match(gateway, /\["工程施工","維修紀錄","維護保養"\]/);
+  assert.match(gateway, /\["construction","repair","maintenance","delivery"\]/);
+  assert.match(gateway, /\["工程施工","維修紀錄","維護保養","送貨"\]/);
 });
 
 test("work-log project selection preloads shared type and status", () => {
