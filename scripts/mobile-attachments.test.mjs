@@ -16,7 +16,7 @@ test('手機原檔逐檔分段上傳：平台限制、HEIC、重試、校驗、�
   const request = async (body, _timeout, token = 'fixture-token') => {
     const req = new Request('https://erp.fixture.test/api/nas', { method:'POST',headers:{ Authorization:'Bearer '+token },body });
     const size = (await req.clone().arrayBuffer()).byteLength;
-    assert.ok(size < 4.5 * 1024 * 1024, 'Every multipart request fits hosting payload limit');
+    assert.ok(size < 4_500_000, 'Every multipart request fits the conservative decimal hosting limit');
     requests.push({mode:body.get('mode'),size,body});
     if (body.get('mode') === 'upload_chunk' && failChunkOnce) { failChunkOnce = false; throw new Error('temporary mobile network failure'); }
     const response = await nasApi.fetch(req), data = await response.json();

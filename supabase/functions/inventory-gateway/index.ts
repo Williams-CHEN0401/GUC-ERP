@@ -320,6 +320,11 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   return;
  }
  if(scope==="session")return;
+ if(scope==="nas_upload_context"){
+  requireOperation(user,"create_contract_site_attachment_batch",{},["admin","operator"]);
+  if(user.project_scoped)throw new Error("您的帳號沒有執行此操作的權限。");
+  return;
+ }
  const modules:Record<string,string[]>={dashboard:["dashboard"],transactions:["purchases","pickups"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
  if(!modules[scope]?.some(module=>hasPermission(user,module)))throw new Error("您的帳號沒有執行此操作的權限。");
 }
@@ -1368,6 +1373,20 @@ async function monitoringIpConflicts(payload: Row) {
   return {ips:[...new Set(records.map(row=>row.ip_address))]};
 }
 
+async function nasUploadContext(params:URLSearchParams,user:AppUser) {
+  const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("contract_service_type_id")),projectId=uuid(params.get("project_id"));
+  if(!customerId||!serviceId||!projectId)throw new Error("缺少有效的客戶、承攬內容或專案編號。");
+  // Only the four selected rows are needed; do not load the full sites/worklogs/equipment snapshot.
+  const [customers,services,links,projects]=await Promise.all([
+    get(`customers?select=id,name&id=eq.${customerId}&limit=1`),
+    get(`contract_service_types?select=id,name,is_active&id=eq.${serviceId}&is_active=eq.true&limit=1`),
+    get(`customer_contract_services?select=customer_id,service_type_id,is_active&customer_id=eq.${customerId}&service_type_id=eq.${serviceId}&is_active=eq.true&limit=1`),
+    get(`projects?select=id,name,customer_id&id=eq.${projectId}&customer_id=eq.${customerId}&limit=1`)
+  ]) as Row[][];
+  if(customers.length!==1||services.length!==1||links.length!==1||projects.length!==1)throw new Error("找不到有效的客戶承攬內容或專案關聯，請重新選擇。");
+  return {scope:"nas_upload_context",current_user:publicUser(user),customers,contract_service_types:services,customer_contract_services:links,projects,errors:[]};
+}
+
 async function handleRequest(request: Request) {
   try {
     const requestUrl = new URL(request.url);
@@ -1398,6 +1417,7 @@ async function handleRequest(request: Request) {
       if (entity === "monitoring_device_imports") return json({...(await monitoringDeviceImports(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (params.has("entity")) return json(await queryRecords(params,user));
       const scopeName = text(params.get("scope")) || "dashboard";
+      if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
       if (scopeName === "site_customer") return json(await siteCustomerSnapshot(params,user,isPreviewGateway));
       if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
       return json(await scopedSnapshot(user, scopeName));

@@ -141,7 +141,7 @@ test("正式上傳沿用票證時仍重新驗證登入，但不重複查詢案�
   globalThis.fetch = async (url, init = {}) => {
     const value = String(url), method = init.method || "GET";
     if (value.includes("scope=session")) return Response.json({ current_user: { username: "operator", role: "operator" } });
-    if (value.includes("scope=sites")) {
+    if (value.includes("scope=nas_upload_context")) {
       sitesCalls += 1;
       return Response.json({
         customers: [{ id: "customer-1", name: "高雄中學" }],
