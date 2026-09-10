@@ -27,3 +27,10 @@ test("deep-linked pages keep tokens out of the URL and lazy-load only their page
   assert.match(js, /function logout\(options=\{\}\).*clearPageUrl\(\)/);
   assert.match(js, /logout\(\{preservePage:true\}\)/);
 });
+
+test("each opened ERP page uses its current navigation name as the browser tab title", () => {
+  assert.match(js, /document\.title=`GUC ERP｜\$\{pageMeta\[name\]\[0\]\}`/);
+  assert.match(js, /dashboard: \["首頁 Dashboard"/);
+  assert.match(js, /transactions: \["進出貨管理"/);
+  assert.match(js, /repairs: \["維修品管理"/);
+});
