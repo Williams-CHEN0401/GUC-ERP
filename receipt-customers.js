@@ -10,7 +10,7 @@ function refreshReceiptCustomerPicker(){
  const selected=[...form.querySelectorAll('input[name=receiptCustomerId]:checked')];
  const count=form.querySelector('#receiptCustomerCount'),names=form.querySelector('#receiptCustomerSelected');if(count)count.textContent=`已選 ${selected.length} 位`;if(names)names.textContent=selected.map(input=>byId(state.customers,input.value)?.name||'').filter(Boolean).join('、');
 }
-document.addEventListener('change',event=>{if(event.target.id==='receiptCustomerCategory'||event.target.name==='receiptCustomerId')refreshReceiptCustomerPicker();});
+document.addEventListener('change',event=>{if(event.target.id==='receiptCustomerCategory')document.querySelectorAll('input[name=receiptCustomerId]:checked').forEach(input=>{if(byId(state.customers,input.value)?.category!==event.target.value)input.checked=false;});if(event.target.id==='receiptCustomerCategory'||event.target.name==='receiptCustomerId')refreshReceiptCustomerPicker();});
 document.addEventListener('input',event=>{if(event.target.id==='receiptCustomerSearch')refreshReceiptCustomerPicker();});
 document.addEventListener('click',event=>{
  if(event.target.closest('[data-receipt-customers-select]'))document.querySelectorAll('[data-receipt-customer]:not([hidden]) input').forEach(input=>input.checked=true);

@@ -38,7 +38,7 @@ test("Gateway 新版請求使用狀態同步 RPC，舊版前端仍可在切換�
   assert.match(edge, /legacyRequest=!Object\.prototype\.hasOwnProperty\.call\(payload,"time_period"\)/);
   assert.match(edge, /if\(legacyRequest\)return rpc\("upsert_customer_project_work_log_v2"/);
   assert.match(edge, /rpc\("upsert_customer_project_work_log_v3"/);
-  assert.match(edge, /rpc\("upsert_erp_project_with_workers_v2"/);
+  assert.match(edge, /rpc\("upsert_erp_project_with_workers_v3"/);
 });
 
 test("Migration 新增欄位、同步既有狀態並限制 RPC 權限", () => {

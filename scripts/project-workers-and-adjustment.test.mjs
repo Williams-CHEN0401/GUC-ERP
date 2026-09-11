@@ -61,5 +61,5 @@ test("Gateway 只接受 UUID 負責人並以狀態同步 RPC 儲存專案", () =
   assert.match(edge, /crm: \[[^\]]*"project_workers"[^\]]*"site_workers"/);
   assert.match(edge, /sites: \[[^\]]*"project_workers"/);
   assert.match(edge, /worker_user_ids\.some\(workerId=>!workerId\)/);
-  assert.match(edge, /rpc\("upsert_erp_project_with_workers_v2"/);
+  assert.match(edge, /rpc\("upsert_erp_project_with_workers_v3"/);
 });

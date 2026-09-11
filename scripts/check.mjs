@@ -107,7 +107,7 @@ for (const marker of ["contract_service_types", "customer_contract_services", "u
 for (const marker of ["phone_systems", "phone_extensions", "phone_terminal_points", 'operation === "upsert_phone_system"', 'operation === "upsert_phone_extension"', 'operation === "set_phone_system_credential"', 'operation === "reveal_phone_system_credential"']) {
   if (!edge.includes(marker)) throw new Error(`Phone data gateway marker missing: ${marker}`);
 }
-for (const marker of ["project_workers", "upsert_erp_project_with_workers_v2", "worker_user_ids"]){
+for (const marker of ["project_workers", "upsert_erp_project_with_workers_v3", "worker_user_ids"]){
   if (!edge.includes(marker)) throw new Error(`Project-owner gateway marker missing: ${marker}`);
 }
 for (const marker of ["repair_items", 'operation === "upsert_repair_item"', 'operation === "delete_repair_item"', "upsert_repair_item_v1", "delete_repair_item_v1"]){
