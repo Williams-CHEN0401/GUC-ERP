@@ -65,6 +65,16 @@ test('資料庫同步錯誤回傳失敗，不另開非原子補寫',async()=>{
   const h=harness();h.context.rpc=async()=>{throw vm.runInContext('new Error("同步失敗")',h.context);};
   const result=await h.request();assert.equal(result.status,400);assert.equal(result.body.error,'同步失敗');
 });
+test('文書作業沿用既有 RPC，未知類型與未授權寫入仍拒絕',async()=>{
+  const data={...payload(),work_type:'文書作業',maintenance_events:[]};
+  const h=harness();assert.equal((await h.request(data)).status,201);
+  assert.equal(h.calls.length,1);assert.equal(h.calls[0].parameters.p_work_type,'文書作業');
+  assert.equal(h.calls[0].name,'upsert_customer_project_work_log_with_maintenance_v2');
+  for(const [role,path,status] of [['viewer','inventory-gateway',403],[null,'inventory-gateway',401],['operator','inventory-gateway-preview',403]]){
+    const denied=harness(role);assert.equal((await denied.request(data,path)).status,status);assert.equal(denied.calls.length,0);
+  }
+  const invalid=harness();assert.equal((await invalid.request({...data,work_type:'不存在'})).status,400);assert.equal(invalid.calls.length,0);
+});
 test('手動維修品流程仍要求收件日期、數量、狀態與故障內容',async()=>{
   const h=harness();
   await assert.rejects(h.context.change('upsert_repair_item',{customer_id:customer,inventory_item_id:item},user),/維修品|收件/);

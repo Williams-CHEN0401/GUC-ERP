@@ -17,7 +17,7 @@ const QUOTATION_SSO_READY_MESSAGE = "GUC_QUOTATION_SSO_READY";
 const QUOTATION_SSO_SESSION_MESSAGE = "GUC_QUOTATION_SSO_SESSION";
 const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST;
 const CUSTOMER_CATEGORIES = [["school", "學校機關"], ["government", "政府機關"], ["social_welfare", "社福機關"], ["cleaning_team", "清潔隊"]];
-const PROJECT_WORK_TYPES = [["construction", "工程施工", "工程施工"], ["repair", "維修/查修", "維修紀錄"], ["maintenance", "維護保養", "維護保養"], ["delivery", "送貨", "送貨"]];
+const PROJECT_WORK_TYPES = [["construction", "工程施工", "工程施工"], ["repair", "維修/查修", "維修紀錄"], ["maintenance", "維護保養", "維護保養"], ["delivery", "送貨", "送貨"], ["clerical", "文書作業", "文書作業"]];
 const WORK_LOG_TYPES = PROJECT_WORK_TYPES.map(([,label,storedValue])=>[storedValue,label]);
 const MAINTENANCE_EVENT_TYPES = [["SOFTWARE_CONFIG","軟體設定"],["LINE_REPAIR","線路維修"],["LINE_REPLACEMENT","線路更換"],["REPAIR","設備維修"],["REPLACEMENT","設備更換"]];
 const LEGACY_MAINTENANCE_EVENT_TYPES = [["INSTALLATION","安裝"],["MAINTENANCE","維護保養"],["PROGRAM_CONFIG","程式設定"],["INSPECTION","巡檢"],["OTHER","其他"]];
@@ -67,7 +67,7 @@ const siteModules = {
   floors: { title: "平面與架構", columns: [["floor_code","樓層編號"],["floor_name","樓層名稱"],["description","說明"]], fields: [["floor_code","樓層編號","text",true],["floor_name","樓層名稱","text",true],["description","說明","textarea",false]] },
   routes: { title: "管道走線", columns: [["route_no","路徑編號"],["from_location","起點"],["to_location","終點"],["cable_type","線材種類"]], fields: [["route_no","路徑編號","text",true],["from_location","起點","text",true],["to_location","終點","text",true],["cable_type","線材種類","text",false],["route_description","走線說明","textarea",false]] },
   devices: { title: "設備點位", columns: [["device_no","點位編號"],["device_name","設備名稱"],["item_label","品牌／型號"],["status","狀態"]], fields: [["device_no","點位編號","text",true],["device_name","設備名稱","text",true],["inventory_item_id","品項","inventory",false],["status","狀態","select:planned,已規劃|installed,已安裝|tested,已測試",false],["notes","備註","textarea",false]] },
-  logs: { title: "工作日誌", columns: [["log_date","日期"],["title","標題"],["work_type","工作類型"],["worker_labels","施工人員"],["pickup_summary","取貨狀態"],["summary","內容"]], fields: [["log_date","工作日期","date",true],["title","標題","text",true],["work_type","工作類型","select:工程施工,工程施工|維修紀錄,維修/查修|維護保養,維護保養",true],["worker_user_ids","施工人員","workers",false],["summary","內容","textarea",false]] },
+  logs: { title: "工作日誌", columns: [["log_date","日期"],["title","標題"],["work_type","工作類型"],["worker_labels","施工人員"],["pickup_summary","取貨狀態"],["summary","內容"]], fields: [["log_date","工作日期","date",true],["title","標題","text",true],["work_type","工作類型","select:工程施工,工程施工|維修紀錄,維修/查修|維護保養,維護保養|送貨,送貨|文書作業,文書作業",true],["worker_user_ids","施工人員","workers",false],["summary","內容","textarea",false]] },
   maintenance: { title: "維修紀錄", columns: [["reported_at","報修日期"],["issue_description","問題描述"],["resolution","處理結果"],["warranty_status","保固狀態"]], fields: [["reported_at","報修日期","date",true],["issue_description","問題描述","textarea",true],["resolution","處理結果","textarea",false],["warranty_status","保固狀態","text",false]] },
   notes: { title: "施工備忘", columns: [["title","標題"],["note_type","類型"],["importance","重要性"],["content","內容"]], fields: [["title","標題","text",true],["note_type","類型","text",true],["importance","重要性","select:normal,一般|important,重要|warning,警告",true],["content","內容","textarea",true]] },
   assets: { title: "附件", columns: [["original_name","檔案"],["work_log_label","關聯工作日誌"],["file_size","大小"],["upload_status","狀態"]], fields: [] }

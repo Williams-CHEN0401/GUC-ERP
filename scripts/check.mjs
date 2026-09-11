@@ -95,7 +95,7 @@ if (!edge.includes('operation === "create_contract_site_attachment_batch"')) thr
 for (const marker of ['operation === "upsert_contract_site_entry"', 'operation === "delete_contract_site_entry"', 'operation === "delete_standalone_work_log"', "ensure_customer_contract_site_v1", "register_contract_site_attachments_v2"]) {
   if (!edge.includes(marker)) throw new Error(`Contract-centric gateway marker missing: ${marker}`);
 }
-for (const marker of ['operation === "upsert_project_site_entry"', 'operation === "delete_project_site_entry"', "ensure_project_site_v1", '["工程施工","維修紀錄","維護保養","送貨"]']) {
+for (const marker of ['operation === "upsert_project_site_entry"', 'operation === "delete_project_site_entry"', "ensure_project_site_v1", '["工程施工","維修紀錄","維護保養","送貨","文書作業"]']) {
   if (!edge.includes(marker)) throw new Error(`Formal site gateway marker missing: ${marker}`);
 }
 for (const marker of ["site_work_log_workers", "site_workers", "upsert_project_site_work_log_v1", "create_pickup_records_batch_v2", "p_work_log_id", "p_request_id"]) {
