@@ -14,7 +14,7 @@ test("庫存校正保留表單引用，不在 await 後讀取失效的 currentTa
   assert.doesNotMatch(handler, /await mutate[\s\S]*event\.currentTarget/);
 });
 
-test("專案負責人使用與施工人員相同的系統使用者複選器", () => {
+test("工作內容負責人使用與施工人員相同的系統使用者複選器", () => {
   assert.match(js, /projectOwnerPickerField/);
   assert.match(js, /name:"projectWorkerIds"/);
   assert.match(js, /getAll\("projectWorkerIds"\)/);
@@ -30,7 +30,7 @@ test("Preview 庫存校正同步更新瀏覽器暫存數量", () => {
   assert.match(js, /difference_quantity:after-before/);
 });
 
-test("新增工作日誌只同步專案類型與狀態，不帶入專案負責人", () => {
+test("新增工作日誌只同步工作內容類型與狀態，不帶入工作內容負責人", () => {
   assert.match(js, /function syncWorkLogProjectDefaults/);
   const start = js.indexOf("function syncWorkLogProjectDefaults");
   const handler = js.slice(start, js.indexOf("async function openProjectModal", start));
@@ -38,8 +38,8 @@ test("新增工作日誌只同步專案類型與狀態，不帶入專案負責�
   assert.match(handler, /form\.elements\.status\.value=project\.status/);
   assert.doesNotMatch(handler, /ownerIds|workerIds|checkbox\.checked/);
   assert.doesNotMatch(js, /syncWorkLogWorkersFromProject/);
-  assert.match(js, /本次施工人員請獨立選擇，不會從專案負責人自動帶入/);
-  assert.match(js, /僅用於專案管理，不會帶入工作日誌施工人員/);
+  assert.doesNotMatch(js, /本次施工人員請獨立選擇，不會從工作內容負責人自動帶入/);
+  assert.match(js, /僅用於工作內容管理，不會帶入工作日誌施工人員/);
   assert.match(js, /event\.target\.name==="projectName"/);
 });
 

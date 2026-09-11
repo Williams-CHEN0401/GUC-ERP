@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <meta name="theme-color" content="#0c4f3e" />
-    <title>GUC ERP｜專案與庫存管理</title>
+    <title>GUC ERP｜工作內容與庫存管理</title>
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/interface-theme.css" />
   </head>
@@ -14,7 +14,7 @@
       <aside class="sidebar" id="sidebar">
         <div class="brand">
           <img class="brand-mark company-logo" src="/assets/company-logo.png" alt="GUC 恭元成科技有限公司" width="151" height="149" decoding="async" />
-          <div><strong>GUC ERP</strong><small>專案與庫存管理</small></div>
+          <div><strong>GUC ERP</strong><small>工作內容與庫存管理</small></div>
         </div>
         <div class="preview-chip" id="environmentChip"><span></span>環境判定中</div>
         <nav class="nav" aria-label="主導覽">
@@ -22,9 +22,9 @@
           <a class="nav-item" data-page="transactions" href="/?page=transactions"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/transactions.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>進出貨管理</span></a>
           <a class="nav-item" data-page="repairs" href="/?page=repairs"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/repairs.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>維修品管理</span></a>
           <a class="nav-item" data-page="inventory" href="/?page=inventory"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/inventory.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>商品與庫存</span></a>
-          <a class="nav-item" data-page="crm" href="/?page=crm"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/crm.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>客戶與專案</span></a>
+          <a class="nav-item" data-page="crm" href="/?page=crm"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/crm.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>客戶與工作內容</span></a>
           <a class="nav-item" data-page="worklogs" href="/?page=worklogs"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/worklogs.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>工作日誌</span></a>
-          <a class="nav-item" data-page="materials" href="/?page=materials"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/materials.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>專案統計報表</span></a>
+          <a class="nav-item" data-page="materials" href="/?page=materials"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/materials.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>工作內容統計報表</span></a>
           <a class="nav-item" data-page="backup" href="/?page=backup"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/backup.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>資料備份／復原</span></a>
           <a class="nav-item" data-page="settings" href="/?page=settings"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/settings.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>系統設定</span></a>
         </nav>
@@ -38,7 +38,7 @@
       <main class="main">
         <header class="topbar">
           <button class="menu-button" id="menuButton" aria-label="開啟導覽">☰</button>
-          <div><h1 id="pageTitle">首頁 Dashboard</h1><p id="pageSubtitle">掌握專案、庫存與交易現況</p></div>
+          <div><h1 id="pageTitle">首頁 Dashboard</h1><p id="pageSubtitle">掌握工作內容、庫存與交易現況</p></div>
           <div class="top-actions">
             <span class="sync-state" id="syncState"><i></i>等待登入</span>
             <button class="secondary system-switch-button" id="openSiteDataButton" type="button">▦ 切換工作系統</button>
@@ -50,21 +50,21 @@
           <section class="page active" id="dashboard" data-page="dashboard">
             <header class="workspace-intro">
               <div><span class="workspace-eyebrow">GUC / WORKSPACE</span><h2>工作總覽</h2></div>
-              <span class="workspace-caption">專案・庫存・工作紀錄</span>
+              <span class="workspace-caption">工作內容・庫存・工作紀錄</span>
             </header>
             <div class="dashboard-focus">
-              <article class="panel"><div class="panel-head"><div><h2>工作日誌</h2><p>依工作日期排列，最新 15 筆</p></div><button class="text-button" data-goto="worklogs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>日期</th><th>客戶／專案</th><th>施工人員</th><th>工作內容</th></tr></thead><tbody id="dashboardWorklogTable"></tbody></table></div></article>
+              <article class="panel"><div class="panel-head"><div><h2>工作日誌</h2><p>依工作日期排列，最新 15 筆</p></div><button class="text-button" data-goto="worklogs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>日期</th><th>客戶／工作內容</th><th>施工人員</th><th>日誌內容</th></tr></thead><tbody id="dashboardWorklogTable"></tbody></table></div></article>
               <div class="dashboard-pair"><article class="panel"><div class="panel-head"><div><h2>維修品管理</h2><p>依收件日期排列，最新 15 筆</p></div><button class="text-button" data-goto="repairs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>收件日期</th><th>維修單／客戶</th><th>品項／故障內容</th><th>狀態</th></tr></thead><tbody id="dashboardRepairTable"></tbody></table></div></article>
-              <article class="panel project-panel"><div class="panel-head"><div><h2>專案檢視</h2><p>尚未完成的專案，最多 15 筆</p></div><button class="text-button" data-goto="crm">查看全部 →</button></div><div class="project-list" id="activeProjectList"></div></article></div>
+              <article class="panel project-panel"><div class="panel-head"><div><h2>工作內容檢視</h2><p>尚未完成的工作內容，最多 15 筆</p></div><button class="text-button" data-goto="crm">查看全部 →</button></div><div class="project-list" id="activeProjectList"></div></article></div>
             </div>
           </section>
 
           <section class="page" id="transactions" data-page="transactions">
             <div class="section-tabs" data-tabs="transaction"><button class="active" data-tab="pickups">取貨</button><button data-tab="receipts">進貨</button></div>
             <div class="tab-pane active" data-pane="pickups">
-              <div class="page-actions"><div><h2>取貨管理</h2><p>每筆資料先選客戶，再選擇該客戶的專案</p></div><button class="primary" data-open="pickupModal">＋ 新增取貨</button></div>
-              <div class="filterbar"><label class="search">⌕<input id="pickupSearch" placeholder="搜尋日期、客戶、專案、品項或取貨帳號" /></label><select id="pickupSort"><option value="date:desc">日期：由新到舊</option><option value="date:asc">日期：由舊到新</option><option value="project:asc">專案：升冪</option></select></div>
-              <p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="pickup" data-key="date">取貨日期</th><th data-table-sort="pickup" data-key="customer">客戶</th><th data-table-sort="pickup" data-key="project">專案</th><th data-table-sort="pickup" data-key="item">品項</th><th data-table-sort="pickup" data-key="quantity">數量</th><th data-table-sort="pickup" data-key="account">取貨帳號</th><th>操作</th></tr></thead><tbody id="pickupTable"></tbody></table></div><div id="pickupPagination"></div>
+              <div class="page-actions"><div><h2>取貨管理</h2><p>每筆資料先選客戶，再選擇該客戶的工作內容</p></div><button class="primary" data-open="pickupModal">＋ 新增取貨</button></div>
+              <div class="filterbar"><label class="search">⌕<input id="pickupSearch" placeholder="搜尋日期、客戶、工作內容、品項或取貨帳號" /></label><select id="pickupSort"><option value="date:desc">日期：由新到舊</option><option value="date:asc">日期：由舊到新</option><option value="project:asc">工作內容：升冪</option></select></div>
+              <p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="pickup" data-key="date">取貨日期</th><th data-table-sort="pickup" data-key="customer">客戶</th><th data-table-sort="pickup" data-key="project">工作內容</th><th data-table-sort="pickup" data-key="item">品項</th><th data-table-sort="pickup" data-key="quantity">數量</th><th data-table-sort="pickup" data-key="account">取貨帳號</th><th>操作</th></tr></thead><tbody id="pickupTable"></tbody></table></div><div id="pickupPagination"></div>
             </div>
             <div class="tab-pane" data-pane="receipts">
               <div class="page-actions"><div><h2>進貨管理</h2><p>供應商須由主檔下拉選擇，支援多筆登錄</p></div><button class="primary" data-open="receiptModal">＋ 新增進貨</button></div>
@@ -91,30 +91,30 @@
           </section>
 
           <section class="page" id="crm" data-page="crm">
-            <div class="section-tabs" data-tabs="crm"><button class="active" data-tab="customers">客戶</button><button data-tab="projects">專案</button><button data-tab="suppliers">供應商</button></div>
+            <div class="section-tabs" data-tabs="crm"><button class="active" data-tab="customers">客戶</button><button data-tab="projects">工作內容</button><button data-tab="suppliers">供應商</button></div>
             <div class="tab-pane active" data-pane="customers"><div class="page-actions"><div><h2>客戶管理</h2><p>顯示短編號、客戶分類及可複選的承攬內容，底層 UUID 與關聯保持不變</p></div><button class="primary" data-open="customerModal">＋ 新增客戶</button></div><div class="filterbar"><label class="search">⌕<input id="customerSearch" placeholder="搜尋客戶編號、名稱、電話、地址或承攬內容" /></label><select id="customerCategoryFilter"><option value="">所有客戶分類</option><option value="school">學校機關</option><option value="government">政府機關</option><option value="social_welfare">社福機關</option><option value="cleaning_team">清潔隊</option></select><select id="customerSort"><option value="updatedRaw:desc">最新日期優先</option><option value="code:asc">編號：升冪</option><option value="code:desc">編號：降冪</option><option value="name:asc">名稱：升冪</option><option value="updated:desc">更新：由新到舊</option></select></div><p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="customer" data-key="code">客戶編號</th><th data-table-sort="customer" data-key="category">客戶分類</th><th data-table-sort="customer" data-key="name">客戶名稱</th><th>承攬內容</th><th data-table-sort="customer" data-key="phone">電話</th><th data-table-sort="customer" data-key="address">地址</th><th data-table-sort="customer" data-key="updated">更新時間</th><th>操作</th></tr></thead><tbody id="customerTable"></tbody></table></div><div id="customerPagination"></div></div>
-            <div class="tab-pane" data-pane="projects"><div class="page-actions"><div><h2>專案管理</h2><p>專案編號依 YYMMNNN 規則由資料庫產生</p></div><button class="primary" data-open="projectModal">＋ 新增專案</button></div><div class="filterbar"><label class="search">⌕<input id="projectSearch" placeholder="搜尋專案編號、名稱、客戶、狀態或負責人" /></label><select id="projectSort"><option value="updatedRaw:desc">最新日期優先</option><option value="code:asc">編號：升冪</option><option value="code:desc">編號：降冪</option><option value="name:asc">名稱：升冪</option><option value="status:asc">狀態：升冪</option></select></div><p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="project" data-key="code">專案編號</th><th data-table-sort="project" data-key="name">專案名稱</th><th data-table-sort="project" data-key="customer">客戶</th><th data-table-sort="project" data-key="type">類型</th><th data-table-sort="project" data-key="status">狀態</th><th data-table-sort="project" data-key="owner">負責人</th><th>操作</th></tr></thead><tbody id="projectTable"></tbody></table></div><div id="projectPagination"></div></div>
+            <div class="tab-pane" data-pane="projects"><div class="page-actions"><div><h2>工作內容管理</h2><p>工作內容編號依 YYMMNNN 規則由資料庫產生</p></div><button class="primary" data-open="projectModal">＋ 新增工作內容</button></div><div class="filterbar"><label class="search">⌕<input id="projectSearch" placeholder="搜尋工作內容編號、名稱、客戶、狀態或負責人" /></label><select id="projectSort"><option value="updatedRaw:desc">最新日期優先</option><option value="code:asc">編號：升冪</option><option value="code:desc">編號：降冪</option><option value="name:asc">名稱：升冪</option><option value="status:asc">狀態：升冪</option></select></div><p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="project" data-key="code">工作內容編號</th><th data-table-sort="project" data-key="name">工作內容名稱</th><th data-table-sort="project" data-key="customer">客戶</th><th data-table-sort="project" data-key="type">類型</th><th data-table-sort="project" data-key="status">狀態</th><th data-table-sort="project" data-key="owner">負責人</th><th>操作</th></tr></thead><tbody id="projectTable"></tbody></table></div><div id="projectPagination"></div></div>
             <div class="tab-pane" data-pane="suppliers"><div class="page-actions"><div><h2>供應商管理</h2><p>進貨時只能選擇啟用中的供應商</p></div><button class="primary" data-open="supplierModal">＋ 新增供應商</button></div><div class="filterbar"><label class="search">⌕<input id="supplierSearch" placeholder="搜尋供應商、聯絡人、電話或 Email" /></label><select id="supplierSort"><option value="createdAt:desc">最新日期優先</option><option value="name:asc">名稱：升冪</option><option value="name:desc">名稱：降冪</option><option value="contact:asc">聯絡人：升冪</option></select></div><p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="supplier" data-key="name">供應商名稱</th><th data-table-sort="supplier" data-key="contact">聯絡人</th><th data-table-sort="supplier" data-key="phone">電話</th><th data-table-sort="supplier" data-key="email">Email</th><th>狀態</th><th>操作</th></tr></thead><tbody id="supplierTable"></tbody></table></div><div id="supplierPagination"></div></div>
           </section>
 
           <section class="page" id="worklogs" data-page="worklogs">
-            <div class="page-actions"><div><h2>工作日誌</h2><p>獨立管理所有客戶與專案的工作紀錄；既有日誌、施工人員、取貨及附件關聯完整保留。</p></div><button class="primary" data-open="workLogModal">＋ 新增工作日誌</button></div>
-            <div class="filterbar worklog-filterbar"><label class="search">⌕<input id="worklogSearch" placeholder="搜尋日期、客戶、專案、工作類型、狀態、施工人員或內容" /></label><select id="worklogCustomerCategoryFilter"><option value="">所有客戶分類</option><option value="school">學校機關</option><option value="government">政府機關</option><option value="social_welfare">社福機關</option><option value="cleaning_team">清潔隊</option></select><select id="worklogCustomerFilter" disabled><option value="">請先選擇客戶分類</option></select><select id="worklogProjectFilter"><option value="">所有專案</option></select><select id="worklogTypeFilter"><option value="">所有工作類型</option><option value="工程施工">工程施工</option><option value="維修紀錄">維修/查修</option><option value="維護保養">維護保養</option></select></div>
-            <p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table class="worklog-table"><thead><tr><th data-table-sort="worklog" data-key="log_date">日期</th><th>客戶</th><th data-table-sort="worklog" data-key="project">專案／標題</th><th data-table-sort="worklog" data-key="work_type">工作類型</th><th data-table-sort="worklog" data-key="status">狀態</th><th>施工人員</th><th>取貨</th><th>操作</th></tr></thead><tbody id="worklogTable"></tbody></table></div><div id="worklogPagination"></div>
+            <div class="page-actions"><div><h2>工作日誌</h2></div><button class="primary" data-open="workLogModal">＋ 新增工作日誌</button></div>
+            <div class="filterbar worklog-filterbar"><label class="search">⌕<input id="worklogSearch" placeholder="搜尋日期、客戶、工作內容、工作類型、狀態、施工人員或內容" /></label><select id="worklogCustomerCategoryFilter"><option value="">所有客戶分類</option><option value="school">學校機關</option><option value="government">政府機關</option><option value="social_welfare">社福機關</option><option value="cleaning_team">清潔隊</option></select><select id="worklogCustomerFilter" disabled><option value="">請先選擇客戶分類</option></select><select id="worklogProjectFilter"><option value="">所有工作內容</option></select><select id="worklogTypeFilter"><option value="">所有工作類型</option><option value="工程施工">工程施工</option><option value="維修紀錄">維修/查修</option><option value="維護保養">維護保養</option></select></div>
+            <div class="table-card"><table class="worklog-table"><thead><tr><th data-table-sort="worklog" data-key="log_date">日期</th><th>客戶</th><th data-table-sort="worklog" data-key="project">工作內容／標題</th><th data-table-sort="worklog" data-key="work_type">工作類型</th><th data-table-sort="worklog" data-key="status">狀態</th><th>施工人員</th><th>取貨</th><th>操作</th></tr></thead><tbody id="worklogTable"></tbody></table></div><div id="worklogPagination"></div>
           </section>
 
           <section class="page" id="materials" data-page="materials">
-            <div class="page-actions"><div><h2>專案統計報表</h2><p>整合專案用料、工作日誌與實際施工人員；所有數據來自現有正式資料。</p></div></div>
+            <div class="page-actions"><div><h2>工作內容統計報表</h2><p>整合工作內容用料、工作日誌與實際施工人員；所有數據來自現有正式資料。</p></div></div>
             <article class="panel selector-panel report-selector">
               <label>客戶分類<select id="materialCustomerCategory"><option value="">請選擇分類</option><option value="school">學校機關</option><option value="government">政府機關</option><option value="social_welfare">社福機關</option><option value="cleaning_team">清潔隊</option></select></label>
               <label>選擇客戶<select id="materialCustomer" disabled><option>請先選擇分類</option></select></label>
-              <label>選擇專案<select id="materialProject" disabled><option>請先選擇客戶</option></select></label>
+              <label>選擇工作內容<select id="materialProject" disabled><option>請先選擇客戶</option></select></label>
               <label>起始日期<input id="materialDateFrom" type="date" /></label>
               <label>結束日期<input id="materialDateTo" type="date" /></label>
               <p class="report-filter-hint">日期區間同時套用於取貨日期與工作日誌日期；留白代表不限。</p>
             </article>
-            <div class="report-tabs" role="tablist" aria-label="專案統計報表分頁"><button class="active" type="button" role="tab" aria-selected="true" data-report-tab="overview">總覽</button><button type="button" role="tab" aria-selected="false" data-report-tab="materials">用料統計</button><button type="button" role="tab" aria-selected="false" data-report-tab="workers">施工人員</button></div>
-            <div class="material-summary" id="materialSummary"><article class="empty-state"><span>≣</span><h2>請選擇客戶與專案</h2><p>系統只會顯示該客戶實際關聯的專案。</p></article></div>
+            <div class="report-tabs" role="tablist" aria-label="工作內容統計報表分頁"><button class="active" type="button" role="tab" aria-selected="true" data-report-tab="overview">總覽</button><button type="button" role="tab" aria-selected="false" data-report-tab="materials">用料統計</button><button type="button" role="tab" aria-selected="false" data-report-tab="workers">施工人員</button></div>
+            <div class="material-summary" id="materialSummary"><article class="empty-state"><span>≣</span><h2>請選擇客戶與工作內容</h2><p>系統只會顯示該客戶實際關聯的工作內容。</p></article></div>
           </section>
 
           <section class="page" id="backup" data-page="backup">
@@ -124,17 +124,17 @@
           </section>
 
           <section class="page" id="settings" data-page="settings">
-            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="permissions">角色／專案權限</button><button data-tab="logs">系統日誌</button></div>
-            <div class="tab-pane" data-pane="permissions" id="permissionSettings"></div><div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／專案與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
+            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="permissions">角色／工作內容權限</button><button data-tab="logs">系統日誌</button></div>
+            <div class="tab-pane" data-pane="permissions" id="permissionSettings"></div><div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／工作內容與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
             <div class="tab-pane" data-pane="users">
               <div class="page-actions"><div><h2>使用者管理</h2><p>可新增、查詢、修改及刪除使用者；僅管理員可執行異動。</p></div><button class="primary" data-open="accountModal">＋ 新增使用者</button></div>
               <div class="filterbar"><label class="search">⌕<input id="userSearch" placeholder="搜尋帳號、顯示名稱、角色或狀態" /></label><select id="userSort"><option value="updatedRaw:desc">最新日期優先</option><option value="username:asc">帳號：升冪</option><option value="username:desc">帳號：降冪</option><option value="displayName:asc">名稱：升冪</option><option value="role:asc">角色：升冪</option></select></div>
               <p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="user" data-key="username">帳號</th><th data-table-sort="user" data-key="displayName">顯示名稱</th><th data-table-sort="user" data-key="role">角色</th><th data-table-sort="user" data-key="activeLabel">狀態</th><th data-table-sort="user" data-key="updatedAt">更新時間</th><th>操作</th></tr></thead><tbody id="userTable"></tbody></table></div><div id="userPagination"></div>
-              <article class="panel role-matrix"><div class="panel-head"><div><h2>角色權限</h2><p>角色僅保留 admin、operator、viewer</p></div></div><div class="table-card flat"><table><thead><tr><th>角色</th><th>查詢</th><th>交易新增修改</th><th>主檔管理</th><th>使用者管理</th></tr></thead><tbody><tr><td><span class="role admin">admin</span></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr><tr><td><span class="role operator">operator</span></td><td>✓</td><td>✓</td><td>僅專案</td><td>—</td></tr><tr><td><span class="role viewer">viewer</span></td><td>✓</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></article>
+              <article class="panel role-matrix"><div class="panel-head"><div><h2>角色權限</h2><p>角色僅保留 admin、operator、viewer</p></div></div><div class="table-card flat"><table><thead><tr><th>角色</th><th>查詢</th><th>交易新增修改</th><th>主檔管理</th><th>使用者管理</th></tr></thead><tbody><tr><td><span class="role admin">admin</span></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr><tr><td><span class="role operator">operator</span></td><td>✓</td><td>✓</td><td>僅工作內容</td><td>—</td></tr><tr><td><span class="role viewer">viewer</span></td><td>✓</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></article>
             </div>
             <div class="tab-pane" data-pane="logs">
               <div class="page-actions"><div><h2>系統日誌</h2><p>集中顯示原「最近操作」與資料異動稽核紀錄。</p></div><span class="pill">Audit Log</span></div>
-              <form id="auditFilters" class="audit-filters"><label>開始日期<input type="date" name="from" /></label><label>結束日期<input type="date" name="to" /></label><label>操作者<input name="actor" placeholder="姓名或帳號" /></label><label>系統模組<select name="module"><option value="">全部模組</option><option value="customers">客戶與承攬</option><option value="projects">專案</option><option value="worklogs">工作日誌</option><option value="repairs">維修履歷</option><option value="phone">電話設備</option><option value="monitoring">監控設備</option><option value="inventory">庫存與交易</option><option value="accounts">帳號與登入</option></select></label><label>操作類型<select name="action"><option value="">全部操作</option><option value="create">新增</option><option value="update">修改</option><option value="delete">刪除</option><option value="login">登入</option><option value="logout">登出</option><option value="import">匯入</option><option value="export">匯出</option><option value="batch">批次操作</option></select></label><label>關鍵字<input name="q" placeholder="操作者、模組或事件" /></label><button class="primary">查詢</button></form>
+              <form id="auditFilters" class="audit-filters"><label>開始日期<input type="date" name="from" /></label><label>結束日期<input type="date" name="to" /></label><label>操作者<input name="actor" placeholder="姓名或帳號" /></label><label>系統模組<select name="module"><option value="">全部模組</option><option value="customers">客戶與承攬</option><option value="projects">工作內容</option><option value="worklogs">工作日誌</option><option value="repairs">維修履歷</option><option value="phone">電話設備</option><option value="monitoring">監控設備</option><option value="inventory">庫存與交易</option><option value="accounts">帳號與登入</option></select></label><label>操作類型<select name="action"><option value="">全部操作</option><option value="create">新增</option><option value="update">修改</option><option value="delete">刪除</option><option value="login">登入</option><option value="logout">登出</option><option value="import">匯入</option><option value="export">匯出</option><option value="batch">批次操作</option></select></label><label>關鍵字<input name="q" placeholder="操作者、模組或事件" /></label><button class="primary">查詢</button></form>
               <div class="table-card"><table><thead><tr><th>時間</th><th>操作與變更摘要</th><th>詳細</th></tr></thead><tbody id="logTable"></tbody></table></div><div id="logPagination"></div>
             </div>
           </section>
@@ -166,7 +166,7 @@
         </header>
         <div class="system-choice-grid">
           <button type="button" class="system-choice erp" data-system-choice="erp">
-            <span>▦</span><strong>ERP 系統</strong><small>進入目前的專案與庫存 Dashboard</small>
+            <span>▦</span><strong>ERP 系統</strong><small>進入目前的工作內容與庫存 Dashboard</small>
           </button>
           <button type="button" class="system-choice sites" data-system-choice="sites">
             <span>⌂</span><strong>案場資料</strong><small>開啟獨立的案場承攬資料系統</small>

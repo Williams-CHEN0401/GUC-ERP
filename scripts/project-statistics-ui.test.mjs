@@ -7,7 +7,7 @@ const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const edge = readFileSync(new URL("../supabase/functions/inventory-gateway/index.ts", import.meta.url), "utf8");
 
 test("project statistics keeps the existing route and exposes the requested tabs", () => {
-  assert.match(html, /data-page="materials"[\s\S]*專案統計報表/);
+  assert.match(html, /data-page="materials"[\s\S]*工作內容統計報表/);
   for (const [key, label] of [["overview", "總覽"], ["materials", "用料統計"], ["workers", "施工人員"]]) {
     assert.match(html, new RegExp(`data-report-tab="${key}"[^>]*>${label}<`));
   }

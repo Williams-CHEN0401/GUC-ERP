@@ -37,7 +37,8 @@ test("work log and equipment events save through one atomic database function", 
 });
 
 test("ERP form supports multiple events, multi-device drawer and preview-only simulation", () => {
-  for (const marker of ["登錄維修事項", "data-add-maintenance-event", "data-open-equipment-picker", "equipment-drawer", "collectMaintenanceEvents", "maintenance_event_count", "內容沿用上方工作內容；可同時連結多台設備"]) assert.ok(`${app}\n${styles}`.includes(marker), marker);
+  for (const marker of ["登錄維修事項", "data-add-maintenance-event", "data-open-equipment-picker", "equipment-drawer", "collectMaintenanceEvents", "maintenance_event_count"]) assert.ok(`${app}\n${styles}`.includes(marker), marker);
+  assert.doesNotMatch(app, /內容沿用上方工作內容；可同時連結多台設備/);
   assert.doesNotMatch(app, /confirm\("本次工作日誌/);
   assert.match(app, /if\(PREVIEW_MODE\)\{const result=applyPreviewMutation/);
   assert.match(app, /customer_category\|\|"government"/);
@@ -46,7 +47,7 @@ test("ERP form supports multiple events, multi-device drawer and preview-only si
 });
 
 test("work log content is shared with maintenance event descriptions", () => {
-  assert.match(app, /工作內容／維修設定內容/);
+  assert.match(app, /日誌內容／維修設定內容/);
   assert.match(app, /sharedDescription=form\.elements\.summary/);
   assert.match(app, /description=sharedDescription/);
   assert.doesNotMatch(app, /inputField\("eventDescription"/);

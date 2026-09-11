@@ -9,16 +9,16 @@ const migration = readFileSync(new URL("../supabase/migrations/20260902110557_sy
 test("project and work-log types share labels while preserving canonical database values", () => {
   assert.match(app, /PROJECT_WORK_TYPES\s*=\s*\[\["construction", "工程施工", "工程施工"\], \["repair", "維修\/查修", "維修紀錄"\], \["maintenance", "維護保養", "維護保養"\], \["delivery", "送貨", "送貨"\]\]/);
   assert.match(app, /WORK_LOG_TYPES = PROJECT_WORK_TYPES\.map\(\(\[,label,storedValue\]\)=>\[storedValue,label\]\)/);
-  assert.ok(app.includes('selectField("type","專案類型",PROJECT_WORK_TYPES'));
+  assert.ok(app.includes('selectField("type","工作內容類型",PROJECT_WORK_TYPES'));
   assert.ok(app.includes('selectField("workType","工作類型",WORK_LOG_TYPES'));
   assert.match(gateway, /\["construction","repair","maintenance","delivery"\]/);
   assert.match(gateway, /\["工程施工","維修紀錄","維護保養","送貨"\]/);
 });
 
-test("work-log project selection preloads shared type and status", () => {
+test("work-log work-content selection preloads shared type and status", () => {
   assert.ok(app.includes("form.elements.workType.value=workTypeFromProjectType(project.rawType)"));
   assert.ok(app.includes("form.elements.status.value=project.status"));
-  assert.ok(app.includes("工作類型與狀態會同步到專案管理，以及同一專案的其他工作日誌"));
+  assert.doesNotMatch(app, /工作類型與狀態會同步到工作內容管理，以及同一工作內容的其他工作日誌/);
 });
 
 test("preview mutations mirror type and status in both directions", () => {

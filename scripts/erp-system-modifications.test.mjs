@@ -16,14 +16,14 @@ test("附件承攬內容只由所選客戶關聯動態產生", () => {
   assert.match(js, /name="contractServiceTypeId"|selectField\("contractServiceTypeId"/);
 });
 
-test("附件缺少承攬內容或專案時前後端都拒絕", () => {
-  assert.match(js, /缺少專案時禁止上傳/);
+test("附件缺少承攬內容或工作內容時前後端都拒絕", () => {
+  assert.match(js, /缺少工作內容時禁止上傳/);
   assert.match(nas, /UPLOAD_CONTEXT_REQUIRED/);
   assert.match(nas, /PROJECT_REQUIRED/);
   assert.match(edge, /!project_id/);
 });
 
-test("NAS 新附件使用客戶、承攬內容、專案、日期完整路徑", () => {
+test("NAS 新附件使用客戶、承攬內容、工作內容、日期完整路徑", () => {
   assert.match(js, /safePathPart\(project\?\.name/);
   assert.match(nas, /\$\{contractServiceName\}\/\$\{projectName\}\/\$\{logDate\}/);
   assert.match(edge, /safePathPart\(services\[0\]\.name\).*safePathPart\(projects\[0\]\.name\).*\$\{log_date\}/);
