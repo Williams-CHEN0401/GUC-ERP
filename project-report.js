@@ -7,6 +7,26 @@
   }
   function compareDate(left, right) { return String(left).localeCompare(String(right)); }
 
+  function taipeiDate(value) {
+    const raw = text(value);
+    if (!raw) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const date = new Date(raw);
+    if (!Number.isFinite(date.getTime())) return "";
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+    const part = (type) => parts.find((item) => item.type === type).value;
+    return `${part("year")}-${part("month")}-${part("day")}`;
+  }
+
+  function projectDateRange(project) {
+    return { from: taipeiDate(project?.createdAt), to: project?.status === "completed" ? taipeiDate(project.completedOn) : "" };
+  }
+
+  // Preview mirrors the database status transition; unrelated edits keep the date.
+  function nextCompletionDate(project, status, now = new Date().toISOString()) {
+    return status !== "completed" ? "" : project?.status === "completed" ? project.completedOn || "" : taipeiDate(now);
+  }
+
   function buildProjectReport({ projectId, pickups = [], logs = [], workers = [], inventory = [], from = "", to = "" } = {}) {
     const dateFrom = text(from), dateTo = text(to);
     if (dateFrom && dateTo && dateFrom > dateTo) {
@@ -100,5 +120,5 @@
     };
   }
 
-  globalObject.GUCProjectReport = Object.freeze({ buildProjectReport, inDateRange });
+  globalObject.GUCProjectReport = Object.freeze({ buildProjectReport, inDateRange, taipeiDate, projectDateRange, nextCompletionDate });
 })(globalThis);
