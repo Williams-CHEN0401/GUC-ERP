@@ -22,7 +22,7 @@ test("work-log work-content selection preloads shared type and status", () => {
 });
 
 test("preview mutations mirror type and status in both directions", () => {
-  assert.ok(app.includes("project.rawType=projectType;project.status=payload.status"));
+  assert.ok(app.includes("project.rawType=projectType;project.completedOn=globalThis.GUCProjectReport.nextCompletionDate(project,payload.status);project.status=payload.status"));
   assert.ok(app.includes("log.work_type=payload.work_type;log.status=payload.status"));
   assert.ok(app.includes("log.work_type=workType;log.status=payload.status"));
 });
