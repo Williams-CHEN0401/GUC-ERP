@@ -416,7 +416,7 @@ const datasets: Record<string, DatasetDefinition> = {
   site_assets: { path: "site_assets?select=*&order=created_at.desc" },
   phone_systems: { path: "phone_systems?select=id,customer_id,contract_service_type_id,system_name,ip_address,installation_location,device_brand,device_model,notes,credential_configured,source,updated_by,row_version,created_at,updated_at&order=system_name.asc" },
   phone_extensions: { path: "phone_extensions?select=id,customer_id,contract_service_type_id,phone_system_id,line_type,extension_number,extension_name,building_name,floor,installation_location,device_brand,device_model,notes,source_reference,source,updated_by,row_version,created_at,updated_at&order=building_name.asc.nullslast,floor.asc.nullslast,extension_number.asc.nullslast" },
-  phone_terminal_points: { path: "phone_terminal_points?select=id,customer_id,contract_service_type_id,phone_extension_id,endpoint_side,frame_name,frame_block,frame_position,terminal_code,slot_identifier,floor,installation_location,notes,source_reference,row_version,created_at,updated_at&order=phone_extension_id.asc,endpoint_side.asc" },
+  phone_terminal_points: { path: "phone_terminal_points?select=id,customer_id,contract_service_type_id,phone_extension_id,endpoint_side,frame_name,frame_block,frame_position,terminal_code,slot_identifier,floor,installation_location,notes,source,source_reference,building_name,source_extension_number,source_phone_type,resolved_phone_type,field_match_status,field_match_message,row_version,created_at,updated_at&order=phone_extension_id.asc,endpoint_side.asc" },
   phone_credential_access_logs: { path: "phone_credential_access_logs?select=id,phone_system_id,customer_id,contract_service_type_id,action,actor,source,created_at&order=created_at.desc&limit=200", adminOnly: true },
   equipment_registry: { path: "equipment_registry?select=id,equipment_type,customer_id,service_id,site_id,source_table,source_id,display_name,search_key,status,installation_date,installation_precision,metadata,created_at,updated_at&status=eq.active&order=display_name.asc", paged: true },
   maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,result,notes,inventory_category_id,inventory_item_id,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
@@ -975,50 +975,13 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     });
     await ensurePhoneContract(customer_id,service_type_id);
     if(import_type==="field"){
-      type MatchedPhoneType="digital"|"analog"|"ip"|"trunk";
-      type MatchExtension={id:string;line_type?:string;device_model?:string;notes?:string};
-      type MatchPoint={id:string;phone_extension_id:string;frame_name?:string;notes?:string};
-      const normalizeMatch=(value:unknown)=>text(value).replace(/\u3000/g," ").replace(/[\t\r\n ]+/g," ").trim().toLocaleLowerCase("zh-Hant");
-      const sourceValue=(notes:unknown)=>String(notes||"").split(/\r?\n/).find(value=>/^Excel\s*型態\s*[:：]/i.test(value.trim()))?.trim().replace(/^Excel\s*型態\s*[:：]\s*/i,"")||"";
-      const [extensionData,pointData]=await Promise.all([
-        getAll(`phone_extensions?customer_id=eq.${customer_id}&contract_service_type_id=eq.${service_type_id}&select=id,line_type,device_model,notes&order=id.asc`),
-        getAll(`phone_terminal_points?customer_id=eq.${customer_id}&contract_service_type_id=eq.${service_type_id}&endpoint_side=eq.system&select=id,phone_extension_id,frame_name,notes&order=id.asc`),
-      ]);
-      const extensionRows=extensionData as MatchExtension[],pointRows=pointData as MatchPoint[];
-      const extensionById=new Map(extensionRows.map(row=>[row.id,row]));
-      const pointByExtensionId=new Map(pointRows.map(row=>[row.phone_extension_id,row]));
-      const phoneTypeOf=(extension:MatchExtension|undefined,point:MatchPoint|undefined):MatchedPhoneType|"unknown"=>{
-        if(!extension)return "unknown";
-        const sourceGroup=String(point?.frame_name||"").trim().replace(/[\u3000\s]+/g,"");
-        const marker=String(extension.notes||"").match(/(?:^|\r?\n)\[\[(?:GUC_PHONE_TYPE|phone_type):(digital|analog|ip|trunk)\]\]/i)?.[1]?.toLowerCase() as MatchedPhoneType|undefined;
-        return sourceGroup.startsWith("數位分機系統端")?"digital":sourceGroup.startsWith("類比分機系統端")?"analog":extension.line_type==="trunk"?"trunk":marker||(/\bIP\b/i.test(String(extension.device_model||""))?"ip":/數位|digital/i.test(String(extension.device_model||""))?"digital":"unknown");
-      };
-      const typesBySource=new Map<string,Set<MatchedPhoneType>>();
-      const exactAliases:{value:string;type:MatchedPhoneType}[]=[{value:"數位",type:"digital"},{value:"數位話機",type:"digital"},{value:"digital",type:"digital"},{value:"類比",type:"analog"},{value:"類比話機",type:"analog"},{value:"analog",type:"analog"},{value:"IP",type:"ip"},{value:"IP 話機",type:"ip"},{value:"外線",type:"trunk"},{value:"中繼",type:"trunk"},{value:"外線／中繼",type:"trunk"},{value:"trunk",type:"trunk"}];
-      const addType=(value:unknown,phoneType:MatchedPhoneType)=>{const matchKey=normalizeMatch(value);if(!matchKey)return;const matches=typesBySource.get(matchKey)||new Set<MatchedPhoneType>();matches.add(phoneType);typesBySource.set(matchKey,matches);};
-      pointRows.forEach(point=>{
-        const phoneType=phoneTypeOf(extensionById.get(point.phone_extension_id),point);
-        if(phoneType==="unknown")return;
-        addType(sourceValue(point.notes),phoneType);
-        exactAliases.filter(alias=>alias.type===phoneType).forEach(alias=>addType(alias.value,phoneType));
+      // The database rechecks customer-scoped matching and preserves every physical slot.
+      return await rpc("import_phone_field_rows_v1", {
+        p_customer_id:customer_id,p_contract_service_type_id:service_type_id,
+        p_file_name:file_name,p_rows:rows,p_actor:actor,
       });
-      rows=rows.map(row=>{
-        const matchKey=normalizeMatch(row.terminal_type),matches=[...(typesBySource.get(matchKey)||[])];
-        let status="unmatched",computedPhoneType:MatchedPhoneType|"unknown"="unknown",message=`話機類型「${row.terminal_type}」找不到系統端精確對應；電話類型保持空白`;
-        if(!matchKey){status="empty";message="Excel 話機類型空白；不執行查詢，電話類型保持空白";}
-        else if(matches.length===1){status="matched";computedPhoneType=matches[0];message=`話機類型「${row.terminal_type}」已精確匹配系統端資料`;}
-        else if(matches.length>1){status="conflict";message=`話機類型「${row.terminal_type}」在系統端對應到不同電話類型；未自動選擇`;}
-        if(status==="matched"&&row.existing_extension_id){
-          const targetExtension=extensionById.get(row.existing_extension_id),targetPoint=pointByExtensionId.get(row.existing_extension_id),targetType=phoneTypeOf(targetExtension,targetPoint);
-          if(targetType!=="unknown"&&targetType!==computedPhoneType){status="conflict";computedPhoneType="unknown";message=`話機類型「${row.terminal_type}」的匹配結果與該號碼系統端電話類型不一致；未自動選擇`;}
-        }
-        const previewChanged=Boolean(row.phone_type_match_status&&(row.phone_type_match_status!==status||row.phone_type!==computedPhoneType));
-        if(previewChanged)message+=`；確認匯入時已依最新系統端資料重新驗證`;
-        return {...row,phone_type:computedPhoneType,phone_type_match_status:status,phone_type_match_message:message};
-      });
-    }else{
-      rows=rows.map(row=>({...row,phone_type_match_status:"not_applicable",phone_type_match_message:"系統端匯入不執行話機類型查詢"}));
     }
+    rows=rows.map(row=>({...row,phone_type_match_status:"not_applicable",phone_type_match_message:"系統端匯入不執行話機類型查詢"}));
     const eligibleRows=rows.filter(row=>row.preview_status==="new"||row.preview_status==="update");
     const keys=eligibleRows.map(row=>`${import_type}|${text(row.frame_name)}|${text(row.building)}|${text(row.floor)}|${text(row.board)}|${row.slot}`);
     if(new Set(keys).size!==keys.length) throw new Error("匯入檔案包含重複的棟名、樓層、端子板與槽位。");
