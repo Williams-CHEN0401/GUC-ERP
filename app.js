@@ -17,7 +17,7 @@ const QUOTATION_SSO_READY_MESSAGE = "GUC_QUOTATION_SSO_READY";
 const QUOTATION_SSO_SESSION_MESSAGE = "GUC_QUOTATION_SSO_SESSION";
 const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST;
 const CUSTOMER_CATEGORIES = [["school", "學校機關"], ["government", "政府機關"], ["social_welfare", "社福機關"], ["cleaning_team", "清潔隊"]];
-const PROJECT_WORK_TYPES = [["construction", "工程施工", "工程施工"], ["repair", "維修/查修", "維修紀錄"], ["maintenance", "維護保養", "維護保養"], ["delivery", "送貨", "送貨"], ["clerical", "文書作業", "文書作業"]];
+const PROJECT_WORK_TYPES = [["construction", "工程施工", "工程施工"], ["repair", "維修/查修", "維修紀錄"], ["maintenance", "維護保養", "維護保養"], ["delivery", "送貨", "送貨"], ["clerical", "文書作業", "文書作業"], ["site_survey", "場勘", "場勘"]];
 const WORK_LOG_TYPES = PROJECT_WORK_TYPES.map(([,label,storedValue])=>[storedValue,label]);
 const MAINTENANCE_EVENT_TYPES = [["SOFTWARE_CONFIG","軟體設定"],["LINE_REPAIR","線路維修"],["LINE_REPLACEMENT","線路更換"],["REPAIR","設備維修"],["REPLACEMENT","設備更換"]];
 const LEGACY_MAINTENANCE_EVENT_TYPES = [["INSTALLATION","安裝"],["MAINTENANCE","維護保養"],["PROGRAM_CONFIG","程式設定"],["INSPECTION","巡檢"],["OTHER","其他"]];
@@ -67,7 +67,7 @@ const siteModules = {
   floors: { title: "平面與架構", columns: [["floor_code","樓層編號"],["floor_name","樓層名稱"],["description","說明"]], fields: [["floor_code","樓層編號","text",true],["floor_name","樓層名稱","text",true],["description","說明","textarea",false]] },
   routes: { title: "管道走線", columns: [["route_no","路徑編號"],["from_location","起點"],["to_location","終點"],["cable_type","線材種類"]], fields: [["route_no","路徑編號","text",true],["from_location","起點","text",true],["to_location","終點","text",true],["cable_type","線材種類","text",false],["route_description","走線說明","textarea",false]] },
   devices: { title: "設備點位", columns: [["device_no","點位編號"],["device_name","設備名稱"],["item_label","品牌／型號"],["status","狀態"]], fields: [["device_no","點位編號","text",true],["device_name","設備名稱","text",true],["inventory_item_id","品項","inventory",false],["status","狀態","select:planned,已規劃|installed,已安裝|tested,已測試",false],["notes","備註","textarea",false]] },
-  logs: { title: "工作日誌", columns: [["log_date","日期"],["title","標題"],["work_type","工作類型"],["worker_labels","施工人員"],["pickup_summary","取貨狀態"],["summary","內容"]], fields: [["log_date","工作日期","date",true],["title","標題","text",true],["work_type","工作類型","select:工程施工,工程施工|維修紀錄,維修/查修|維護保養,維護保養|送貨,送貨|文書作業,文書作業",true],["worker_user_ids","施工人員","workers",false],["summary","內容","textarea",false]] },
+  logs: { title: "工作日誌", columns: [["log_date","日期"],["title","標題"],["work_type","工作類型"],["worker_labels","施工人員"],["pickup_summary","取貨狀態"],["summary","內容"]], fields: [["log_date","工作日期","date",true],["title","標題","text",true],["work_type","工作類型","select:工程施工,工程施工|維修紀錄,維修/查修|維護保養,維護保養|送貨,送貨|文書作業,文書作業|場勘,場勘",true],["worker_user_ids","施工人員","workers",false],["summary","內容","textarea",false]] },
   maintenance: { title: "維修紀錄", columns: [["reported_at","報修日期"],["issue_description","問題描述"],["resolution","處理結果"],["warranty_status","保固狀態"]], fields: [["reported_at","報修日期","date",true],["issue_description","問題描述","textarea",true],["resolution","處理結果","textarea",false],["warranty_status","保固狀態","text",false]] },
   notes: { title: "施工備忘", columns: [["title","標題"],["note_type","類型"],["importance","重要性"],["content","內容"]], fields: [["title","標題","text",true],["note_type","類型","text",true],["importance","重要性","select:normal,一般|important,重要|warning,警告",true],["content","內容","textarea",true]] },
   assets: { title: "附件", columns: [["original_name","檔案"],["work_log_label","關聯工作日誌"],["file_size","大小"],["upload_status","狀態"]], fields: [] }
@@ -792,16 +792,26 @@ async function loadAuditPage(){
 }
 function renderSystemLogs(){
   const audit=globalThis.GUCAudit,body=document.querySelector("#logTable");if(!body||!audit)return;
-  body.innerHTML=auditPage.records.map(row=>`<tr><td><time>${esc(formatDateTime(row.created_at))}</time></td><td><strong>${esc(audit.auditSummary(row))}</strong><small>${esc(audit.auditChanges(row).slice(0,2).map(c=>`${c.field}：${c.before} → ${c.after}`).join("；")||"操作已記錄")}</small></td><td><button data-audit-detail="${row.id}">查看詳細</button></td></tr>`).join("")||emptyRow(3,auditPage.busy?"正在載入…":auditPage.error||(!canModule("audit")?"沒有系統日誌查看權限":"此條件下沒有系統日誌"));
-  document.querySelector("#logPagination").innerHTML=`<span>共 ${auditPage.total} 筆</span><div><button data-audit-page="prev" ${auditPage.busy||auditPage.page<=1?"disabled":""}>上一頁</button><span>${auditPage.page} / ${auditPage.pageCount}</span><button data-audit-page="next" ${auditPage.busy||auditPage.page>=auditPage.pageCount?"disabled":""}>下一頁</button></div>`;
+  body.innerHTML=auditPage.records.map(row=>`<tr data-audit-row="${esc(row.id)}" tabindex="0" title="雙擊查看詳細；手機點一下或按 Enter 開啟"><td><time>${esc(formatDateTime(row.created_at))}</time></td><td><strong>${esc(audit.auditSummary(row))}</strong><small>${esc(audit.auditChanges(row).slice(0,2).map(c=>`${c.field}：${c.before} → ${c.after}`).join("；")||"操作已記錄")}</small></td><td><button type="button" class="secondary" data-audit-detail="${esc(row.id)}">查看詳細</button></td></tr>`).join("")||emptyRow(3,auditPage.busy?"正在載入…":auditPage.error||(!canModule("audit")?"沒有系統日誌查看權限":"此條件下沒有系統日誌"));
+  document.querySelector("#logPagination").innerHTML=`<span>共 ${auditPage.total} 筆</span><div><button type="button" class="secondary" data-audit-page="prev" ${auditPage.busy||auditPage.page<=1?"disabled":""}>上一頁</button><span>${auditPage.page} / ${auditPage.pageCount}</span><button type="button" class="secondary" data-audit-page="next" ${auditPage.busy||auditPage.page>=auditPage.pageCount?"disabled":""}>下一頁</button></div>`;
 }
-function openAuditDetail(id){
+let auditDetailTrigger=null;
+function openAuditDetail(id,trigger=document.activeElement){
+  if(!canModule("audit"))return;
   const row=auditPage.records.find(r=>String(r.id)===String(id));if(!row)return;
   const audit=globalThis.GUCAudit,dialog=document.querySelector("#auditDialog");
+  if(dialog.open)return;
+  auditDetailTrigger=trigger;
   document.querySelector("#auditDetailTitle").textContent=audit.auditSummary(row);
-  document.querySelector("#auditDetailBody").innerHTML=`<dl>${[["功能模組",audit.auditModuleLabel(row)],["操作者",row.actor],["時間",formatDateTime(row.created_at)],["資料 ID",row.entity_id],["來源 IP",row.source_ip],["User-Agent",row.user_agent],["Request ID",row.request_id]].map(([key,value])=>`<dt>${esc(key)}</dt><dd>${esc(value||"此筆舊紀錄未提供")}</dd>`).join("")}</dl><h3>修改內容</h3>${audit.auditChanges(row).map(c=>`<p><b>${esc(c.field)}</b>：${esc(c.before)} → ${esc(c.after)}</p>`).join("")||"操作已記錄"}`;
+  document.querySelector("#auditDetailBody").innerHTML=`<dl class="details audit-metadata">${[["功能模組",audit.auditModuleLabel(row)],["操作者",row.actor],["時間",formatDateTime(row.created_at)],["資料 ID",row.entity_id],["來源 IP",row.source_ip],["User-Agent",row.user_agent],["Request ID",row.request_id]].map(([key,value])=>`<div><dt>${esc(key)}</dt><dd>${esc(value||"此筆舊紀錄未提供")}</dd></div>`).join("")}</dl><section class="audit-changes" aria-labelledby="auditChangesTitle"><h3 id="auditChangesTitle">修改內容</h3>${audit.auditChanges(row).map(c=>`<section class="audit-change"><h4>${esc(c.field)}</h4><dl><div><dt>修改前</dt><dd>${esc(c.before)}</dd></div><div><dt>修改後</dt><dd>${esc(c.after)}</dd></div></dl></section>`).join("")||'<p class="audit-empty">操作已記錄，沒有欄位變更內容。</p>'}</section>`;
   dialog.showModal();
+  document.querySelector("#auditDetailBody").scrollTop=0;
 }
+document.querySelector("#auditDialog").addEventListener("close",()=>{
+  document.querySelector("#auditDetailBody").replaceChildren();
+  if(auditDetailTrigger?.isConnected)auditDetailTrigger.focus({preventScroll:true});
+  auditDetailTrigger=null;
+});
 function renderDashboard(){
   const data=state.dashboard||{projects:[],repairs:[],worklogs:[]};
   document.querySelector("#activeProjectList").innerHTML=data.projects.map(p=>`<div class="project-row"><b>${esc(p.project_code)}</b><div><strong>${esc(p.name)}</strong><small>${esc(p.customer)}</small></div><span>${esc(p.assigned_to||"—")}</span>${statusLabel(p.status)}</div>`).join("")||'<p class="dashboard-empty">目前沒有進行中工作內容</p>';
@@ -809,23 +819,23 @@ function renderDashboard(){
   document.querySelector("#dashboardWorklogTable").innerHTML=data.worklogs.map(r=>`<tr><td>${esc(r.log_date)}</td><td><strong>${esc(r.customer)}</strong><small>${esc(r.project||r.title)}</small></td><td>${esc(r.workers||"未指派")}</td><td>${esc(r.summary||"—")}</td></tr>`).join("")||emptyRow(4,"目前沒有工作日誌");
 }
 document.addEventListener("submit",event=>{if(event.target.id!=="auditFilters")return;event.preventDefault();const query=new URLSearchParams();new FormData(event.target).forEach((value,key)=>{if(value)query.set(key,String(value));});auditPage.page=1;auditPage.filters=query.toString();void loadAuditPage();});
-document.addEventListener("click",event=>{const detail=event.target.closest("[data-audit-detail]"),page=event.target.closest("[data-audit-page]");if(detail)openAuditDetail(detail.dataset.auditDetail);if(page){auditPage.page+=page.dataset.auditPage==="next"?1:-1;void loadAuditPage();}});
+document.addEventListener("click",event=>{const detail=event.target.closest("[data-audit-detail]"),page=event.target.closest("[data-audit-page]");if(detail)openAuditDetail(detail.dataset.auditDetail,detail);if(page){auditPage.page+=page.dataset.auditPage==="next"?1:-1;void loadAuditPage();}});
 document.addEventListener("dblclick",event=>{
   if(event.target.closest("button,a,input,select,summary,details"))return;
   const row=event.target.closest("tr");if(!row||row.closest("#worklogTable"))return;
-  if(row.closest("#logTable")){row.querySelector("[data-audit-detail]")?.click();return;}
+  if(row.dataset.auditRow){openAuditDetail(row.dataset.auditRow,row);return;}
   openEditableRow(row);
 });
 
 document.addEventListener("click",event=>{
   if(event.pointerType!=="touch"&&!matchMedia("(pointer: coarse)").matches)return;
   if(event.target.closest("button,a,input,textarea,select,summary,details"))return;
-  const row=event.target.closest("[data-row-editor],[data-work-log-row]");if(!row)return;
-  if(row.dataset.workLogRow)void openWorkLogModal(row.dataset.workLogRow);else openEditableRow(row);
+  const row=event.target.closest("[data-row-editor],[data-work-log-row],[data-audit-row]");if(!row)return;
+  if(row.dataset.auditRow)openAuditDetail(row.dataset.auditRow,row);else if(row.dataset.workLogRow)void openWorkLogModal(row.dataset.workLogRow);else openEditableRow(row);
 });
 document.addEventListener("keydown",event=>{
-  if(event.key!=="Enter"||!event.target.matches("tr[data-row-editor],tr[data-work-log-row]"))return;
-  event.preventDefault();const row=event.target;if(row.dataset.workLogRow)void openWorkLogModal(row.dataset.workLogRow);else openEditableRow(row);
+  if(event.key!=="Enter"||!event.target.matches("tr[data-row-editor],tr[data-work-log-row],tr[data-audit-row]"))return;
+  event.preventDefault();const row=event.target;if(row.dataset.auditRow)openAuditDetail(row.dataset.auditRow,row);else if(row.dataset.workLogRow)void openWorkLogModal(row.dataset.workLogRow);else openEditableRow(row);
 });
 
 initEnvironment();preparePageLinks();setupTabs();addItemBatchRow();renderAll();applyUserState();sessionChannelInstance();

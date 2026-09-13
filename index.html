@@ -99,7 +99,7 @@
 
           <section class="page" id="worklogs" data-page="worklogs">
             <div class="page-actions"><div><h2>工作日誌</h2></div><button class="primary" data-open="workLogModal">＋ 新增工作日誌</button></div>
-            <div class="filterbar worklog-filterbar"><label class="search">⌕<input id="worklogSearch" placeholder="搜尋日期、客戶、工作內容、工作類型、狀態、施工人員或內容" /></label><select id="worklogCustomerCategoryFilter"><option value="">所有客戶分類</option><option value="school">學校機關</option><option value="government">政府機關</option><option value="social_welfare">社福機關</option><option value="cleaning_team">清潔隊</option></select><select id="worklogCustomerFilter" disabled><option value="">請先選擇客戶分類</option></select><select id="worklogProjectFilter"><option value="">所有工作內容</option></select><select id="worklogTypeFilter"><option value="">所有工作類型</option><option value="工程施工">工程施工</option><option value="維修紀錄">維修/查修</option><option value="維護保養">維護保養</option><option value="送貨">送貨</option><option value="文書作業">文書作業</option></select></div>
+            <div class="filterbar worklog-filterbar"><label class="search">⌕<input id="worklogSearch" placeholder="搜尋日期、客戶、工作內容、工作類型、狀態、施工人員或內容" /></label><select id="worklogCustomerCategoryFilter"><option value="">所有客戶分類</option><option value="school">學校機關</option><option value="government">政府機關</option><option value="social_welfare">社福機關</option><option value="cleaning_team">清潔隊</option></select><select id="worklogCustomerFilter" disabled><option value="">請先選擇客戶分類</option></select><select id="worklogProjectFilter"><option value="">所有工作內容</option></select><select id="worklogTypeFilter"><option value="">所有工作類型</option><option value="工程施工">工程施工</option><option value="維修紀錄">維修/查修</option><option value="維護保養">維護保養</option><option value="送貨">送貨</option><option value="文書作業">文書作業</option><option value="場勘">場勘</option></select></div>
             <div class="table-card"><table class="worklog-table"><thead><tr><th data-table-sort="worklog" data-key="log_date">日期</th><th>客戶</th><th data-table-sort="worklog" data-key="project">工作內容／標題</th><th data-table-sort="worklog" data-key="work_type">工作類型</th><th data-table-sort="worklog" data-key="status">狀態</th><th>施工人員</th><th>取貨</th><th>操作</th></tr></thead><tbody id="worklogTable"></tbody></table></div><div id="worklogPagination"></div>
           </section>
 
@@ -135,7 +135,7 @@
             <div class="tab-pane" data-pane="logs">
               <div class="page-actions"><div><h2>系統日誌</h2><p>集中顯示原「最近操作」與資料異動稽核紀錄。</p></div><span class="pill">Audit Log</span></div>
               <form id="auditFilters" class="audit-filters"><label>開始日期<input type="date" name="from" /></label><label>結束日期<input type="date" name="to" /></label><label>操作者<input name="actor" placeholder="姓名或帳號" /></label><label>系統模組<select name="module"><option value="">全部模組</option><option value="customers">客戶與承攬</option><option value="projects">工作內容</option><option value="worklogs">工作日誌</option><option value="repairs">維修履歷</option><option value="phone">電話設備</option><option value="monitoring">監控設備</option><option value="inventory">庫存與交易</option><option value="accounts">帳號與登入</option></select></label><label>操作類型<select name="action"><option value="">全部操作</option><option value="create">新增</option><option value="update">修改</option><option value="delete">刪除</option><option value="login">登入</option><option value="logout">登出</option><option value="import">匯入</option><option value="export">匯出</option><option value="batch">批次操作</option></select></label><label>關鍵字<input name="q" placeholder="操作者、模組或事件" /></label><button class="primary">查詢</button></form>
-              <div class="table-card"><table><thead><tr><th>時間</th><th>操作與變更摘要</th><th>詳細</th></tr></thead><tbody id="logTable"></tbody></table></div><div id="logPagination"></div>
+              <div class="table-card"><table><thead><tr><th>時間</th><th>操作與變更摘要</th><th>詳細</th></tr></thead><tbody id="logTable"></tbody></table></div><div id="logPagination" class="pagination-bar"></div>
             </div>
           </section>
         </div>
@@ -183,7 +183,11 @@
     <div class="toast" id="toast"><span>✓</span><div><b>已完成</b><p></p></div></div>
     <script src="/api/public-config" defer></script>
     <script src="/project-report.js" defer></script>
-    <dialog id="auditDialog" class="audit-dialog"><header><h2 id="auditDetailTitle"></h2><button type="button" onclick="this.closest('dialog').close()">關閉</button></header><div id="auditDetailBody"></div></dialog>
+    <dialog id="auditDialog" class="audit-dialog" aria-labelledby="auditDetailTitle">
+      <header class="modal-head"><div><h2 id="auditDetailTitle"></h2><p>系統日誌詳細內容</p></div><form method="dialog"><button type="submit" aria-label="關閉詳細內容" title="關閉">×</button></form></header>
+      <div id="auditDetailBody" class="audit-detail-body" tabindex="0" aria-label="日誌資料與修改內容"></div>
+      <footer class="audit-dialog-footer"><form method="dialog"><button type="submit" class="secondary">關閉</button></form></footer>
+    </dialog>
     <script src="/audit-ui.js" defer></script>
     <script src="/permissions-ui.js" defer></script>
     <script src="/receipt-customers.js" defer></script>

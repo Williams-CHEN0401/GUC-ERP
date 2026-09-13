@@ -38,3 +38,20 @@ test('classification payload uses atomic v4, validates values and retains permis
  assert.equal((await send({construction_category:null})).status,201);assert.equal(calls[1].args.p_construction_category,null);
  user.role='viewer';assert.notEqual((await send({})).status,201);assert.equal(calls.length,2);
 });
+
+test('場勘工作內容建立及修改沿用 v4，工程分類、未知類型及未授權寫入仍受限',async()=>{
+ let handler;const calls=[],user={id:randomUUID(),username:'test',display_name:'測試',role:'admin',is_active:true};
+ const context=vm.createContext({Error,AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:callback=>handler=callback},URL,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});
+ vm.runInContext(stripTypeScriptTypes(source.replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'}),context);
+ context.currentUser=async()=>user;context.rpc=async(name,args)=>{calls.push({name,args});return {project:{id:args.p_id||randomUUID()}};};
+ const payload={name:'現場場勘',customer_id:randomUUID(),project_type:'site_survey',status:'in_progress',project_date:'2026-09-13',worker_user_ids:[],estimated_cost:'',construction_category:null};
+ const send=(operation='create_erp_project',extra={},endpoint='inventory-gateway')=>handler(new Request('https://fixture.test/functions/v1/'+endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation,payload:{...payload,...extra}})}));
+ assert.equal((await send()).status,201);
+ const id=randomUUID();assert.equal((await send('update_erp_project',{id,row_version:7})).status,201);
+ for(const call of calls){assert.equal(call.name,'upsert_erp_project_with_workers_v4');assert.equal(call.args.p_project_type,'site_survey');assert.equal(call.args.p_construction_category,null);}
+ assert.equal(calls[1].args.p_id,id);assert.equal(calls[1].args.p_row_version,7);
+ for(const extra of [{project_type:'unknown'},{construction_category:'tender'}])assert.equal((await send('create_erp_project',extra)).status,400);
+ assert.equal((await send('create_erp_project',{},'inventory-gateway-preview')).status,403);
+ user.role='viewer';assert.equal((await send()).status,403);
+ context.currentUser=async()=>null;assert.equal((await send()).status,401);assert.equal(calls.length,2);
+});
