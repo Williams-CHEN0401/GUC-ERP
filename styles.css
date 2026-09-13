@@ -140,3 +140,8 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 [hidden]{display:none!important}
 /* Permission grids remain inside their cards on narrow screens. */
 #permissionSettings{min-width:0}#permissionSettings .table-wrap{width:100%;overflow:auto;overscroll-behavior:contain}#permissionSettings table{width:100%;border-collapse:collapse}#permissionSettings th,#permissionSettings td{padding:10px 8px;border-bottom:1px solid var(--line);position:static}#permissionSettings input:not([type=checkbox]),#permissionSettings select{width:100%;min-width:0;min-height:42px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}#permissionSettings .permission-matrix{min-width:440px}#permissionSettings .permission-project-list table{min-width:420px}
+/* Work-content subnavigation stays independent of CRM's parent tabs. */
+.project-subtabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 24px}
+.project-subtabs button{padding:10px 18px;border:1px solid #ccd8ce;border-radius:10px;background:#fff;color:#46634c;font-weight:700}
+.project-subtabs button.active{background:#46634c;color:#fff}
+[data-project-pane][hidden],#constructionCategoryField[hidden]{display:none!important}
