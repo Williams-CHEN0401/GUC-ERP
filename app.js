@@ -792,16 +792,26 @@ async function loadAuditPage(){
 }
 function renderSystemLogs(){
   const audit=globalThis.GUCAudit,body=document.querySelector("#logTable");if(!body||!audit)return;
-  body.innerHTML=auditPage.records.map(row=>`<tr><td><time>${esc(formatDateTime(row.created_at))}</time></td><td><strong>${esc(audit.auditSummary(row))}</strong><small>${esc(audit.auditChanges(row).slice(0,2).map(c=>`${c.field}：${c.before} → ${c.after}`).join("；")||"操作已記錄")}</small></td><td><button data-audit-detail="${row.id}">查看詳細</button></td></tr>`).join("")||emptyRow(3,auditPage.busy?"正在載入…":auditPage.error||(!canModule("audit")?"沒有系統日誌查看權限":"此條件下沒有系統日誌"));
-  document.querySelector("#logPagination").innerHTML=`<span>共 ${auditPage.total} 筆</span><div><button data-audit-page="prev" ${auditPage.busy||auditPage.page<=1?"disabled":""}>上一頁</button><span>${auditPage.page} / ${auditPage.pageCount}</span><button data-audit-page="next" ${auditPage.busy||auditPage.page>=auditPage.pageCount?"disabled":""}>下一頁</button></div>`;
+  body.innerHTML=auditPage.records.map(row=>`<tr data-audit-row="${esc(row.id)}" tabindex="0" title="雙擊查看詳細；手機點一下或按 Enter 開啟"><td><time>${esc(formatDateTime(row.created_at))}</time></td><td><strong>${esc(audit.auditSummary(row))}</strong><small>${esc(audit.auditChanges(row).slice(0,2).map(c=>`${c.field}：${c.before} → ${c.after}`).join("；")||"操作已記錄")}</small></td><td><button type="button" class="secondary" data-audit-detail="${esc(row.id)}">查看詳細</button></td></tr>`).join("")||emptyRow(3,auditPage.busy?"正在載入…":auditPage.error||(!canModule("audit")?"沒有系統日誌查看權限":"此條件下沒有系統日誌"));
+  document.querySelector("#logPagination").innerHTML=`<span>共 ${auditPage.total} 筆</span><div><button type="button" class="secondary" data-audit-page="prev" ${auditPage.busy||auditPage.page<=1?"disabled":""}>上一頁</button><span>${auditPage.page} / ${auditPage.pageCount}</span><button type="button" class="secondary" data-audit-page="next" ${auditPage.busy||auditPage.page>=auditPage.pageCount?"disabled":""}>下一頁</button></div>`;
 }
-function openAuditDetail(id){
+let auditDetailTrigger=null;
+function openAuditDetail(id,trigger=document.activeElement){
+  if(!canModule("audit"))return;
   const row=auditPage.records.find(r=>String(r.id)===String(id));if(!row)return;
   const audit=globalThis.GUCAudit,dialog=document.querySelector("#auditDialog");
+  if(dialog.open)return;
+  auditDetailTrigger=trigger;
   document.querySelector("#auditDetailTitle").textContent=audit.auditSummary(row);
-  document.querySelector("#auditDetailBody").innerHTML=`<dl>${[["功能模組",audit.auditModuleLabel(row)],["操作者",row.actor],["時間",formatDateTime(row.created_at)],["資料 ID",row.entity_id],["來源 IP",row.source_ip],["User-Agent",row.user_agent],["Request ID",row.request_id]].map(([key,value])=>`<dt>${esc(key)}</dt><dd>${esc(value||"此筆舊紀錄未提供")}</dd>`).join("")}</dl><h3>修改內容</h3>${audit.auditChanges(row).map(c=>`<p><b>${esc(c.field)}</b>：${esc(c.before)} → ${esc(c.after)}</p>`).join("")||"操作已記錄"}`;
+  document.querySelector("#auditDetailBody").innerHTML=`<dl class="details audit-metadata">${[["功能模組",audit.auditModuleLabel(row)],["操作者",row.actor],["時間",formatDateTime(row.created_at)],["資料 ID",row.entity_id],["來源 IP",row.source_ip],["User-Agent",row.user_agent],["Request ID",row.request_id]].map(([key,value])=>`<div><dt>${esc(key)}</dt><dd>${esc(value||"此筆舊紀錄未提供")}</dd></div>`).join("")}</dl><section class="audit-changes" aria-labelledby="auditChangesTitle"><h3 id="auditChangesTitle">修改內容</h3>${audit.auditChanges(row).map(c=>`<section class="audit-change"><h4>${esc(c.field)}</h4><dl><div><dt>修改前</dt><dd>${esc(c.before)}</dd></div><div><dt>修改後</dt><dd>${esc(c.after)}</dd></div></dl></section>`).join("")||'<p class="audit-empty">操作已記錄，沒有欄位變更內容。</p>'}</section>`;
   dialog.showModal();
+  document.querySelector("#auditDetailBody").scrollTop=0;
 }
+document.querySelector("#auditDialog").addEventListener("close",()=>{
+  document.querySelector("#auditDetailBody").replaceChildren();
+  if(auditDetailTrigger?.isConnected)auditDetailTrigger.focus({preventScroll:true});
+  auditDetailTrigger=null;
+});
 function renderDashboard(){
   const data=state.dashboard||{projects:[],repairs:[],worklogs:[]};
   document.querySelector("#activeProjectList").innerHTML=data.projects.map(p=>`<div class="project-row"><b>${esc(p.project_code)}</b><div><strong>${esc(p.name)}</strong><small>${esc(p.customer)}</small></div><span>${esc(p.assigned_to||"—")}</span>${statusLabel(p.status)}</div>`).join("")||'<p class="dashboard-empty">目前沒有進行中工作內容</p>';
@@ -809,23 +819,23 @@ function renderDashboard(){
   document.querySelector("#dashboardWorklogTable").innerHTML=data.worklogs.map(r=>`<tr><td>${esc(r.log_date)}</td><td><strong>${esc(r.customer)}</strong><small>${esc(r.project||r.title)}</small></td><td>${esc(r.workers||"未指派")}</td><td>${esc(r.summary||"—")}</td></tr>`).join("")||emptyRow(4,"目前沒有工作日誌");
 }
 document.addEventListener("submit",event=>{if(event.target.id!=="auditFilters")return;event.preventDefault();const query=new URLSearchParams();new FormData(event.target).forEach((value,key)=>{if(value)query.set(key,String(value));});auditPage.page=1;auditPage.filters=query.toString();void loadAuditPage();});
-document.addEventListener("click",event=>{const detail=event.target.closest("[data-audit-detail]"),page=event.target.closest("[data-audit-page]");if(detail)openAuditDetail(detail.dataset.auditDetail);if(page){auditPage.page+=page.dataset.auditPage==="next"?1:-1;void loadAuditPage();}});
+document.addEventListener("click",event=>{const detail=event.target.closest("[data-audit-detail]"),page=event.target.closest("[data-audit-page]");if(detail)openAuditDetail(detail.dataset.auditDetail,detail);if(page){auditPage.page+=page.dataset.auditPage==="next"?1:-1;void loadAuditPage();}});
 document.addEventListener("dblclick",event=>{
   if(event.target.closest("button,a,input,select,summary,details"))return;
   const row=event.target.closest("tr");if(!row||row.closest("#worklogTable"))return;
-  if(row.closest("#logTable")){row.querySelector("[data-audit-detail]")?.click();return;}
+  if(row.dataset.auditRow){openAuditDetail(row.dataset.auditRow,row);return;}
   openEditableRow(row);
 });
 
 document.addEventListener("click",event=>{
   if(event.pointerType!=="touch"&&!matchMedia("(pointer: coarse)").matches)return;
   if(event.target.closest("button,a,input,textarea,select,summary,details"))return;
-  const row=event.target.closest("[data-row-editor],[data-work-log-row]");if(!row)return;
-  if(row.dataset.workLogRow)void openWorkLogModal(row.dataset.workLogRow);else openEditableRow(row);
+  const row=event.target.closest("[data-row-editor],[data-work-log-row],[data-audit-row]");if(!row)return;
+  if(row.dataset.auditRow)openAuditDetail(row.dataset.auditRow,row);else if(row.dataset.workLogRow)void openWorkLogModal(row.dataset.workLogRow);else openEditableRow(row);
 });
 document.addEventListener("keydown",event=>{
-  if(event.key!=="Enter"||!event.target.matches("tr[data-row-editor],tr[data-work-log-row]"))return;
-  event.preventDefault();const row=event.target;if(row.dataset.workLogRow)void openWorkLogModal(row.dataset.workLogRow);else openEditableRow(row);
+  if(event.key!=="Enter"||!event.target.matches("tr[data-row-editor],tr[data-work-log-row],tr[data-audit-row]"))return;
+  event.preventDefault();const row=event.target;if(row.dataset.auditRow)openAuditDetail(row.dataset.auditRow,row);else if(row.dataset.workLogRow)void openWorkLogModal(row.dataset.workLogRow);else openEditableRow(row);
 });
 
 initEnvironment();preparePageLinks();setupTabs();addItemBatchRow();renderAll();applyUserState();sessionChannelInstance();
