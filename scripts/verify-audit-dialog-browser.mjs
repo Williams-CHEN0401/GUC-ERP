@@ -90,6 +90,8 @@ try{
     for(const width of [1440,390]){
       const {context,page,errors}=await openLogs(server,{viewport:{width,height:900},hasTouch:width===390,isMobile:width===390});
       const dialog=page.locator('#auditDialog'),row=page.locator('#logTable [data-audit-row]').first();
+      const pager=await page.locator('#logPagination button').first().evaluate(node=>({width:node.clientWidth,content:node.scrollWidth,height:node.getBoundingClientRect().height,font:getComputedStyle(node).fontSize,wrap:getComputedStyle(node).whiteSpace}));
+      assert.equal(pager.font,'14px');assert.equal(pager.wrap,'nowrap');assert.ok(pager.width>=pager.content&&pager.height>=44);
       assert.equal(await dialog.evaluate(node=>node.open),false);
       if(width===390)await row.locator('td').nth(1).tap();else await row.locator('td').nth(1).dblclick();
       await dialog.waitFor({state:'visible'});
