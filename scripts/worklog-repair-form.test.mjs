@@ -90,7 +90,7 @@ test('空設備維修明細可被收集，設備與處理流程會保留在送�
   const values={eventType:'REPAIR',eventServiceId:'service-1',eventOccurredAt:'2026-09-05',eventCause:'',eventHandlingProcess:'  重啟交換器並逐線測試  ',eventNotes:''};
   const card={dataset:{equipmentIds:'[]'},querySelector:selector=>({value:values[selector.match(/name="([^"]+)"/)[1]]})};
   const form={elements:{hasMaintenance:{value:'yes'},summary:{value:'現場檢查'}},querySelectorAll:()=>[card]};
-  const context=vm.createContext({document:{querySelector:()=>form}});
+  const context=vm.createContext({document:{querySelector:()=>form},projectTypeFromWorkType:()=> 'maintenance'});
   vm.runInContext(sourceBetween('function isEquipmentRepairEvent','function syncMaintenanceInventoryOptions'),context);
   vm.runInContext(sourceBetween('function collectMaintenanceEvents','function projectOwnerPickerField'),context);
   let events=context.collectMaintenanceEvents();

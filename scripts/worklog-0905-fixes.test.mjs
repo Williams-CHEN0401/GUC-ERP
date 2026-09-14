@@ -38,7 +38,7 @@ test("equipment maintenance details omit result and per-event worker controls", 
   assert.match(card, /data-worker-ids/);
 
   const collect = functionSource("collectMaintenanceEvents", "projectOwnerPickerField");
-  assert.match(collect, /card\.dataset\.eventResult\|\|sharedDescription/);
+  assert.match(collect, /card\.dataset\.eventResult\|\|\(repair\?\(handlingProcess\|\|cause\|\|title\):sharedDescription\)/);
   assert.match(collect, /if\(card\.dataset\.eventId\)/);
   assert.match(migration, /cardinality\(v_worker_ids\) = 0 then v_worker_ids := coalesce\(p_worker_user_ids/);
 });
