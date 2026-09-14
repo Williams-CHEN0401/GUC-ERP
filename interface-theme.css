@@ -296,3 +296,9 @@ input[type=checkbox] { accent-color: var(--green-800); }
 #inventory [data-pane="categories"] th:nth-child(2) { width: 19%; }
 #inventory [data-pane="categories"] th:nth-child(3) { width: 16%; }
 #inventory [data-pane="categories"] th:last-child { width: 21%; }
+/* Customer classification keeps all three columns visible on phones. */
+#crm [data-customer-pane="categories"] table { min-width: 0; width: 100%; table-layout: fixed; }
+#crm [data-customer-pane="categories"] th, #crm [data-customer-pane="categories"] td { padding: 12px 6px; white-space: normal; overflow-wrap: anywhere; }
+#crm [data-customer-pane="categories"] th:first-child { width: 45%; }
+#crm [data-customer-pane="categories"] th:nth-child(2) { width: 20%; }
+#crm [data-customer-pane="categories"] th:last-child { width: 35%; }
