@@ -15,7 +15,7 @@ try{
   await page.goto(base+'/?page=crm',{waitUntil:'networkidle'});
   assert.equal(await page.locator('#customerTable tr').count(),1);
   assert.equal(await page.locator('.section-tabs [data-tab="customerCategories"]').count(),0);
-  assert.equal(await page.locator('[data-pane="customers"] [data-customer-tab]').count(),2);
+  assert.equal(await page.locator('[data-pane="customers"] [data-customer-tab]').count(),3);
   assert.equal(await page.locator('#customerListPane').isVisible(),true);
   assert.equal(await page.locator('#customerCategoriesPane').isVisible(),false);
   await page.locator('[data-customer-tab="categories"]').click();

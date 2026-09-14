@@ -8,7 +8,7 @@ const code=functions.map(name=>source.split('\n').find(line=>line.startsWith('fu
 test('new work-log initial and refreshed choices exclude completed while preserving customer and grants',()=>{
  const state={projects:[{id:'p1',customerId:'c1',status:'in_progress',name:'施工',code:'P1'},{id:'p2',customerId:'c1',status:'completed',name:'完工',code:'P2'},{id:'p3',customerId:'c2',status:'in_progress',name:'其他客戶'},{id:'p4',customerId:'c1',status:'in_progress',name:'未授權'}],currentUser:{project_scoped:false},projectAccess:[{project_id:'p1',can_create_work_log:true},{project_id:'p2',can_create_work_log:true}]};
  const list={tagName:'DATALIST'},form={elements:{customerId:{value:'c1'}},querySelector:()=>list};
- const ctx=vm.createContext({state,esc:v=>v||'',document:{querySelector:()=>form}});
+ const ctx=vm.createContext({state,esc:v=>v||'',projectMatchesDepartment:()=>true,modalDepartmentFilter:()=>undefined,document:{querySelector:()=>form}});
  vm.runInContext(code,ctx);
  assert.deepEqual(Array.from(ctx.workLogSelectableProjects('c1'),p=>p.id),['p1','p4']);
  const initial=ctx.workLogProjectTitleField('c1');assert.ok(initial.includes('施工'));assert.ok(!initial.includes('完工'));assert.ok(initial.includes('<input'));

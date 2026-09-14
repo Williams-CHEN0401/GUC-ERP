@@ -302,3 +302,15 @@ input[type=checkbox] { accent-color: var(--green-800); }
 #crm [data-customer-pane="categories"] th:first-child { width: 45%; }
 #crm [data-customer-pane="categories"] th:nth-child(2) { width: 20%; }
 #crm [data-customer-pane="categories"] th:last-child { width: 35%; }
+/* The same three-level customer flow is used on desktop and narrow screens. */
+.customer-department-selector{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;min-width:0}
+.customer-department-selector label{min-width:0}.customer-department-selector select,.customer-department-selector input{width:100%;min-width:0}
+.customer-selector-search{grid-column:1/-1}.department-management-filters{align-items:end}.department-management-filters label{min-width:0;flex:1 1 180px}
+.receipt-customer-list [data-receipt-customer]{display:grid;gap:8px;padding:12px;border:1px solid var(--border,#dce3e5);border-radius:12px;min-width:0}
+.receipt-customer-list [data-receipt-customer][hidden]{display:none}.receipt-customer-list [data-receipt-customer]>label{display:flex;gap:8px;align-items:center;margin:0;padding:0;border:0}
+.receipt-customer-list .receipt-department-label{flex-wrap:wrap}.receipt-department-label select{width:100%;min-width:0}.receipt-customer-list [data-receipt-customer] input[type=checkbox]{flex:0 0 20px;width:20px}
+@media(max-width:640px){.customer-department-selector{grid-template-columns:1fr}.customer-selector-search{grid-column:auto}.department-management-filters{display:grid;grid-template-columns:1fr}.department-management-filters label{width:100%}.customer-subtabs{flex-wrap:wrap}.worklog-filterbar select{min-width:0;max-width:100%}#customerDepartmentsPane .table-card table{min-width:0}#customerDepartmentsPane td.actions{white-space:normal}#customerDepartmentsPane td.actions button{margin:3px}}
+#customerDepartmentsPane .department-management-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#customerDepartmentsPane .department-management-filters label{display:grid;gap:7px;min-width:0}
+#customerDepartmentsPane .department-management-filters input,#customerDepartmentsPane .department-management-filters select{width:100%;min-width:0;min-height:44px;padding:10px 12px;font:inherit;border:1px solid #d2d8ce;border-radius:8px;background:#fff}
+@media(max-width:640px){#customerDepartmentsPane .department-management-filters{grid-template-columns:1fr}}

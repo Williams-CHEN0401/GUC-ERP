@@ -21,7 +21,7 @@ test('business date is editable and precise report link uses shared customer sel
  assert.match(app,/project_date:data\.projectDate/);
  assert.match(app,/get\("work_content_id"\)/);
  assert.match(app,/if\(name==="materials"\)applyWorkContentReportLink\(\)/);
- assert.match(app,/customerCategoryOptions\(customer\?\.category\|\|""\)/);
+ assert.match(app,/customerSelectorFields\(customer\?\.id\|\|"",customer\?\.category\|\|""/);
  assert.doesNotMatch(app,/selectField\("customerId","客戶",\[\["","請選擇客戶"\],\.\.\.sortRows\(state\.customers,/);
 });
 
