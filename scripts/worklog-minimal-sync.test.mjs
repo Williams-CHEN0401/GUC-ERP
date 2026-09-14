@@ -6,15 +6,17 @@ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const between=(start,end)=>app.slice(app.indexOf(start),app.indexOf(end,app.indexOf(start)));
 const helper=between('function isEquipmentRepairEvent','function syncMaintenanceInventoryOptions');
 
-test('維修名稱只改顯示文字，保留 cause 和既有 API 欄位',()=>{
-  assert.ok(app.includes('登錄維修事項'));
+test('維修類型直接顯示維修明細，保留 cause 並新增獨立處理流程欄位',()=>{
+  assert.ok(app.includes('name="hasMaintenance"'));
   assert.ok(app.includes('<b>維修明細</b>'));
   assert.ok(app.includes('inputField("eventCause","故障內容（選填）"'));
+  assert.ok(app.includes('inputField("eventHandlingProcess","處理流程（選填）"'));
   assert.ok(!app.includes('設備維修明細'));
   assert.match(app,/cause:.*?\.cause\|\|""/);
+  assert.match(app,/handlingProcess:.*?\.handling_process\|\|""/);
 });
 test('非設備事件不送出未登錄的品項；已登錄關聯與設備履歷維持原值',()=>{
-  const values={eventType:'REPAIR',eventServiceId:'service',eventOccurredAt:'2026-09-05',eventCause:'馬達異常',eventNotes:'',eventInventoryCategoryId:'category',eventInventoryItemId:'item'};
+  const values={eventType:'REPAIR',eventServiceId:'service',eventOccurredAt:'2026-09-05',eventCause:'馬達異常',eventHandlingProcess:'更換電源模組',eventNotes:'',eventInventoryCategoryId:'category',eventInventoryItemId:'item'};
   const card={dataset:{equipmentIds:'["equipment"]'},querySelector:s=>({value:values[s.match(/name="([^"]+)"/)[1]]})};
   const form={elements:{hasMaintenance:{value:'yes'},summary:{value:'檢查'}},querySelectorAll:()=>[card]};
   const ctx=vm.createContext({document:{querySelector:()=>form}});
@@ -23,7 +25,7 @@ test('非設備事件不送出未登錄的品項；已登錄關聯與設備履�
     values.eventType=type;
     const event=ctx.collectMaintenanceEvents()[0];
     assert.equal(event.inventory_item_id,['REPAIR','REPLACEMENT'].includes(type)?'item':null);
-    assert.deepEqual([...event.equipment_ids],['equipment']);assert.equal(event.cause,'馬達異常');
+    assert.deepEqual([...event.equipment_ids],['equipment']);assert.equal(event.cause,'馬達異常');assert.equal(event.handling_process,'更換電源模組');
   }
   values.eventInventoryCategoryId='';
   assert.equal(ctx.collectMaintenanceEvents()[0].inventory_item_id,null,'hidden incomplete selection must not block unrelated events');

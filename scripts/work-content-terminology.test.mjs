@@ -24,7 +24,7 @@ test("internal project identifiers and existing relations remain unchanged", () 
   assert.match(permissions, /projectAccess/);
 });
 
-test("work-log operation annotations are removed while confirmations remain", () => {
+test("work-log operation annotations and repair prompt are removed", () => {
   const start = html.indexOf('<section class="page" id="worklogs"');
   const end = html.indexOf('<section class="page" id="materials"', start);
   const worklogSection = html.slice(start, end);
@@ -43,7 +43,8 @@ test("work-log operation annotations are removed while confirmations remain", ()
     "儲存後會寫入既有取貨資料表",
     "使用與進出貨管理相同的品項",
   ]) assert.ok(!app.includes(annotation), annotation);
-  assert.match(app, /是否要登錄維修設備/);
+  assert.doesNotMatch(app, /是否要登錄維修設備/);
+  assert.match(app, /function syncWorkLogMaintenanceType/);
   assert.match(app, /工作日誌已建立。是否要立即進入/);
   assert.match(app, /已選 \$\{selectedCount\} 位/);
 });

@@ -421,7 +421,7 @@ const datasets: Record<string, DatasetDefinition> = {
   phone_terminal_points: { path: "phone_terminal_points?select=id,customer_id,contract_service_type_id,phone_extension_id,endpoint_side,frame_name,frame_block,frame_position,terminal_code,slot_identifier,floor,installation_location,notes,source,source_reference,building_name,source_extension_number,source_phone_type,resolved_phone_type,field_match_status,field_match_message,row_version,created_at,updated_at&order=phone_extension_id.asc,endpoint_side.asc" },
   phone_credential_access_logs: { path: "phone_credential_access_logs?select=id,phone_system_id,customer_id,contract_service_type_id,action,actor,source,created_at&order=created_at.desc&limit=200", adminOnly: true },
   equipment_registry: { path: "equipment_registry?select=id,equipment_type,customer_id,service_id,site_id,source_table,source_id,display_name,search_key,status,installation_date,installation_precision,metadata,created_at,updated_at&status=eq.active&order=display_name.asc", paged: true },
-  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,result,notes,inventory_category_id,inventory_item_id,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
+  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,handling_process,result,notes,inventory_category_id,inventory_item_id,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
   maintenance_event_equipment: { path: "maintenance_event_equipment?select=event_id,equipment_id,created_at&order=created_at.asc", paged: true },
   maintenance_event_workers: { path: "maintenance_event_workers?select=event_id,user_id,created_at&order=created_at.asc", paged: true }
 };
@@ -797,12 +797,13 @@ function maintenanceEventsInput(value: unknown) {
     const description = limited(row.description,4000);
     const result = limited(row.result,2000);
     const cause = nullable(row.cause,2000);
+    const handlingProcess = nullable(row.handling_process,2000);
     const notes = nullable(row.notes,2000);
     const equipmentIds = Array.isArray(row.equipment_ids) ? row.equipment_ids.map(uuid) : [];
     const workerIds = Array.isArray(row.worker_user_ids) ? row.worker_user_ids.map(uuid) : [];
     if ((text(row.id) && !id) || (id && (!Number.isInteger(rowVersion) || Number(rowVersion) < 1)) || !serviceId || !occurredAt
       || !validEventType || !description || !result
-      || cause === null || notes === null || (row.equipment_ids !== undefined && !Array.isArray(row.equipment_ids))
+      || cause === null || handlingProcess === null || notes === null || (row.equipment_ids !== undefined && !Array.isArray(row.equipment_ids))
       || (row.worker_user_ids !== undefined && !Array.isArray(row.worker_user_ids)) || equipmentIds.length > 100 || equipmentIds.some(item => !item)
       || new Set(equipmentIds).size !== equipmentIds.length || workerIds.length > 30 || workerIds.some(item => !item)
       || new Set(workerIds).size !== workerIds.length) {
@@ -811,6 +812,7 @@ function maintenanceEventsInput(value: unknown) {
     return {
       ...(Object.prototype.hasOwnProperty.call(row,"inventory_category_id") ? {inventory_category_id:categoryId} : {}),
       ...(Object.prototype.hasOwnProperty.call(row,"inventory_item_id") ? {inventory_item_id:inventoryItemId} : {}),
+      ...(Object.prototype.hasOwnProperty.call(row,"handling_process") ? {handling_process:handlingProcess || null} : {}),
       id, row_version: rowVersion, service_id: serviceId, occurred_at: occurredAt, event_type: eventType,
       description, cause: cause || null, result, notes: notes || null, equipment_ids: equipmentIds, worker_user_ids: workerIds };
   });

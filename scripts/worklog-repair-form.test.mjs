@@ -44,38 +44,32 @@ test('開啟新增表單等待施工人員，不在進入前詢問維修品',asy
   assert.deepEqual(calls,[['workLogModal','']]);
 });
 
-test('新增日誌選維修/查修才詢問；確認展開、取消隱藏，既有日誌與唯讀不詢問',()=>{
+test('新增日誌選維修/查修直接顯示維修明細，其他類型隱藏，既有維修事件保持顯示',()=>{
   const modal={dataset:{type:'workLogModal',id:''}};
-  const form={elements:{workType:{value:'維修紀錄'},hasMaintenance:{value:'no'}}};
-  let answer=true,writable=true,syncs=0;
-  const messages=[];
+  const cards=[];
+  const form={elements:{workType:{value:'維修紀錄'},hasMaintenance:{value:'no'}},querySelectorAll:()=>cards};
+  let syncs=0;
   const context=vm.createContext({
     document:{querySelector:selector=>selector==='#simpleModal'?modal:form},
-    canWrite:()=>writable,
-    confirm:message=>{messages.push(message);return answer;},
     syncMaintenanceVisibility:()=>syncs++,
   });
   vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('const PROJECT_WORK_TYPES')),context);
   vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function projectTypeFromWorkType')),context);
-  vm.runInContext(sourceBetween('function promptWorkLogRepairRegistration','function syncMaintenanceVisibility'),context);
-  context.promptWorkLogRepairRegistration();
+  vm.runInContext(sourceBetween('function syncWorkLogMaintenanceType','function syncMaintenanceVisibility'),context);
+  context.syncWorkLogMaintenanceType();
   assert.equal(form.elements.hasMaintenance.value,'yes');
-  assert.match(messages[0],/是否要登錄維修設備/);
-  answer=false;
-  context.promptWorkLogRepairRegistration();
-  assert.equal(form.elements.hasMaintenance.value,'no');
-  assert.equal(syncs,2);
   for(const type of ['工程施工','維護保養']){
     form.elements.workType.value=type;
-    context.promptWorkLogRepairRegistration();
+    context.syncWorkLogMaintenanceType();
+    assert.equal(form.elements.hasMaintenance.value,'no');
   }
-  form.elements.workType.value='維修紀錄';
-  modal.dataset.id='existing-log';context.promptWorkLogRepairRegistration();
-  modal.dataset.id='';writable=false;context.promptWorkLogRepairRegistration();
-  writable=true;modal.dataset.type='projectModal';context.promptWorkLogRepairRegistration();
-  assert.equal(messages.length,2);
-  assert.equal(syncs,2);
-  assert.match(app,/event\.target\.closest\("#modalForm"\)&&event\.target\.name==="workType"\)promptWorkLogRepairRegistration\(\)/);
+  cards.push({dataset:{eventId:'existing-event'}});
+  context.syncWorkLogMaintenanceType();
+  assert.equal(form.elements.hasMaintenance.value,'yes');
+  modal.dataset.type='projectModal';context.syncWorkLogMaintenanceType();
+  assert.equal(syncs,4);
+  assert.doesNotMatch(app,/是否要登錄維修設備|promptWorkLogRepairRegistration/);
+  assert.match(app,/event\.target\.closest\("#modalForm"\)&&event\.target\.name==="workType"\)syncWorkLogMaintenanceType\(\)/);
 });
 
 test('切換種類清除上一種類品項，清除種類後停用品項選取',()=>{
@@ -92,8 +86,8 @@ test('切換種類清除上一種類品項，清除種類後停用品項選取',
   assert.equal(item.innerHTML,'options:');
 });
 
-test('空設備維修明細可被收集，設備有值時保留 UUID 清單',()=>{
-  const values={eventType:'REPAIR',eventServiceId:'service-1',eventOccurredAt:'2026-09-05',eventCause:'',eventNotes:''};
+test('空設備維修明細可被收集，設備與處理流程會保留在送出資料',()=>{
+  const values={eventType:'REPAIR',eventServiceId:'service-1',eventOccurredAt:'2026-09-05',eventCause:'',eventHandlingProcess:'  重啟交換器並逐線測試  ',eventNotes:''};
   const card={dataset:{equipmentIds:'[]'},querySelector:selector=>({value:values[selector.match(/name="([^"]+)"/)[1]]})};
   const form={elements:{hasMaintenance:{value:'yes'},summary:{value:'現場檢查'}},querySelectorAll:()=>[card]};
   const context=vm.createContext({document:{querySelector:()=>form}});
@@ -103,6 +97,7 @@ test('空設備維修明細可被收集，設備有值時保留 UUID 清單',()=
   assert.equal(events.length,1);
   assert.equal(events[0].equipment_ids.length,0);
   assert.equal(events[0].description,'現場檢查');
+  assert.equal(events[0].handling_process,'重啟交換器並逐線測試');
   card.dataset.equipmentIds='["equipment-1","equipment-2"]';
   events=context.collectMaintenanceEvents();
   assert.equal(JSON.stringify(events[0].equipment_ids),'["equipment-1","equipment-2"]');

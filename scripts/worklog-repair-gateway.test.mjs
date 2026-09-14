@@ -10,7 +10,7 @@ const source=readFileSync(new URL('../supabase/functions/inventory-gateway/index
 const compiled=stripTypeScriptTypes(source.replace(/^import .*node:async_hooks.*;\r?\n/m,""),{mode:'strip'});
 const user={id:randomUUID(),username:'test',display_name:'測試員',role:'operator',is_active:true};
 const category=randomUUID(),item=randomUUID(),customer=randomUUID(),service=randomUUID();
-const event=()=>({service_id:service,event_type:'REPAIR',occurred_at:'2026-09-05',description:'工作內容',result:'處理結果',notes:'備註',equipment_ids:[],worker_user_ids:[],inventory_category_id:category,inventory_item_id:item});
+const event=()=>({service_id:service,event_type:'REPAIR',occurred_at:'2026-09-05',description:'工作內容',cause:'電源異常',handling_process:'  更換電源模組並測試  ',result:'處理結果',notes:'備註',equipment_ids:[],worker_user_ids:[],inventory_category_id:category,inventory_item_id:item});
 const payload=()=>({request_id:randomUUID(),customer_id:customer,project_name:'測試專案',log_date:'2026-09-05',work_type:'維修紀錄',summary:'工作內容',time_period:'',status:'in_progress',worker_user_ids:[user.id],maintenance_events:[event()]});
 function harness(role='operator'){
   let handler;const calls=[];
@@ -31,13 +31,15 @@ test('實際 Edge handler 將品項與空設備送入單一具重送保護的 RP
   assert.equal(h.calls[0].parameters.p_request_id,data.request_id);
   assert.equal(h.calls[0].parameters.p_maintenance_events[0].inventory_item_id,item);
   assert.equal(h.calls[0].parameters.p_maintenance_events[0].equipment_ids.length,0);
+  assert.equal(h.calls[0].parameters.p_maintenance_events[0].handling_process,'更換電源模組並測試');
   assert.deepEqual(result.body.result.created_repair_item_ids,[category]);
 });
 test('舊前端省略新欄位仍走相容 RPC，不將省略值變成清除指令',async()=>{
-  const h=harness(),data=payload();delete data.request_id;delete data.maintenance_events[0].inventory_category_id;delete data.maintenance_events[0].inventory_item_id;
+  const h=harness(),data=payload();delete data.request_id;delete data.maintenance_events[0].inventory_category_id;delete data.maintenance_events[0].inventory_item_id;delete data.maintenance_events[0].handling_process;
   assert.equal((await h.request(data)).status,201);
   assert.equal(h.calls[0].name,'upsert_customer_project_work_log_with_maintenance_v1');
   assert.equal(Object.hasOwn(h.calls[0].parameters.p_maintenance_events[0],'inventory_item_id'),false);
+  assert.equal(Object.hasOwn(h.calls[0].parameters.p_maintenance_events[0],'handling_process'),false);
 });
 test('故障內容沿既有 cause 欄位送入同一 RPC，空值不產生預設文字',async()=>{
   for(const cause of ['馬達異常','',null,undefined,'   ']){
@@ -45,6 +47,15 @@ test('故障內容沿既有 cause 欄位送入同一 RPC，空值不產生預設
     assert.equal((await h.request(data)).status,201);assert.equal(h.calls.length,1);
     assert.equal(h.calls[0].parameters.p_maintenance_events[0].cause,cause?.trim()||null);
   }
+});
+test('處理流程使用獨立欄位，空白轉為 null，過長內容在閘道拒絕',async()=>{
+  for(const handlingProcess of ['重新壓接並逐線測試','',null,undefined,'   ']){
+    const h=harness(),data=payload();data.maintenance_events[0].handling_process=handlingProcess;
+    assert.equal((await h.request(data)).status,201);assert.equal(h.calls.length,1);
+    assert.equal(h.calls[0].parameters.p_maintenance_events[0].handling_process,handlingProcess===undefined?undefined:handlingProcess?.trim()||null);
+  }
+  const h=harness(),data=payload();data.maintenance_events[0].handling_process='x'.repeat(2001);
+  assert.equal((await h.request(data)).status,400);assert.equal(h.calls.length,0);
 });
 test('API 拒絕不合法品項、種類、識別碼與非陣列設備，不呼叫寫入 RPC',async()=>{
   for(const patch of [

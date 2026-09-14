@@ -6,7 +6,11 @@ import {fileURLToPath} from 'node:url';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const output=new URL('../tmp/worklog-repair-browser/',import.meta.url);
 await mkdir(output,{recursive:true});
-const allowed=new Map([['/','index.html'],['/app.js','app.js'],['/styles.css','styles.css'],['/project-report.js','project-report.js']]);
+const allowed=new Map([
+  ['/','index.html'],['/app.js','app.js'],['/styles.css','styles.css'],['/project-report.js','project-report.js'],
+  ['/audit-ui.js','audit-ui.js'],['/permissions-ui.js','permissions-ui.js'],['/receipt-customers.js','receipt-customers.js'],
+  ['/attachment-upload.js','attachment-upload.js'],['/customer-services.js','customer-services.js']
+]);
 const server=createServer(async(req,res)=>{
   if(req.url==='/api/public-config'){res.setHeader('Content-Type','application/javascript');res.end('globalThis.GUC_PUBLIC_CONFIG={};');return;}
   const file=allowed.get(req.url?.split('?')[0]);
@@ -55,7 +59,7 @@ async function verifyCrossTabInventoryRefresh(browser,url){
     await form.locator('[name="customerCategory"]').selectOption('school');await form.locator('[name="customerId"]').selectOption('customer-1');
     await form.locator('[name="projectName"]').fill('跨分頁草稿');await form.locator('[name="summary"]').fill('不可清空的工作內容');
     await form.locator('[name="logDate"]').fill('2026-09-05');await form.locator('[name="workerIds"]').check();
-    await form.locator('[name="hasMaintenance"]').selectOption('yes');await form.locator('[name="eventType"]').selectOption('REPAIR');
+    await form.locator('[name="workType"]').selectOption('維修紀錄');await form.locator('[name="eventType"]').selectOption('REPAIR');
     await form.locator('[name="eventServiceId"]').selectOption('service-1');await form.locator('[name="eventInventoryCategoryId"]').selectOption('category-1');
     await form.locator('[name="eventInventoryItemId"]').selectOption('item-1');await form.locator('[name="eventCause"]').fill('保留故障內容');
     await draft.evaluate(async()=>{await Promise.all([...scopeRequests.values()]);});
@@ -86,8 +90,7 @@ try{
   await context.addInitScript(()=>{window.BroadcastChannel=undefined;});
   const page=await context.newPage(),errors=[],dialogs=[];
   page.on('pageerror',error=>errors.push(error.message));
-  let acceptRepairPrompt=false;
-  page.on('dialog',async dialog=>{dialogs.push(dialog.message());if(acceptRepairPrompt&&dialog.message().includes('是否要登錄維修設備'))await dialog.accept();else await dialog.dismiss();});
+  page.on('dialog',async dialog=>{dialogs.push(dialog.message());await dialog.dismiss();});
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
   await page.locator('#loginForm').waitFor({state:'visible'});
@@ -128,19 +131,18 @@ try{
   await form.locator('[name="workType"]').selectOption('維護保養');
   assert.equal(dialogs.length,0,'other work types do not prompt');
   await form.locator('[name="workType"]').selectOption('維修紀錄');
-  assert.equal(dialogs.length,1);
-  assert.match(dialogs[0],/是否要登錄維修設備/);
+  assert.equal(dialogs.length,0,'repair type directly reveals details without a dialog');
+  assert.equal(await form.locator('[name="hasMaintenance"]').inputValue(),'yes');
+  assert.equal(await form.locator('#maintenanceEditor').isVisible(),true);
+  await form.locator('[name="workType"]').selectOption('工程施工');
   assert.equal(await form.locator('[name="hasMaintenance"]').inputValue(),'no');
   assert.equal(await form.locator('#maintenanceEditor').isHidden(),true);
   assert.deepEqual(await page.evaluate(()=>collectMaintenanceEvents()),[]);
-  assert.equal(await form.evaluate(node=>node.checkValidity()),true,'declining must not block the ordinary save');
-  await form.locator('[name="workType"]').selectOption('工程施工');
-  acceptRepairPrompt=true;
   await form.locator('[name="workType"]').selectOption('維修紀錄');
-  assert.equal(dialogs.length,2);
+  assert.equal(dialogs.length,0);
   assert.equal(await form.locator('[name="hasMaintenance"]').inputValue(),'yes');
   assert.equal(await form.locator('#maintenanceEditor').isVisible(),true);
-  console.log('PASS repair selection prompts, cancel keeps ordinary log, accept reveals equipment details');
+  console.log('PASS repair selection directly reveals maintenance details and other types hide them');
   assert.deepEqual(await form.locator('[name="eventType"] option').allTextContents(),['軟體設定','線路維修','線路更換','設備維修','設備更換']);
   assert.equal(await form.locator('[name="eventType"]').inputValue(),'SOFTWARE_CONFIG');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').isDisabled(),true);
@@ -160,7 +162,7 @@ try{
   await form.locator('[data-add-maintenance-event]').click();
   assert.equal(await form.locator('[name="eventOccurredAt"]').last().inputValue(),'2026-09-06');
   await form.locator('[data-remove-maintenance-event]').last().click();
-  assert.ok((await form.locator('.maintenance-question').innerText()).startsWith('登錄維修事項'));
+  assert.equal(await form.locator('.maintenance-question').count(),0);
   assert.equal(await form.locator('.maintenance-editor-head b').innerText(),'維修明細');
   await form.locator('[name="eventType"]').selectOption('REPAIR');
   await form.locator('[name="eventInventoryCategoryId"]').selectOption('category-1');
@@ -188,10 +190,12 @@ try{
   assert.deepEqual(await form.evaluate(node=>({values:[...node.elements].map(f=>[f.name,f.value,f.checked]),requestId:node.dataset.requestId})),draftBefore);
   assert.equal(await form.locator('[name="eventInventoryItemId"]').inputValue(),'item-1');
   await form.locator('[name="eventCause"]').fill('馬達異常');
+  await form.locator('[name="eventHandlingProcess"]').fill('更換電源模組並逐線測試');
   await form.locator('[name="eventNotes"]').fill('只同步此備註');
   console.log('PASS UI labels, new/edit date change, added event date, item mutation refresh preserves all draft fields, equipment-only fields and stale-selection clearing');
   const payload=await page.evaluate(()=>collectMaintenanceEvents()[0]);
   assert.equal(payload.inventory_item_id,'item-1');assert.deepEqual(payload.equipment_ids,[]);
+  assert.equal(payload.handling_process,'更換電源模組並逐線測試');
   await page.screenshot({path:fileURLToPath(new URL('desktop-form.png',output))});
   await page.setViewportSize({width:390,height:844});
   await form.locator('[name="eventInventoryCategoryId"]').scrollIntoViewIfNeeded();
@@ -207,10 +211,11 @@ try{
   assert.equal(saved.repairs[0].status,'');assert.equal(saved.repairs[0].issueDescription,'馬達異常');
   assert.equal(saved.logs[0].workerIds[0],'worker-1');
   assert.equal(saved.events[0].eventType,'REPLACEMENT');
+  assert.equal(saved.events[0].handlingProcess,'更換電源模組並逐線測試');
   console.log('PASS real form entry, worker selection, category filter, mobile width, item-only save and NULL fields');
   await page.setViewportSize({width:1440,height:1000});
   await page.locator('a[data-page="repairs"]').click();
-  await page.locator('[data-edit-repair]').click();
+  await page.locator('#repairTable tr[data-row-editor="repairModal"]').dblclick();
   for(const name of ['receivedOn','quantity','status'])assert.equal(await form.locator('[name="'+name+'"]').inputValue(),'');
   assert.equal(await form.locator('[name="issueDescription"]').inputValue(),'馬達異常');
   assert.equal(await form.evaluate(node=>node.checkValidity()),false);
@@ -228,13 +233,14 @@ try{
   await form.locator('[name="logDate"]').fill('2026-09-07');
   assert.equal(await form.locator('[name="eventOccurredAt"]').inputValue(),'2026-09-07');
   const promptsBeforeEdit=dialogs.length;
-  assert.equal(dialogs.filter(message=>message.includes('是否要登錄維修設備')).length,2,'reopening an existing repair log must not prompt');
+  assert.equal(dialogs.filter(message=>message.includes('是否要登錄維修設備')).length,0,'reopening an existing repair log must not prompt');
   await form.locator('[name="workType"]').selectOption('工程施工');
   await form.locator('[name="workType"]').selectOption('維修紀錄');
   assert.equal(dialogs.length,promptsBeforeEdit,'editing an existing log must not prompt');
   assert.equal(await form.locator('[name="eventType"]').inputValue(),'REPLACEMENT');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').inputValue(),'item-1');
   assert.equal(await form.locator('[name="eventInventoryItemId"]').isDisabled(),true);
+  assert.equal(await form.locator('[name="eventHandlingProcess"]').inputValue(),'更換電源模組並逐線測試');
   await form.locator('[name="summary"]').fill('日誌後續修改');
   await form.locator('button[type="submit"]').click();
   await page.locator('#simpleModal').waitFor({state:'hidden'});
