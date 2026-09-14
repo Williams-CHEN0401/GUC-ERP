@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {createPreviewServer} from './customer-departments-preview-server.mjs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const server=createPreviewServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const base='http://127.0.0.1:'+server.address().port,browser=await chromium.launch({channel:'chrome',headless:true});
+const output=new URL('../tmp/customer-departments/',import.meta.url);await mkdir(output,{recursive:true});
+try{
+ for(const width of [1440,390]){
+  const context=await browser.newContext({viewport:{width,height:1000}}),page=await context.newPage(),errors=[];
+  await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+  page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.message().includes('立即進入')?dialog.dismiss():dialog.accept());
+  const form=page.locator('#modalForm'),open=async(type,id='')=>page.evaluate(([type,id])=>openModal(type,id),[type,id]);
+  const save=async()=>{await form.locator('button[type="submit"]').click();try{await page.waitForFunction(()=>!document.querySelector('#simpleModal').classList.contains('open'),null,{timeout:6000});}catch(error){console.error(await page.evaluate(()=>({modal:document.querySelector('#simpleModal').dataset.type,toast:document.querySelector('#toast').innerText,invalid:[...document.querySelector('#modalForm').elements].filter(el=>el.willValidate&&!el.validity.valid).map(el=>({name:el.name,message:el.validationMessage}))})));throw error;}};
+  const choose=async(customer,department)=>{await form.locator('[name="customerCategory"]').selectOption(customer==='c2'?'school':'government');await form.locator('[name="customerId"]').selectOption(customer);if(department)await form.locator('[name="departmentId"]').selectOption(department);};
+  await page.goto(base+'/?page=crm',{waitUntil:'networkidle'});
+  await page.locator('[data-customer-tab="departments"]').click();
+  await page.locator('#departmentCustomerCategory').selectOption('government');await page.locator('#departmentCustomer').selectOption('c1');
+  assert.equal(await page.locator('#customerDepartmentTable tr').count(),3);
+  await page.locator('[data-open="customerDepartmentModal"]').click();await form.locator('[name="name"]').fill('施工管理科');await save();
+  await page.locator('#customerDepartmentSearch').fill('施工');assert.equal(await page.locator('#customerDepartmentTable tr').count(),1);
+  await page.locator('[data-edit-department]').click();await form.locator('[name="name"]').fill('施工管理科新版');await save();
+  await page.locator('[data-deactivate-department]').click();await page.waitForFunction(()=>state.customerDepartments.some(row=>row.name==='施工管理科新版'&&!row.active));
+  await page.locator('[data-activate-department]').click();await page.waitForFunction(()=>state.customerDepartments.some(row=>row.name==='施工管理科新版'&&row.active));
+  await page.screenshot({path:fileURLToPath(new URL('management-'+width+'.png',output)),fullPage:true});
+  assert.equal(await page.locator('#customerDepartmentsPane .table-card').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);
+  await open('projectModal');await choose('c1','d1');assert.equal(await form.locator('[name="categoryId"]').inputValue(),'category-government');
+  assert.equal(await form.locator('[name="departmentId"] option[value="d3"]').count(),0);
+  await form.locator('[name="customerCategory"]').selectOption('school');assert.equal(await form.locator('[name="customerId"]').inputValue(),'');assert.equal(await form.locator('[name="departmentId"]').inputValue(),'');
+  await form.locator('[name="customerId"]').selectOption('c2');assert.equal(await form.locator('[name="departmentId"] option[value="d1"]').count(),0);
+  await choose('c1','d1');await form.locator('[name="name"]').fill('新科室工作');await form.locator('[name="constructionCategory"]').selectOption('small_purchase');await save();
+  assert.equal(await page.evaluate(()=>state.projects.find(row=>row.name==='新科室工作').departmentId),'d1');
+  await open('projectModal','p4');assert.equal(await form.locator('[name="departmentId"]').inputValue(),'d4');assert.match(await form.locator('[name="departmentId"]').innerText(),/已停用/);await form.locator('[name="constructionCategory"]').selectOption('small_purchase');await save();
+  await open('projectModal','p3');assert.equal(await form.locator('[name="departmentId"]').inputValue(),'');await form.locator('[name="constructionCategory"]').selectOption('small_purchase');await save();
+  await page.goto(base+'/?page=worklogs',{waitUntil:'networkidle'});
+  await page.locator('#worklogCustomerCategoryFilter').selectOption('government');await page.locator('#worklogCustomerFilter').selectOption('c1');await page.locator('#worklogDepartmentFilter').selectOption('d2');assert.match(await page.locator('#worklogTable').innerText(),/目前沒有|沒有符合|尚無/);
+  await open('workLogModal');await choose('c1','d1');assert.match(await form.locator('#workLogProjectNames').innerHTML(),/電話系統查修/);assert.doesNotMatch(await form.locator('#workLogProjectNames').innerHTML(),/資訊設備維護|已完成不供/);
+  await form.locator('[name="projectName"]').fill('資訊設備維護');await form.locator('button[type="submit"]').click();assert.match(await page.locator('#toast').innerText(),/科室不一致/);
+  await form.locator('[name="projectName"]').fill('電話系統查修');await form.locator('[name="summary"]').fill('科室整合驗證');await form.locator('[name="customerCategory"]').scrollIntoViewIfNeeded();await page.screenshot({path:fileURLToPath(new URL('selector-'+width+'.png',output)),fullPage:true});
+  const boxes=await form.locator('[data-customer-selector]>label').evaluateAll(labels=>labels.slice(0,3).map(el=>({y:el.getBoundingClientRect().y,x:el.getBoundingClientRect().x,width:el.getBoundingClientRect().width})));
+  if(width===390)assert.ok(boxes[0].y<boxes[1].y&&boxes[1].y<boxes[2].y,'three selectors stack vertically');
+  await form.locator('[name="eventServiceId"]').selectOption('svc1');await save();assert.ok(await page.evaluate(()=>state.siteData.logs.some(row=>row.summary==='科室整合驗證')));
+  await open('pickupModal');await choose('c1','d1');assert.match(await form.locator('[name="projectId"]').innerText(),/電話系統/);assert.doesNotMatch(await form.locator('[name="projectId"]').innerText(),/資訊設備/);await page.evaluate(()=>closeModal());
+  await page.evaluate(()=>{document.querySelector('#simpleModal').dataset.workLogId='l1';openModal('attachmentModal');});assert.equal(await form.locator('[name="departmentId"]').inputValue(),'d1');assert.equal(await form.locator('[name="projectId"]').inputValue(),'p1');await form.locator('[name="departmentId"]').selectOption('d2');assert.equal(await form.locator('[name="projectId"]').inputValue(),'');assert.match(await form.locator('[name="projectId"]').innerText(),/資訊設備/);await page.evaluate(()=>closeModal());
+  await page.goto(base+'/?page=repairs',{waitUntil:'networkidle'});await open('repairModal','r1');assert.equal(await form.locator('[name="departmentId"]').inputValue(),'');await save();
+  await open('repairModal');await choose('c1','d2');await form.locator('[name="itemCategory"]').selectOption('i-category');await form.locator('[name="itemId"]').selectOption('i1');await form.locator('[name="issueDescription"]').fill('新科室維修');await save();assert.equal(await page.evaluate(()=>state.repairItems.find(row=>row.issueDescription==='新科室維修').departmentId),'d2');
+  await page.goto(base+'/?page=transactions',{waitUntil:'networkidle'});await open('receiptModal');await form.locator('#receiptCustomerCategory').selectOption('government');await form.locator('input[value="c1"]').check();await form.locator('input[value="c3"]').check();await form.locator('[data-receipt-department="c1"]').selectOption('d1');
+  await form.locator('[data-batch-category]').selectOption('i-category');await form.locator('[data-batch-item]').selectOption('i1');await save();
+  const links=await page.evaluate(()=>state.receipts[0].customerDepartments);assert.deepEqual(links,[{customer_id:'c1',department_id:'d1'},{customer_id:'c3',department_id:null}]);
+  await page.goto(base+'/?page=materials',{waitUntil:'networkidle'});await page.locator('#materialCustomerCategory').selectOption('government');await page.locator('#materialCustomer').selectOption('c1');await page.locator('#materialDepartment').selectOption('d2');assert.match(await page.locator('#materialProject').innerText(),/資訊設備/);assert.doesNotMatch(await page.locator('#materialProject').innerText(),/電話系統/);
+  await page.evaluate(()=>{state.customerDepartmentsReady=false;openModal('projectModal');});await choose('c3','');assert.equal(await form.locator('[name="departmentId"]').isDisabled(),true);await form.locator('[name="name"]').fill('禁止錯誤放行');await form.locator('[name="constructionCategory"]').selectOption('small_purchase');await form.locator('button[type="submit"]').click();assert.match(await page.locator('#toast').innerText(),/科室資料尚未載入/);
+  await page.evaluate(()=>{closeModal();state.currentUser={id:'viewer',role:'viewer'};renderAll();});await page.goto(base+'/?page=crm',{waitUntil:'networkidle'});
+  await page.evaluate(()=>{state.currentUser={id:'viewer',role:'viewer'};renderAll();});await page.locator('[data-customer-tab="departments"]').click();assert.equal(await page.locator('[data-open="customerDepartmentModal"]').isVisible(),false);
+  await page.evaluate(()=>{state.currentUser={id:'worker',role:'worker',project_scoped:true,permissions:[{module:'worklogs',can_view:true,can_create:true,can_update:false,can_delete:false}]};state.projectAccess=[{project_id:'p1',can_view:true,can_create_work_log:true}];renderAll();openModal('workLogModal');});await choose('c1','d1');assert.match(await form.locator('#workLogProjectNames').innerText(),/電話系統/);await form.locator('[name="departmentId"]').selectOption('d2');assert.doesNotMatch(await form.locator('#workLogProjectNames').innerText(),/資訊設備/);
+  assert.deepEqual(errors,[]);await context.close();console.log('Customer department UI passed at '+width+'px');
+ }
+}finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

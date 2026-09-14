@@ -16,7 +16,7 @@ test("ERP navigation exposes repair management and renames transaction managemen
 });
 
 test("repair UI links customer and product categories to canonical records",()=>{
-  for(const marker of ["repairStatusFilter","repairTable","repairModal","customerCategoryOptions(category)","repairInventoryFields(r.itemId)","syncRepairItemOptions","upsert_repair_item","delete_repair_item"])assert.ok(app.includes(marker)||html.includes(marker),`missing ${marker}`);
+  for(const marker of ["repairStatusFilter","repairTable","repairModal","customerSelectorFields(customerId,category,r.departmentId","repairInventoryFields(r.itemId)","syncRepairItemOptions","upsert_repair_item","delete_repair_item"])assert.ok(app.includes(marker)||html.includes(marker),`missing ${marker}`);
   for(const marker of ["送修客戶","商品種類","送修供應商","供應商返件日期","返還客戶日期"])assert.ok(app.includes(marker)||html.includes(marker),`missing ${marker}`);
 });
 

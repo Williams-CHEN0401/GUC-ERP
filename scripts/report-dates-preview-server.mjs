@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
 export const fixture={
+  customer_departments:[],
   current_user:{id:'u1',username:'fixture',role:'admin',display_name:'本機測試員'},
   customers:[{id:'c1',customer_code:'TEST',customer_category:'school',name:'日期驗證學校（模擬資料）'}],
   projects:[
