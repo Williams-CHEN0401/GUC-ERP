@@ -1,0 +1,90 @@
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {createPreviewServer} from './customer-categories-preview-server.mjs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const server=createPreviewServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const base='http://127.0.0.1:'+server.address().port;
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const output=new URL('../tmp/customer-categories/',import.meta.url);await mkdir(output,{recursive:true});
+try{
+ for(const width of [1440,390]){
+  const context=await browser.newContext({viewport:{width,height:960}});
+  await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>dialog.accept());
+  await page.goto(base+'/?page=crm',{waitUntil:'networkidle'});
+  assert.equal(await page.locator('#customerTable tr').count(),1);
+  assert.equal(await page.locator('.section-tabs [data-tab="customerCategories"]').count(),0);
+  assert.equal(await page.locator('[data-pane="customers"] [data-customer-tab]').count(),2);
+  assert.equal(await page.locator('#customerListPane').isVisible(),true);
+  assert.equal(await page.locator('#customerCategoriesPane').isVisible(),false);
+  await page.locator('[data-customer-tab="categories"]').click();
+  assert.equal(await page.locator('#customerCategoryTable tr').count(),4);
+  assert.equal(await page.locator('#customerListPane').isVisible(),false);
+  assert.equal(await page.locator('#customerCategoriesTab').getAttribute('aria-selected'),'true');
+  await page.locator('[data-tab="projects"]').click();
+  assert.equal(await page.locator('#customerCategoriesPane').isVisible(),false);
+  await page.locator('[data-tab="customers"]').click();
+  assert.equal(await page.locator('#customerCategoriesPane').isVisible(),true);
+  assert.equal(await page.locator('[data-delete-customer-category="school"]').isDisabled(),true);
+  const save=async(name)=>{
+   await page.locator('#modalForm [name="name"]').fill(name);
+   await page.locator('#modalForm button[type="submit"]').click();
+   await page.waitForFunction(()=>!document.querySelector('#simpleModal').classList.contains('open'));
+  };
+  await page.locator('[data-open="customerCategoryModal"]').click();await save('民間企業');
+  assert.equal(await page.locator('#customerCategoryTable tr').count(),5);
+  await page.locator('#customerCategorySearch').fill('民間');
+  assert.equal(await page.locator('#customerCategoryTable tr').count(),1);
+  await page.locator('#customerCategoryTable [data-edit-customer-category]').click();await save('企業客戶');
+  assert.match(await page.locator('#customerCategoryTable').innerText(),/沒有符合/);
+  await page.locator('#customerCategorySearch').fill('企業');
+  const code=await page.evaluate(()=>state.customerCategories.find(row=>row.name==='企業客戶').code);
+  for(const id of ['customerCategoryFilter','worklogCustomerCategoryFilter','materialCustomerCategory']){
+   assert.equal(await page.locator('#'+id+' option').filter({hasText:'企業客戶'}).count(),1);
+  }
+  assert.equal(await page.locator('[data-customer-pane="categories"] .table-card').evaluate(el=>el.scrollWidth<=el.clientWidth),true);
+  const nameBox=await page.locator('#customerCategoryTable td:first-child').boundingBox();
+  assert.ok(nameBox.x>=0&&nameBox.x+nameBox.width<=width,'classification name stays in the viewport');
+  await page.screenshot({path:fileURLToPath(new URL('categories-'+width+'.png',output)),fullPage:true});
+  await page.locator('[data-customer-tab="list"]').click();
+  await page.locator('[data-open="customerModal"]').click();
+  await page.locator('#modalForm [name="category"]').selectOption(code);await save('測試企業');
+  assert.match(await page.locator('#customerTable').innerText(),/企業客戶/);
+  await page.locator('#customerCategoryFilter').selectOption(code);assert.equal(await page.locator('#customerTable tr').count(),1);
+  await page.locator('[data-customer-tab="categories"]').click();
+  assert.equal(await page.locator('#customerCategoryTable [data-delete-customer-category]').isDisabled(),true);
+  await page.locator('#customerCategorySearch').fill('');
+  await page.locator('[data-edit-customer-category="school"]').click();await save('教育機關');
+  assert.match(await page.locator('#customerCategoryFilter').innerText(),/教育機關/);
+  await page.locator('[data-open="customerCategoryModal"]').click();await save('可刪除測試');
+  await page.locator('#customerCategorySearch').fill('可刪除測試');
+  await page.locator('#customerCategoryTable [data-delete-customer-category]').click();
+  assert.match(await page.locator('#customerCategoryTable').innerText(),/沒有符合/);
+  await page.locator('#customerCategorySearch').fill('');
+  await page.locator('[data-open="customerCategoryModal"]').click();
+  await page.locator('#modalForm [name="name"]').fill('企業客戶');
+  await page.locator('#modalForm button[type="submit"]').click();
+  assert.equal(await page.locator('#simpleModal').evaluate(el=>el.classList.contains('open')),true);
+  assert.match(await page.locator('body').innerText(),/此客戶分類名稱已存在/);
+  await page.evaluate(()=>closeModal());
+  await page.evaluate(()=>{state.currentUser={role:'custom',permissions:[{module:'customers',can_view:true,can_create:false,can_update:false,can_delete:false}]};renderAll();});
+  assert.equal(await page.locator('[data-open="customerCategoryModal"]').isVisible(),false);
+  assert.equal(await page.locator('#customerCategoryTable button').count(),0);
+  await page.locator('#customerCategorySearch').fill('教育');
+  assert.equal(await page.locator('#customerCategoryTable tr').count(),1);
+  await page.evaluate(()=>{
+   hydrateSnapshot({customer_categories:[{id:'10000000-0000-4000-8000-000000000001',code:'school',name:'資料庫教育分類',row_version:7}]});
+   renderAll();
+  });
+  assert.match(await page.locator('#customerCategoryFilter').innerText(),/資料庫教育分類/);
+  assert.equal(await page.evaluate(()=>state.customerCategories[0].rowVersion),7);
+  await page.evaluate(()=>{hydrateSnapshot({errors:[{dataset:'customer_categories',message:'unavailable'}]});state.currentUser={role:'admin'};renderAll();});
+  assert.equal(await page.locator('[data-open="customerCategoryModal"]').isDisabled(),true);
+  assert.equal(await page.locator('#customerCategoryTable [data-edit-customer-category]').isDisabled(),true);
+  assert.deepEqual(errors,[]);
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);assert.equal(overflow,false);
+  console.log('PASS '+width+'px: category CRUD, search, synchronized selectors/customer save, protected deletion, duplicate name, view-only permissions and no browser errors/overflow.');
+  await context.close();
+ }
+}finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

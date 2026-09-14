@@ -121,7 +121,8 @@ async function deviceCredentialEnvelope(loginUsername: unknown, loginPassword: u
   };
 }
 const role = (value: unknown): Role | null => /^[a-z][a-z0-9_]{0,39}$/.test(text(value)) ? text(value) as Role : null;
-const customerCategory = (value: unknown) => ["school", "government", "social_welfare", "cleaning_team"].includes(text(value)) ? text(value) : null;
+// Category membership is enforced by the shared database foreign key, not a UI-specific list.
+const customerCategory = (value: unknown) => /^[a-z][a-z0-9_]{1,63}$/.test(text(value)) ? text(value) : null;
 const repairStatus = (value: unknown) => ["received", "sent_to_supplier", "supplier_returned", "returned_to_customer", "cancelled"].includes(text(value)) ? text(value) : null;
 const safePathPart = (value: unknown) => text(value).normalize("NFKC").replace(/[\\/:*?"<>|\x00-\x1F]/g,"_").replace(/\s+/g," ").trim().slice(0,100) || "未命名";
 const optionalEmail = (value: unknown) => {
@@ -276,7 +277,7 @@ function requirePermission(user:AppUser,module:string,action:PermissionAction="V
 const OPERATION_MODULES:Record<string,string[]>={
  users:["create_account","update_account","delete_account"],
  settings:["save_app_role","save_user_project_access"],
- customers:["create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
+ customers:["create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
  suppliers:["create_supplier","update_supplier","delete_supplier"],
  projects:["create_project","create_erp_project","update_erp_project","delete_erp_project"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
@@ -344,7 +345,7 @@ async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
  }
 }
 async function restrictedSnapshot(user:AppUser,scopeName:string):Promise<Row|null> {
- if(scopeName==="worklogs"&&user.project_scoped)return {scope:scopeName,...await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row,current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString()};
+ if(scopeName==="worklogs"&&user.project_scoped)return {scope:scopeName,...await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row,customer_categories:await getAll(datasets.customer_categories.path),current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString()};
  if(!user.permissions||user.role==="admin")return null;
  if(scopeName==="transactions"&&!hasPermission(user,"purchases")){
   requirePermission(user,"pickups");
@@ -354,7 +355,7 @@ async function restrictedSnapshot(user:AppUser,scopeName:string):Promise<Row|nul
  if(scopeName==="transactions"&&!hasPermission(user,"pickups")){
   requirePermission(user,"purchases");
   const [receipts,customers,suppliers,items,categories]=await Promise.all([getAll(datasets.receipts.path),getAll(datasets.customers.path),getAll(datasets.suppliers.path),getAll("inventory_items?select=id,inventory_code,category_id,item_name,brand,model,unit&order=inventory_code.asc"),get(datasets.categories.path)]);
-  return {scope:scopeName,receipts,customers,suppliers,items,categories,pickups:[],projects:[],current_user:publicUser(user),errors:[]};
+  return {scope:scopeName,receipts,customers,customer_categories:await getAll(datasets.customer_categories.path),suppliers,items,categories,pickups:[],projects:[],current_user:publicUser(user),errors:[]};
  }
  return null;
 }
@@ -394,6 +395,7 @@ const datasets: Record<string, DatasetDefinition> = {
   conflicts: { path: "data_conflicts?select=id,entity_type,entity_id,status,created_at&status=eq.open&order=created_at.desc&limit=20" },
   suppliers: { path: "suppliers?select=id,name,contact_name,phone,email,address,note,created_at,updated_at,row_version&order=name.asc" },
   repair_items: { path: "repair_items?select=id,repair_no,source_maintenance_event_id,received_on,customer_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,source,updated_by,created_at,updated_at,row_version&order=received_on.desc,created_at.desc,id.desc", paged: true },
+  customer_categories: { path: "customer_categories?select=id,code,name,row_version&order=sort_order.asc,created_at.asc,id.asc", paged: true },
   customers: { path: "customers?select=id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc,id.asc", paged: true },
   contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,created_at,updated_at&order=sort_order.asc,name.asc" },
   customer_contract_services: { path: "customer_contract_services?is_active=eq.true&select=customer_id,service_type_id,created_at&order=created_at.asc" },
@@ -464,6 +466,7 @@ async function scopedSnapshot(user: AppUser, scopeName: string) {
   let names = scopes[scopeName];
   if(scopeName==="crm"&&user.permissions&&user.role!=="admin")names=[...new Set([...(hasPermission(user,"customers")?["customers","contract_service_types","customer_contract_services"]:[]),...(hasPermission(user,"projects")?["customers","projects","project_workers","site_workers"]:[]),...(hasPermission(user,"suppliers")?["suppliers"]:[])])];
   if (!names) throw new Error("不支援的資料載入範圍。");
+  if(!scopeName.startsWith("site")&&names.includes("customers")&&!names.includes("customer_categories"))names=[...names,"customer_categories"];
   const scopedData=user.project_scoped?(hasPermission(user,"worklogs")?await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row:{}):null;
   const protectedDatasets=["projects","project_workers","sites","site_work_logs","site_work_log_workers","site_workers","site_assets","maintenance_events","maintenance_event_equipment","maintenance_event_workers"];
   const requests = names.map(async name => {
@@ -899,6 +902,13 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!equipmentId||!requestId||!event||Array.isArray(event)||!date(event.occurred_at)||!limited(event.description,4000)||!limited(event.result,2000)||nullable(event.cause,2000)===null||nullable(event.notes,2000)===null||!Array.isArray(event.worker_user_ids)||event.worker_user_ids.length<1||event.worker_user_ids.length>30||event.worker_user_ids.some(id=>!uuid(id)))throw new Error("請填寫日期、處理方式、結果及有效處理人員。");
     return rpc("save_equipment_history_v1",{p_equipment_id:equipmentId,p_event:event,p_actor_user_id:user!.id,p_request_id:requestId});
   }
+  if (["create_customer_category","update_customer_category","delete_customer_category"].includes(operation)) {
+    requireOperation(user,operation,payload,["admin"]);
+    const id=uuid(payload.id),rowVersion=Number(payload.row_version),name=limited(payload.name,80);
+    if(operation!=="create_customer_category"&&(!id||!Number.isInteger(rowVersion)||rowVersion<1))throw new Error("請重新載入客戶分類後再操作。");
+    if(operation!=="delete_customer_category"&&!name)throw new Error("分類名稱須為 1–80 個字。");
+    return rpc("manage_customer_category_v1",{p_action:operation.split("_")[0],p_id:id,p_row_version:operation==="create_customer_category"?null:rowVersion,p_name:name,p_actor:actor});
+  }
   if (operation === "create_customer") { requireOperation(user,operation,payload,["admin"]); const category=customerCategory(payload.customer_category),name=limited(payload.name,160),phone=nullable(payload.phone,50),email=optionalEmail(payload.email),address=nullable(payload.address,500),note=nullable(payload.note,1000),service_codes=Array.isArray(payload.contract_service_codes)?payload.contract_service_codes.map(text):[]; if(!category||!name||phone===null||email===null||address===null||note===null||service_codes.some(code=>!/^[a-z0-9_]{2,64}$/.test(code))||new Set(service_codes).size!==service_codes.length) throw new Error("請完整填寫客戶分類、承攬內容及有效的客戶資料。"); return rpc("create_customer_with_contracts_v1",{p_customer_category:category,p_name:name,p_phone:phone||null,p_email:email||null,p_address:address||null,p_note:note||null,p_service_codes:service_codes,p_actor:actor}); }
   if (operation === "update_customer") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version),category=customerCategory(payload.customer_category),name=limited(payload.name,160),phone=nullable(payload.phone,50),email=optionalEmail(payload.email),address=nullable(payload.address,500),note=nullable(payload.note,1000),service_codes=Array.isArray(payload.contract_service_codes)?payload.contract_service_codes.map(text):[]; if(!id||!Number.isInteger(rowVersion)||rowVersion<1||!category||!name||phone===null||email===null||address===null||note===null||service_codes.some(code=>!/^[a-z0-9_]{2,64}$/.test(code))||new Set(service_codes).size!==service_codes.length) throw new Error("請完整填寫客戶分類、承攬內容及有效的客戶資料。"); return rpc("update_customer_with_contracts_v1",{p_id:id,p_row_version:rowVersion,p_customer_category:category,p_name:name,p_phone:phone||null,p_email:email||null,p_address:address||null,p_note:note||null,p_service_codes:service_codes,p_actor:actor}); }
   if (operation === "delete_customer") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version); if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("客戶資料或版本不正確。"); return rpc("delete_customer_record",{p_id:id,p_row_version:rowVersion,p_actor:actor}); }
@@ -1251,7 +1261,7 @@ function redactAuditValue(value: unknown, depth=0): unknown {
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
-const AUDIT_ENTITIES:Record<string,string[]>={customers:["customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_details","maintenance_details","project_costs"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
+const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_details","maintenance_details","project_costs"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
 async function auditRecords(params: URLSearchParams, user: AppUser) {
   if(user.permissions)requirePermission(user,"audit");else requireRole(user,["admin"]);
   const page=Math.max(1,Math.min(10000,Number(params.get("page"))||1)),size=Math.max(1,Math.min(100,Number(params.get("page_size"))||25));

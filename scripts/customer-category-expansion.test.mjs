@@ -21,11 +21,11 @@ test("category display uses persisted values and treats blanks as government", (
   assert.match(app, /customerCategoryLabel\(value\)[\s\S]*\|\| "政府機關"/);
 });
 
-test("gateway and database accept only the four configured categories", () => {
+test("legacy migration preserves the four original categories; gateway uses database membership", () => {
   for (const category of ["school", "government", "social_welfare", "cleaning_team"]) {
-    assert.ok(gateway.includes(`"${category}"`));
     assert.ok(migration.includes(`'${category}'`));
   }
+  assert.match(gateway, /Category membership is enforced by the shared database foreign key/);
   assert.match(migration, /revoke all on function public\.create_customer_auto_number_v2[\s\S]*from public, anon, authenticated/);
   assert.match(migration, /grant execute on function public\.create_customer_auto_number_v2[\s\S]*to service_role/);
 });
