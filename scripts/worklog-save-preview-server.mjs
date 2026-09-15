@@ -7,11 +7,12 @@ import path from 'node:path';
 import {stripTypeScriptTypes} from 'node:module';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import vm from 'node:vm';
-import {ids} from './worklog-save-fixture.mjs';
+import {ids,sql} from './worklog-save-fixture.mjs';
 import {departmentDatabase} from './department-cross-system-fixture.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
-export async function createWorklogTestServer(){
+export async function createWorklogTestServer({workflow=false}={}){
  const db=await departmentDatabase(),calls=[];
+ if(workflow){await db.exec('drop trigger project_sync on projects');await db.exec(await sql('20260915150407_shared_work_types_and_worklog_rename.sql'));}
  let handler;
  const currentUser={id:ids.actor,username:'fixture-admin',role:'admin',display_name:'隔離測試員',is_active:true};
  const source=stripTypeScriptTypes((await readFile(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8')).replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'});

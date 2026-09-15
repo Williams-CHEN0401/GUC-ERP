@@ -98,6 +98,26 @@ async function encryptDeviceCredentialValue(value: string) {
     plaintext.fill(0);
   }
 }
+// Sensitive reads reauthenticate the already identified ERP user with Supabase.
+// No independent account, persisted password, client unlock flag or bearer capability.
+async function verifyDeviceCredentialAccess(user: AppUser, payload: Row) {
+  requirePermission(user,"site");
+  requirePermission(user,"phone");
+  requireOperation(user,"reveal_phone_system_credential",payload,["admin"]);
+  const pass = typeof payload.password_confirmation === "string" ? payload.password_confirmation : "";
+  if (!pass || pass.length > 128) throw new Error("DEVICE_VERIFICATION_REQUIRED");
+  const response = await timedFetch(`${url}/auth/v1/token?grant_type=password`, {
+    method:"POST", headers:{apikey:key,"Content-Type":"application/json"},
+    body:JSON.stringify({email:internalEmail(user.username),password:pass}),
+  }, "設備管理身分驗證");
+  const session = await response.json().catch(()=>({})) as {access_token?:string;user?:{id?:string}};
+  if (!response.ok || !session.access_token) throw new Error("DEVICE_VERIFICATION_REQUIRED");
+  // Close only the temporary verification session; preserve the user's website login.
+  const revoke = await timedFetch(`${url}/auth/v1/logout?scope=local`, {
+    method:"POST",headers:{apikey:key,Authorization:`Bearer ${session.access_token}`},
+  }, "結束設備驗證工作階段");
+  if (!revoke.ok || session.user?.id !== user.auth_user_id) throw new Error("DEVICE_VERIFICATION_REQUIRED");
+}
 async function deviceCredentialEnvelope(loginUsername: unknown, loginPassword: unknown): Promise<Row | null> {
   const usernameValue = typeof loginUsername === "string" ? loginUsername.trim() : "";
   const passwordValue = typeof loginPassword === "string" ? loginPassword : "";
@@ -496,6 +516,7 @@ async function scopedSnapshot(user: AppUser, scopeName: string) {
   });
   const settled = await Promise.allSettled(requests);
   const result: Row = { scope: scopeName, current_user: publicUser(user), refreshed_at: new Date().toISOString(), errors: [] };
+  if (["crm","worklogs"].includes(scopeName)) result.work_content_types = await rpc("erp_work_content_types_v1", {});
   const errors: Row[] = [];
   settled.forEach((entry, index) => {
     const name = names[index];
@@ -692,7 +713,7 @@ async function monitoringDeviceImports(params: URLSearchParams) {
       get(`monitoring_device_import_rows?import_id=eq.${id}&select=id,source_row,device_id,sanitized_payload,created_at&order=source_row.asc`) as Promise<Row[]>,
     ]);
     if (imports.length !== 1) throw new Error("找不到匯入紀錄。");
-    return { record: imports[0], rows };
+    return { record: imports[0], rows: rows.map(row=>({...row,sanitized_payload:redactAuditValue(row.sanitized_payload)})) };
   }
   const page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
   const pageSize = Math.min(100, Math.max(10, Math.floor(Number(params.get("page_size")) || 25)));
@@ -1085,6 +1106,12 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     requireOperation(user,operation,payload,["admin"]);
     const phone_system_id=uuid(payload.phone_system_id);
     if(!phone_system_id) throw new Error("請選擇有效的總機系統。");
+    const customerId=uuid(payload.customer_id),serviceId=uuid(payload.service_id);
+    if(!customerId||!serviceId)throw new Error("請選擇設備管理的客戶與承攬內容。");
+    await verifyDeviceCredentialAccess(user!,payload);
+    await ensurePhoneContract(customerId,serviceId);
+    const systems=await get(`phone_systems?select=id&id=eq.${phone_system_id}&customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}`) as Row[];
+    if(systems.length!==1)throw new Error("設備不屬於目前管理範圍。");
     return rpc("reveal_phone_system_credential_v1",{p_phone_system_id:phone_system_id,p_actor:actor});
   }
   if (operation === "create_site") { requireOperation(user,operation,payload,["admin","operator"]); const site_name=limited(payload.site_name,160),customer_id=uuid(payload.customer_id),project_id=text(payload.project_id)?uuid(payload.project_id):null,contact_id=text(payload.contact_id)?uuid(payload.contact_id):null,address=nullable(payload.address,500),phone=nullable(payload.phone,50),status=text(payload.status),notes=nullable(payload.notes,1000); if(!site_name||!customer_id||address===null||phone===null||notes===null||!["active","inactive","closed"].includes(status)) throw new Error("請完整填寫有效的案場資料。"); return rpc("create_site_auto_number_v1",{p_site_name:site_name,p_customer_id:customer_id,p_project_id:project_id,p_contact_id:contact_id,p_address:address||null,p_phone:phone||null,p_status:status,p_notes:notes||null,p_actor:actor}); }
@@ -1294,7 +1321,7 @@ function auditProjection(record: Row): Row {
 function redactAuditValue(value: unknown, depth=0): unknown {
   if(depth>12)return "[已省略]";
   if(Array.isArray(value))return value.map(item=>redactAuditValue(item,depth+1));
-  if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,/password|passwd|pwd|token|authorization|cookie|secret|credential|cipher|encryption|private.?key|service.?role|api.?key|密碼|金鑰/i.test(key)?"[已遮蔽]":redactAuditValue(item,depth+1)]));
+  if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,/login[_-]?username|login[_-]?account|password|passwd|pwd|token|authorization|cookie|secret|credential|cipher|encryption|private.?key|service.?role|api.?key|密碼|金鑰/i.test(key)?"[已遮蔽]":redactAuditValue(item,depth+1)]));
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
@@ -1461,6 +1488,7 @@ async function handleRequest(request: Request) {
     return json({ ok: true, result: result ?? null, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
   } catch(error) {
     const message=error instanceof Error?error.message:"系統暫時無法完成操作。";
+    if(message==="DEVICE_VERIFICATION_REQUIRED")return json({error:"請在設備管理輸入目前登入帳號的正確密碼，完成驗證後才能顯示帳密。",code:"DEVICE_VERIFICATION_REQUIRED"},403);
     const status=message.includes("權限")||message.includes("沒有執行")?403:message.startsWith("找不到")?404:message.includes("其他使用者")||message.includes("已被其他有效設備")?409:400;
     return json({error:message,code:status===403?"FORBIDDEN":status===404?"NOT_FOUND":status===409?"CONFLICT":"VALIDATION_ERROR"},status);
   }

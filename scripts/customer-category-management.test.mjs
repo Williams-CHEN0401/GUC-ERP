@@ -35,9 +35,9 @@ test('classification malformed input and anonymous writes never reach the databa
 test('CRM classification lookup follows view permissions, including delegated users',async()=>{
  const denied=harness();assert.equal((await denied.read('crm')).status,403);assert.equal(denied.calls.length,0);
  const allowed=harness(['view']);assert.equal((await allowed.read('crm')).status,200);
- assert.ok(allowed.calls.some(p=>p.startsWith('customer_categories?')));
- assert.ok(!allowed.calls.some(p=>p.startsWith('suppliers?')));
- const supplier=harness(['view'],'suppliers');assert.equal((await supplier.read('crm')).status,200);assert.ok(!supplier.calls.some(p=>p.startsWith('customer_categories?')));
+ assert.ok(allowed.calls.some(p=>typeof p==='string'&&p.startsWith('customer_categories?')));
+ assert.ok(!allowed.calls.some(p=>typeof p==='string'&&p.startsWith('suppliers?')));
+ const supplier=harness(['view'],'suppliers');assert.equal((await supplier.read('crm')).status,200);assert.ok(!supplier.calls.some(p=>typeof p==='string'&&p.startsWith('customer_categories?')));
 });
 test('customer save accepts new category codes and leaves membership to the foreign key',async()=>{
  const h=harness(['view','create']);const response=await h.write('create_customer',{customer_category:'custom_123',name:'測試企業',contract_service_codes:[]});
