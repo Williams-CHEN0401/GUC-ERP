@@ -19,6 +19,13 @@
 
 執行 `npm run check` 可檢查必要檔案與主要頁面標記，並執行 NAS 命名、碰撞、檔案限制、驗證與逾時測試。
 
+## 2026-09-16 工作內容與設備驗證更新
+
+- 工作日誌名稱可由具備 `projects UPDATE` 的非專案限定使用者修改，同步共用專案及相關日誌名稱；保留版本鎖、科室、其他欄位及歷史報價快照。
+- ERP 與報價共用 `erp_work_content_types_v1`；施工子分類仍為 `small_purchase`／`tender`。
+- 設備帳密揭露需以既有 Supabase Auth 再次驗證當前使用者，且符合 site／phone／credentials 權限及設備所屬客戶／有效承攬；一般分頁不增加登入次數。
+- 發布需先套用 `20260915150407_shared_work_types_and_worklog_rename.sql`，再套用報價庫 `20260915150411_quotation_inline_workflow.sql`，之後更新兩個 Gateway 與三個網站。兩份 migration 不重寫歷史業務資料；資料庫只採 forward-fix，不能刪除資料回滾。
+
 NAS Vercel Function 需要在對應環境設定 `NAS_WEBDAV_URL`、`NAS_WEBDAV_USERNAME`、`NAS_WEBDAV_PASSWORD`，根目錄固定為 `NAS_WEBDAV_ROOT=/GUC-ERP`。變數名稱範本見 `.env.example`；真實帳密不可寫入原始碼。Preview 刻意不載入或檢查正式 NAS 帳密，附件流程只做瀏覽器安全模擬；Production 仍會在伺服器端嚴格檢查上述三個必填變數。
 
 資料庫 migration：
