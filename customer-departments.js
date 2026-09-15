@@ -1,5 +1,5 @@
 // One customer/category/department model shared by forms, filters and receipt rows.
-function customerDepartmentLabel(id){return byId(state.customerDepartments||[],id)?.name||"尚未設定科室";}
+function customerDepartmentLabel(id){return id?(byId(state.customerDepartments||[],id)?.name||"科室資料尚未載入，請重新整理"):"尚未設定科室";}
 function customerDepartmentRows(customerId,{includeId="",search=""}={}){
  return (state.customerDepartments||[]).filter(row=>row.customerId===customerId&&(row.active||row.id===includeId)&&matches([row.name],search)).sort((a,b)=>a.name.localeCompare(b.name,"zh-Hant"));
 }
@@ -84,7 +84,7 @@ document.addEventListener("input",event=>{
 document.addEventListener("change",event=>{
  if(event.target.id==="departmentCustomerCategory"){document.querySelector("#departmentCustomer").value="";renderCustomerDepartments();}
  if(["departmentCustomer","customerDepartmentStatus"].includes(event.target.id))renderCustomerDepartments();
- if(event.target.name==="departmentId"&&event.target.closest("#modalForm")){syncModalProjectOptions(true);syncWorkLogProjectNames();if(document.querySelector("#simpleModal").dataset.type==="attachmentModal")syncAttachmentOptions({resetProject:true});}
+ if(event.target.name==="departmentId"&&event.target.closest("#modalForm")){syncModalProjectOptions(true);syncWorkLogProjectNames();syncWorkLogProjectDefaults();if(document.querySelector("#simpleModal").dataset.type==="attachmentModal")syncAttachmentOptions({resetProject:true});}
  if(event.target.id==="worklogDepartmentFilter"){document.querySelector("#worklogProjectFilter").value="";renderWorkLogs();}
  if(event.target.id==="materialDepartment"){updateMaterialProjects(true);}
 });

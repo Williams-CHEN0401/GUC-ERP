@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const functions=['workLogSelectableProjects','workLogProjectTitleField','syncWorkLogProjectNames'];
-const code=functions.map(name=>source.split('\n').find(line=>line.startsWith('function '+name+'('))).join('\n');
+const code=functions.map(name=>{const start=source.indexOf('function '+name+'('),end=source.indexOf('\nfunction ',start+1);return source.slice(start,end<0?undefined:end);}).join('\n');
 test('new work-log initial and refreshed choices exclude completed while preserving customer and grants',()=>{
  const state={projects:[{id:'p1',customerId:'c1',status:'in_progress',name:'施工',code:'P1'},{id:'p2',customerId:'c1',status:'completed',name:'完工',code:'P2'},{id:'p3',customerId:'c2',status:'in_progress',name:'其他客戶'},{id:'p4',customerId:'c1',status:'in_progress',name:'未授權'}],currentUser:{project_scoped:false},projectAccess:[{project_id:'p1',can_create_work_log:true},{project_id:'p2',can_create_work_log:true}]};
  const list={tagName:'DATALIST'},form={elements:{customerId:{value:'c1'}},querySelector:()=>list};
