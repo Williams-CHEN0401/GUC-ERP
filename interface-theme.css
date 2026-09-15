@@ -304,6 +304,7 @@ input[type=checkbox] { accent-color: var(--green-800); }
 #crm [data-customer-pane="categories"] th:last-child { width: 35%; }
 /* The same three-level customer flow is used on desktop and narrow screens. */
 .customer-department-selector{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;min-width:0}
+.worklog-filterbar{flex-wrap:wrap;min-width:0}.worklog-filterbar>.search{flex:1 1 280px;min-width:min(280px,100%)}.worklog-filterbar>select{flex:1 1 145px;min-width:0;max-width:100%}
 .customer-department-selector label{min-width:0}.customer-department-selector select,.customer-department-selector input{width:100%;min-width:0}
 .customer-selector-search{grid-column:1/-1}.department-management-filters{align-items:end}.department-management-filters label{min-width:0;flex:1 1 180px}
 .receipt-customer-list [data-receipt-customer]{display:grid;gap:8px;padding:12px;border:1px solid var(--border,#dce3e5);border-radius:12px;min-width:0}

@@ -8,7 +8,7 @@ const base='http://127.0.0.1:'+server.address().port,browser=await chromium.laun
 const output=new URL('../tmp/customer-departments/',import.meta.url);await mkdir(output,{recursive:true});
 try{
  for(const width of [1440,390]){
-  const context=await browser.newContext({viewport:{width,height:1000}}),page=await context.newPage(),errors=[];
+  const context=await browser.newContext({viewport:{width,height:1000}}),page=await context.newPage(),errors=[];page.setDefaultTimeout(10000);console.log('Checking department UI '+width+'px');
   await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.message().includes('立即進入')?dialog.dismiss():dialog.accept());
   const form=page.locator('#modalForm'),open=async(type,id='')=>page.evaluate(([type,id])=>openModal(type,id),[type,id]);
@@ -37,10 +37,10 @@ try{
   await page.locator('#worklogCustomerCategoryFilter').selectOption('government');await page.locator('#worklogCustomerFilter').selectOption('c1');await page.locator('#worklogDepartmentFilter').selectOption('d2');assert.match(await page.locator('#worklogTable').innerText(),/目前沒有|沒有符合|尚無/);
   await open('workLogModal');await choose('c1','d1');assert.match(await form.locator('#workLogProjectNames').innerHTML(),/電話系統查修/);assert.doesNotMatch(await form.locator('#workLogProjectNames').innerHTML(),/資訊設備維護|已完成不供/);
   await form.locator('[name="projectName"]').fill('資訊設備維護');await form.locator('button[type="submit"]').click();assert.match(await page.locator('#toast').innerText(),/科室不一致/);
-  await form.locator('[name="projectName"]').fill('電話系統查修');await form.locator('[name="summary"]').fill('科室整合驗證');await form.locator('[name="customerCategory"]').scrollIntoViewIfNeeded();await page.screenshot({path:fileURLToPath(new URL('selector-'+width+'.png',output)),fullPage:true});
+  await form.locator('[name="projectName"]').fill('電話系統查修');assert.equal(await form.locator('[name="summary"]').isVisible(),false);await form.locator('[name="eventHandlingProcess"]').fill('科室整合驗證');await form.locator('[name="customerCategory"]').scrollIntoViewIfNeeded();await page.screenshot({path:fileURLToPath(new URL('selector-'+width+'.png',output)),fullPage:true});
   const boxes=await form.locator('[data-customer-selector]>label').evaluateAll(labels=>labels.slice(0,3).map(el=>({y:el.getBoundingClientRect().y,x:el.getBoundingClientRect().x,width:el.getBoundingClientRect().width})));
   if(width===390)assert.ok(boxes[0].y<boxes[1].y&&boxes[1].y<boxes[2].y,'three selectors stack vertically');
-  await form.locator('[name="eventServiceId"]').selectOption('svc1');await save();assert.ok(await page.evaluate(()=>state.siteData.logs.some(row=>row.summary==='科室整合驗證')));
+  await form.locator('[name="eventServiceId"]').selectOption('svc1');await save();assert.ok(await page.evaluate(()=>state.siteData.logs.some(row=>row.summary.includes('科室整合驗證'))));
   await open('pickupModal');await choose('c1','d1');assert.match(await form.locator('[name="projectId"]').innerText(),/電話系統/);assert.doesNotMatch(await form.locator('[name="projectId"]').innerText(),/資訊設備/);await page.evaluate(()=>closeModal());
   await page.evaluate(()=>{document.querySelector('#simpleModal').dataset.workLogId='l1';openModal('attachmentModal');});assert.equal(await form.locator('[name="departmentId"]').inputValue(),'d1');assert.equal(await form.locator('[name="projectId"]').inputValue(),'p1');await form.locator('[name="departmentId"]').selectOption('d2');assert.equal(await form.locator('[name="projectId"]').inputValue(),'');assert.match(await form.locator('[name="projectId"]').innerText(),/資訊設備/);await page.evaluate(()=>closeModal());
   await page.goto(base+'/?page=repairs',{waitUntil:'networkidle'});await open('repairModal','r1');assert.equal(await form.locator('[name="departmentId"]').inputValue(),'');await save();
