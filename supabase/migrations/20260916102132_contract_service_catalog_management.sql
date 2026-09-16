@@ -1,3 +1,4 @@
+-- Applied as 20260916102132 by the production migration service.
 -- Extend the existing shared catalog. No reseeding, renaming, or changing customer links.
 begin;
 set local lock_timeout = '5s';

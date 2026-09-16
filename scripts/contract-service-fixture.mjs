@@ -1,6 +1,6 @@
 import {titlePickerDatabase} from './worklog-title-fixture.mjs';
 import {sql,ids,definition} from './worklog-save-fixture.mjs';
-export const catalogMigration='20260916080623_contract_service_catalog_management.sql';
+export const catalogMigration='20260916102132_contract_service_catalog_management.sql';
 export async function contractCatalogDatabase({fixed=true}={}){
  const db=await titlePickerDatabase();
  await db.exec('alter table customer_contract_services add created_by uuid,add created_at timestamptz default now()');
