@@ -6,7 +6,8 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const html = read("../index.html");
 const app = read("../app.js");
 const gateway = read("../supabase/functions/inventory-gateway/index.ts");
-const migration = read("../supabase/migrations/20260917000537_work_assignments_dashboard.sql");
+const migration = read("../supabase/migrations/20260916232954_work_assignments_dashboard.sql");
+const indexMigration = read("../supabase/migrations/20260916233046_index_work_assignments_inventory_item.sql");
 
 test("dashboard exposes admin assignment creation and current-user completion controls", () => {
   for (const marker of ["workAssignmentModal", "pendingAssignmentList", "completedAssignmentList", "data-complete-assignment", "data-acknowledge-assignment"]) {
@@ -28,6 +29,7 @@ test("assignment SQL is private, transactional and idempotently links pickup rec
   assert.match(migration, /on conflict \(work_assignment_id\) where work_assignment_id is not null/);
   assert.match(migration, /for update/);
   assert.match(migration, /role = 'admin' and is_active/);
+  assert.match(indexMigration, /work_assignments_inventory_item_idx/);
 });
 
 test("deleted work content is hidden from active reads while historical logs and pickup labels survive", () => {
