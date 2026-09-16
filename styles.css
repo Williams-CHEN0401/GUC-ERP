@@ -145,3 +145,7 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .project-subtabs button{padding:10px 18px;border:1px solid #ccd8ce;border-radius:10px;background:#fff;color:#46634c;font-weight:700}
 .project-subtabs button.active{background:#46634c;color:#fff}
 [data-project-pane][hidden],#constructionCategoryField[hidden]{display:none!important}
+.work-log-title-controls{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px}
+.work-log-title-picker input,.work-log-title-picker select{width:100%;min-width:0}
+.work-log-title-picker small{display:block;margin-top:8px}
+@media(max-width:640px){.work-log-title-controls{grid-template-columns:minmax(0,1fr)}}

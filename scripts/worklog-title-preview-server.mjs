@@ -1,0 +1,10 @@
+import {createWorklogTestServer} from './worklog-save-preview-server.mjs';
+import {sample,saveLog} from './worklog-save-fixture.mjs';
+import {randomUUID} from 'node:crypto';
+const {server,db}=await createWorklogTestServer({titlePicker:true});
+const base={...sample(),maintenance_events:[],work_type:'文書作業'};
+await saveLog(db,{...base,project_name:'應用數學系原工作內容'});
+await saveLog(db,{...base,request_id:randomUUID(),project_name:'應用數學系可選工作內容'});
+await saveLog(db,{...base,request_id:randomUUID(),project_name:'應用數學系已完成工作',status:'completed'});
+const port=Number(process.env.WORKLOG_TEST_PORT||4210);
+server.listen(port,'127.0.0.1',()=>console.log('隔離資料庫測試（不寫正式資料）：http://127.0.0.1:'+port+'/?page=worklogs'));
