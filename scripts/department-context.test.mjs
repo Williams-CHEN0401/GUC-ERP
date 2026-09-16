@@ -10,10 +10,22 @@ function fixture(){
  const ctx=vm.createContext({state,document:{querySelector:selector=>selector==='#modalForm'?form:selector==='#simpleModal'?modal:null,addEventListener(){}},esc:v=>String(v??''),byId:(rows,id)=>rows.find(row=>row.id===id),matches:()=>true,valueText:v=>String(v).trim().toLowerCase(),syncWorkLogMaintenanceType(){},workTypeFromProjectType:type=>({maintenance:'維護保養',repair:'維修紀錄'}[type]||'工程施工')});
  vm.runInContext(departments,ctx);
  ctx.modalDepartmentFilter=()=>form.elements.departmentId.value;
- vm.runInContext(['workLogSelectableProjects','syncWorkLogProjectNames','syncWorkLogProjectDefaults','syncModalProjectOptions'].map(extract).join('\n'),ctx);
+ vm.runInContext(['workLogOriginalProject','workLogTitleDepartment','workLogFormCustomerId','workLogSelectableProjects','syncWorkLogProjectNames','syncWorkLogProjectDefaults','syncModalProjectOptions'].map(extract).join('\n'),ctx);
  return{ctx,state,field,form,list,modal};
 }
 test('department labels distinguish missing master data from actual legacy NULL',()=>{const {ctx}=fixture();assert.equal(ctx.customerDepartmentLabel(''),'尚未設定科室');assert.match(ctx.customerDepartmentLabel('missing'),/尚未載入/);assert.equal(ctx.customerDepartmentLabel('d1'),'資訊室');});
+
+test('editing a work log retains customer title options without an editable customer field',()=>{
+ const {ctx,state,field,form,list,modal}=fixture();
+ state.siteData={logs:[{id:'log1',projectId:'p1'}]};modal.dataset.id='log1';
+ delete form.elements.customerId;
+ ctx.syncWorkLogProjectNames();
+ assert.match(list.innerHTML,/資訊維護/);
+ assert.doesNotMatch(list.innerHTML,/其他科室查修|已完成/);
+ assert.equal(field.value,'資訊維護');
+ field.value='手動輸入的新名稱';ctx.syncWorkLogProjectNames();
+ assert.equal(field.value,'手動輸入的新名稱');
+});
 test('work-log defaults never come from another department with a typed title',()=>{
  const {ctx,field,form}=fixture();field.value='其他科室查修';ctx.syncWorkLogProjectDefaults();assert.equal(form.elements.workType.value,'工程施工');assert.equal(form.elements.departmentId.required,true);
  form.elements.departmentId.value='d2';ctx.syncWorkLogProjectDefaults();assert.equal(form.elements.workType.value,'維修紀錄');assert.equal(form.elements.departmentId.required,false);

@@ -21,6 +21,14 @@
 
 ## 2026-09-16 工作內容與設備驗證更新
 
+### 工作日誌選擇與維修收件日期
+
+- 修改日誌保留手動輸入，並提供明確下拉選單；選項限定同客戶／科室、進行中工作內容。手動輸入新名稱仍同步共用名稱；選擇另一筆既有工作內容只改這筆日誌歸屬，沿用目標類型／狀態。
+- 歸屬調整保留原有 Auth、工作日誌與工作內容更新權限；已有取貨或歷史附件的日誌不直接搬移，以免改寫相關帳務。維修與施工人員仍連結原日誌 ID。
+- 從工作日誌登錄的維修品收件日期使用日誌日期；後續儲存日誌同步對應維修品日期，不更動手動新增維修品，也不批次回填歷史資料。
+- 發布前依序套用 `20260916001938_worklog_title_selection.sql`、`20260916002422_worklog_repair_received_date.sql`，再更新 ERP 前端；兩者保留既有函式簽章／權限，不需新環境變數或 Gateway 修改。
+- 隔離資料庫回歸：`node scripts/verify-worklog-title-db.mjs`；瀏覽器：`node scripts/worklog-title-preview-server.mjs` 與 `node scripts/verify-worklog-title-browser.mjs`（可設定 `WORKLOG_TEST_PORT`／`WORKLOG_TEST_URL`）。
+
 - 工作日誌名稱可由具備 `projects UPDATE` 的非專案限定使用者修改，同步共用專案及相關日誌名稱；保留版本鎖、科室、其他欄位及歷史報價快照。
 - ERP 與報價共用 `erp_work_content_types_v1`；施工子分類仍為 `small_purchase`／`tender`。
 - 設備帳密揭露需以既有 Supabase Auth 再次驗證當前使用者，且符合 site／phone／credentials 權限及設備所屬客戶／有效承攬；一般分頁不增加登入次數。
