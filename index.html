@@ -25,7 +25,6 @@
           <a class="nav-item" data-page="crm" href="/?page=crm"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/crm.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>客戶與工作內容</span></a>
           <a class="nav-item" data-page="worklogs" href="/?page=worklogs"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/worklogs.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>工作日誌</span></a>
           <a class="nav-item" data-page="materials" href="/?page=materials"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/materials.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>工作內容統計報表</span></a>
-          <a class="nav-item" data-page="backup" href="/?page=backup"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/backup.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>資料備份／復原</span></a>
           <a class="nav-item" data-page="settings" href="/?page=settings"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/settings.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>系統設定</span></a>
         </nav>
         <div class="sidebar-foot">
@@ -53,9 +52,10 @@
               <span class="workspace-caption">工作內容・庫存・工作紀錄</span>
             </header>
             <div class="dashboard-focus">
-              <article class="panel"><div class="panel-head"><div><h2>工作日誌</h2><p>依工作日期排列，最新 15 筆</p></div><button class="text-button" data-goto="worklogs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>日期</th><th>客戶／工作內容</th><th>施工人員</th><th>日誌內容</th></tr></thead><tbody id="dashboardWorklogTable"></tbody></table></div></article>
+              <article class="panel assignment-panel"><div class="panel-head"><div><h2>工作指派</h2><p>只顯示與目前登入帳號相關的未完成工作與完成通知</p></div><button class="primary" type="button" data-open="workAssignmentModal">＋ 建立工作指派</button></div><div class="assignment-columns"><section><h3>我的待辦</h3><div id="pendingAssignmentList" class="assignment-list"></div></section><section><h3>完成通知</h3><div id="completedAssignmentList" class="assignment-list"></div></section></div></article>
+              <article class="panel dashboard-equal-card"><div class="panel-head"><div><h2>工作內容</h2><p id="dashboardWorklogDate">顯示前一日全部工作日誌</p></div><button class="text-button" data-goto="worklogs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>日期</th><th>客戶／工作內容</th><th>施工人員</th><th>日誌內容</th></tr></thead><tbody id="dashboardWorklogTable"></tbody></table></div></article>
               <div class="dashboard-pair"><article class="panel"><div class="panel-head"><div><h2>維修品管理</h2><p>依收件日期排列，最新 15 筆</p></div><button class="text-button" data-goto="repairs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>收件日期</th><th>維修單／客戶</th><th>品項／故障內容</th><th>狀態</th></tr></thead><tbody id="dashboardRepairTable"></tbody></table></div></article>
-              <article class="panel project-panel"><div class="panel-head"><div><h2>工作內容檢視</h2><p>尚未完成的工作內容，最多 15 筆</p></div><button class="text-button" data-goto="crm">查看全部 →</button></div><div class="project-list" id="activeProjectList"></div></article></div>
+              <article class="panel project-panel"><div class="panel-head"><div><h2>待辦工作</h2><p>尚未完成的工作內容，最多 15 筆</p></div><button class="text-button" data-goto="crm">查看全部 →</button></div><div class="project-list" id="activeProjectList"></div></article></div>
             </div>
           </section>
 
@@ -132,20 +132,13 @@
             <div class="material-summary" id="materialSummary"><article class="empty-state"><span>≣</span><h2>請選擇客戶與工作內容</h2><p>系統只會顯示該客戶實際關聯的工作內容。</p></article></div>
           </section>
 
-          <section class="page" id="backup" data-page="backup">
-            <div class="page-actions"><div><h2>資料備份／復原</h2><p>資料庫是唯一主要資料來源；匯入僅用於受控災難復原</p></div></div>
-            <div class="backup-grid"><article class="panel backup-card"><span>⇩</span><h3>匯出資料庫快照</h3><p>下載登入時取得的正式資料快照；不會對資料庫執行任何寫入。</p><button class="primary" id="exportBackup">下載資料庫快照</button></article><article class="panel backup-card caution"><span>⇧</span><h3>受控復原</h3><p>為避免誤覆蓋正式資料，Vercel 版本暫不開放線上復原。</p><button class="outline" disabled>基於資料安全未開放</button></article></div>
-            <article class="panel"><h2>備份原則</h2><ol class="rules"><li><b>資料庫為唯一真實來源</b><span>Excel 或 JSON 不參與日常雙向同步。</span></li><li><b>所有正式寫入通過 API</b><span>後端再次執行 RBAC、輸入驗證及版本衝突檢查。</span></li><li><b>復原前先驗證</b><span>比對筆數、外鍵、編號唯一性與庫存計算結果。</span></li></ol></article>
-          </section>
-
           <section class="page" id="settings" data-page="settings">
-            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="permissions">角色／工作內容權限</button><button data-tab="logs">系統日誌</button></div>
-            <div class="tab-pane" data-pane="permissions" id="permissionSettings"></div><div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／工作內容與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
+            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="logs">系統日誌</button></div>
+            <div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／工作內容與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
             <div class="tab-pane" data-pane="users">
               <div class="page-actions"><div><h2>使用者管理</h2><p>可新增、查詢、修改及刪除使用者；僅管理員可執行異動。</p></div><button class="primary" data-open="accountModal">＋ 新增使用者</button></div>
               <div class="filterbar"><label class="search">⌕<input id="userSearch" placeholder="搜尋帳號、顯示名稱、角色或狀態" /></label><select id="userSort"><option value="updatedRaw:desc">最新日期優先</option><option value="username:asc">帳號：升冪</option><option value="username:desc">帳號：降冪</option><option value="displayName:asc">名稱：升冪</option><option value="role:asc">角色：升冪</option></select></div>
               <p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="user" data-key="username">帳號</th><th data-table-sort="user" data-key="displayName">顯示名稱</th><th data-table-sort="user" data-key="role">角色</th><th data-table-sort="user" data-key="activeLabel">狀態</th><th data-table-sort="user" data-key="updatedAt">更新時間</th><th>操作</th></tr></thead><tbody id="userTable"></tbody></table></div><div id="userPagination"></div>
-              <article class="panel role-matrix"><div class="panel-head"><div><h2>角色權限</h2><p>角色僅保留 admin、operator、viewer</p></div></div><div class="table-card flat"><table><thead><tr><th>角色</th><th>查詢</th><th>交易新增修改</th><th>主檔管理</th><th>使用者管理</th></tr></thead><tbody><tr><td><span class="role admin">admin</span></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr><tr><td><span class="role operator">operator</span></td><td>✓</td><td>✓</td><td>僅工作內容</td><td>—</td></tr><tr><td><span class="role viewer">viewer</span></td><td>✓</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></article>
             </div>
             <div class="tab-pane" data-pane="logs">
               <div class="page-actions"><div><h2>系統日誌</h2><p>集中顯示原「最近操作」與資料異動稽核紀錄。</p></div><span class="pill">Audit Log</span></div>

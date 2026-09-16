@@ -7,11 +7,12 @@ const js = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 test("sidebar pages are real allowlisted links that can use the native new-tab menu", () => {
-  const pages = ["dashboard", "transactions", "repairs", "inventory", "crm", "worklogs", "materials", "backup", "settings"];
+  const pages = ["dashboard", "transactions", "repairs", "inventory", "crm", "worklogs", "materials", "settings"];
   for (const page of pages) {
     assert.match(html, new RegExp(`<a class="nav-item(?: active)?" data-page="${page}" href="/\\?page=${page}"`));
   }
   assert.doesNotMatch(html, /<button class="nav-item/);
+  assert.doesNotMatch(html, /data-page="backup"/);
   assert.match(css, /\.nav-item\{[^}]*text-decoration:none/);
   assert.match(js, /requestedPageFromUrl\(\).*PAGE_SCOPES/);
   assert.match(js, /event\.preventDefault\(\);await switchPage\(nav\.dataset\.page\)/);

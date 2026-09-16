@@ -6,7 +6,7 @@ const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 test("ERP primary pages use the supplied local navigation images", () => {
-  const pages = ["dashboard", "transactions", "repairs", "inventory", "crm", "worklogs", "materials", "backup", "settings"];
+  const pages = ["dashboard", "transactions", "repairs", "inventory", "crm", "worklogs", "materials", "settings"];
   for (const page of pages) {
     const link = html.match(new RegExp(`<a [^>]*data-page="${page}"[^>]*>(.*?)</a>`))?.[1];
     assert.ok(link, `missing ${page} link`);

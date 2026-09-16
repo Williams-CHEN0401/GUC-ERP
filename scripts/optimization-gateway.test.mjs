@@ -9,12 +9,13 @@ const compiled=stripTypeScriptTypes(source.replace(/^import .*node:async_hooks.*
 const id=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const user={id:id(1),username:'tester',display_name:'測試員',role:'admin',is_active:true};
 function harness(){let handler;const calls=[];const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:fn=>handler=fn},URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});vm.runInContext(compiled,context);context.currentUser=async()=>user;context.get=async path=>{calls.push(path);return[];};return{context,calls,handler};}
-test('dashboard queries limit business rows on the server, with deterministic business dates and batched relations',async()=>{
- const h=harness();h.context.get=async path=>{h.calls.push(path);if(path.startsWith('site_work_logs?'))return[{id:id(2),project_id:id(3),log_date:'2026-09-06'}];if(path.startsWith('projects?select=id,name'))return[{id:id(3),customer_id:id(4),name:'專案'}];if(path.startsWith('customers?'))return[{id:id(4),name:'測試客戶'}];if(path.startsWith('site_work_log_workers?'))return[{work_log_id:id(2),user_id:id(1)}];if(path.startsWith('app_users?'))return[{id:id(1),display_name:'施工人員'}];return[];};
+test('dashboard limits summary cards but returns every previous-day log and current-user assignments',async()=>{
+ const h=harness();h.context.get=async path=>{h.calls.push(path);if(path.startsWith('site_work_logs?'))return[{id:id(2),project_id:id(3),log_date:'2026-09-06'}];if(path.startsWith('projects?select=id,project_code,name'))return[{id:id(3),customer_id:id(4),name:'工作內容'}];if(path.startsWith('customers?'))return[{id:id(4),name:'測試客戶'}];if(path.startsWith('site_work_log_workers?'))return[{work_log_id:id(2),user_id:id(1)}];if(path.startsWith('app_users?'))return[{id:id(1),display_name:'施工人員'}];return[];};
  const result=await h.context.dashboardSnapshot(user);assert.equal(result.dashboard.worklogs[0].customer,'測試客戶');assert.equal(result.dashboard.worklogs[0].workers,'施工人員');
- for(const path of h.calls.slice(0,3))assert.equal(new URLSearchParams(path.split('?')[1]).get('limit'),'15');
- const logQuery=new URLSearchParams(h.calls.find(p=>p.startsWith('site_work_logs?')).split('?')[1]);assert.equal(logQuery.get('order'),'log_date.desc,created_at.desc,id.desc');assert.ok(!logQuery.get('select').split(',').includes('customer_id'));
- assert.ok(h.calls.every(p=>!p.startsWith('pickup_records')));assert.equal(h.calls.length,7);
+ for(const path of h.calls.slice(0,2))assert.equal(new URLSearchParams(path.split('?')[1]).get('limit'),'15');
+ const logQuery=new URLSearchParams(h.calls.find(p=>p.startsWith('site_work_logs?')).split('?')[1]);assert.equal(logQuery.get('order'),'created_at.asc,id.asc');assert.equal(logQuery.get('limit'),null);assert.ok(logQuery.get('log_date')?.startsWith('eq.'));
+ const assignmentQueries=h.calls.filter(p=>p.startsWith('work_assignments?'));assert.equal(assignmentQueries.length,2);assert.ok(assignmentQueries.some(path=>path.includes(`assignee_user_id=eq.${user.id}`)));assert.ok(assignmentQueries.some(path=>path.includes(`created_by_user_id=eq.${user.id}`)));
+ assert.ok(h.calls.every(p=>!p.startsWith('pickup_records')));assert.equal(h.calls.length,9);
 });
 test('audit endpoint is admin-only, server-paginated, ordered, bounded, filtered, and redacts nested credentials',async()=>{
  const h=harness();let path;h.context.db=async p=>{path=p;return Response.json([{id:1,action:'UPDATE',before_data:{password:'bad',nested:[{access_token:'bad'}]},after_data:{notes:'Bearer sensitive-token',name:'名稱'}}],{headers:{'content-range':'25-49/80'}});};
@@ -38,9 +39,9 @@ test('preview allows authenticated conflict lookups but blocks all mutations bef
  for(const operation of ['upsert_monitoring_device','update_account','logout','request_excel_sync','restore_database_backup'])assert.equal((await h.handler(req(operation))).status,403);
  assert.equal(writes,0);h.context.currentUser=async()=>null;assert.equal((await h.handler(req('check_monitoring_ip_conflicts'))).status,401);
 });
-test('spreadsheet export is absent while JSON recovery and import routes remain',()=>{
+test('spreadsheet export and user-facing backup entry are absent while import routes remain',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
- assert.doesNotMatch(app+html,/exportProjectMaterials|exportMaterials|exportInventory|text\/csv/);assert.doesNotMatch(source,/request_excel_sync/);assert.match(app,/exportBackup/);assert.match(source,/import_monitoring_devices/);assert.doesNotMatch(app,/activities\.unshift/);
+ assert.doesNotMatch(app+html,/exportProjectMaterials|exportMaterials|exportInventory|text\/csv|exportBackup|data-page="backup"/);assert.doesNotMatch(source,/request_excel_sync/);assert.match(source,/import_monitoring_devices/);assert.doesNotMatch(app,/activities\.unshift/);
 });
 test('every ERP list starts with its business date descending and resolves equal dates consistently',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');const context=vm.createContext({});

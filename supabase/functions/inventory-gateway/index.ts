@@ -314,7 +314,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  settings:["save_app_role","save_user_project_access"],
  customers:["create_contract_service_type","update_contract_service_type","delete_contract_service_type","create_customer_department","update_customer_department","deactivate_customer_department","create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
  suppliers:["create_supplier","update_supplier","delete_supplier"],
- projects:["create_project","create_erp_project","update_erp_project","delete_erp_project"],
+ projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups"],
  purchases:["create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
@@ -333,7 +333,8 @@ function operationPermission(operation:string,payload:Row):{module:string;action
  if(!module)return null;
  if((["upsert_project_site_entry","delete_project_site_entry"].includes(operation)&&payload.module==="logs")||(operation==="delete_site_entry"&&payload.entity==="work_log"))module="worklogs";
  let action:PermissionAction=operation==="check_monitoring_ip_conflicts"||operation==="reveal_phone_system_credential"?"VIEW":/^(delete|batch_delete|void)_/.test(operation)?"DELETE":/^(update|bulk_update|batch_update|set|restore)_/.test(operation)?"UPDATE":/^(upsert|save|manage)_/.test(operation)?payload.id||payload.row_version?"UPDATE":"CREATE":"CREATE";
- if(operation==="deactivate_customer_department")action="DELETE";
+  if(operation==="deactivate_customer_department")action="DELETE";
+  if(["complete_work_assignment","acknowledge_work_assignment"].includes(operation))action="UPDATE";
  if(operation==="save_equipment_history")action=(payload.event as Row)?.id?"UPDATE":"CREATE";
  if(operation==="manage_customer_service")action=({create:"CREATE",update:"UPDATE",delete:"DELETE"} as Record<string,PermissionAction>)[text(payload.action)]||"UPDATE";
  return {module,action};
@@ -418,10 +419,10 @@ const datasets: Record<string, DatasetDefinition> = {
  role_permissions:{path:"role_permissions?select=*&order=role_code.asc,module.asc",adminOnly:true},
  project_access:{path:"project_workers?can_view=eq.true&select=*&order=user_id.asc,project_id.asc",adminOnly:true,paged:true},
  access_projects:{path:"projects?select=id,name,project_code,customer_id&order=project_code.asc,id.asc",adminOnly:true,paged:true},
-  projects: { path: "projects?select=id,name,project_code,customer_id,department_id,project_type,construction_category,status,project_date,assigned_to,description,estimated_cost,actual_cost,started_on,completed_on,note,created_at,updated_at,row_version,source,updated_by&order=updated_at.desc,id.asc", paged: true },
+  projects: { path: "projects?deleted_at=is.null&select=id,name,project_code,customer_id,department_id,project_type,construction_category,status,project_date,assigned_to,description,estimated_cost,actual_cost,started_on,completed_on,note,created_at,updated_at,row_version,source,updated_by&order=updated_at.desc,id.asc", paged: true },
   project_workers: { path: "project_workers?is_assignee=eq.true&select=project_id,user_id,created_at&order=created_at.asc" },
   items: { path: "inventory_items?select=id,inventory_code,category_id,model,brand,item_name,item_type,unit,opening_quantity,cost_price,sale_price,inventory_status,default_supplier_id,note,created_at,updated_at,row_version,source,updated_by&order=inventory_code.asc,id.asc", paged: true },
-  pickups: { path: "pickup_records?select=id,pickup_date,project_id,inventory_item_id,quantity,row_version,created_at,updated_at,source,updated_by,created_by_user_id,created_by_username,work_log_id,request_id,request_row&order=pickup_date.desc,created_at.desc,id.desc", paged: true },
+  pickups: { path: "pickup_records?select=id,pickup_date,project_id,inventory_item_id,quantity,row_version,created_at,updated_at,source,updated_by,created_by_user_id,created_by_username,work_log_id,request_id,request_row,work_assignment_id,project:projects!pickup_records_project_id_fkey(name,project_code,customer_id,department_id)&order=pickup_date.desc,created_at.desc,id.desc", paged: true },
   receipts: { path: "stock_receipts?select=stock_receipt_customers(customer_id,department_id),id,receipt_date,inventory_item_id,quantity,supplier_id,supplier,note,row_version,created_at,updated_at,source,updated_by&order=receipt_date.desc,created_at.desc,id.desc", paged: true },
   adjustments: { path: "stock_adjustments?select=id,inventory_item_id,before_quantity,after_quantity,difference_quantity,adjusted_at,reason,idempotency_key,source,updated_by,created_at&order=adjusted_at.desc,id.desc", paged: true },
   audit_logs: { path: "audit_logs?select=id,entity_type,entity_id,action,source,actor,created_at&order=created_at.desc&limit=100" },
@@ -463,7 +464,7 @@ const datasets: Record<string, DatasetDefinition> = {
   maintenance_event_workers: { path: "maintenance_event_workers?select=event_id,user_id,created_at&order=created_at.asc", paged: true }
 };
 const scopes: Record<string, string[]> = {
-  site_navigation: ["customers", "contract_service_types", "customer_contract_services"],
+  site_navigation: ["customers", "customer_categories", "contract_service_types", "customer_contract_services"],
   dashboard: [], // Dedicated bounded dashboardSnapshot query below.
   transactions: ["customers", "projects", "items", "pickups", "receipts", "suppliers", "categories"],
   repairs: ["repair_items", "customers", "items", "suppliers", "categories"],
@@ -545,6 +546,7 @@ async function queryRecords(params: URLSearchParams,user:AppUser) {
   const term = text(params.get("search")).replace(/[,*()]/g, " ").slice(0,80);
   const limit = Math.min(Math.max(Number(params.get("limit")) || 200,1),500);
   let path = `${definition.table}?select=${definition.select}&order=${sortField}.${direction}&limit=${limit}`;
+  if(definition.table==="projects")path += "&deleted_at=is.null";
   const customerId = uuid(params.get("customer_id")), departmentId = departmentIdInput(params.get("department_id"));
   if (customerId && ["projects","repair_items"].includes(definition.table)) path += `&customer_id=eq.${customerId}`;
   if (departmentId && ["projects","repair_items"].includes(definition.table)) path += `&department_id=eq.${departmentId}`;
@@ -974,6 +976,25 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "create_customer_contact") { requireOperation(user,operation,payload,["admin"]); const customer_id=uuid(payload.customer_id),name=limited(payload.name,120),title=nullable(payload.title,120),phone=nullable(payload.phone,50),email=optionalEmail(payload.email),note=nullable(payload.note,500); if(!customer_id||!name||title===null||phone===null||email===null||note===null) throw new Error("請完整填寫有效的聯絡人資料。"); return insert("customer_contacts",{customer_id,name,title:title||null,phone:phone||null,email:email||null,note:note||null,is_primary:!!payload.is_primary,...meta}); }
   if (operation === "create_erp_project" || operation === "update_erp_project") { requireOperation(user,operation,payload,["admin","operator"]); const isUpdate=operation==="update_erp_project",id=isUpdate?uuid(payload.id):null,rowVersion=isUpdate?Number(payload.row_version):null,name=limited(payload.name,120),customer_id=uuid(payload.customer_id),project_type=text(payload.project_type),status=text(payload.status),project_date=date(payload.project_date),description=nullable(payload.description,2000),note=nullable(payload.note,1000),estimated_cost=payload.estimated_cost === "" ? null : nonNegative(payload.estimated_cost),worker_user_ids=Array.isArray(payload.worker_user_ids)?payload.worker_user_ids.map(uuid):[]; if((isUpdate&&(!id||!Number.isInteger(rowVersion)||Number(rowVersion)<1))||!name||!customer_id||!project_date||!["construction","repair","maintenance","delivery","clerical","site_survey"].includes(project_type)||!["in_progress","completed"].includes(status)||description===null||note===null||estimated_cost===undefined||worker_user_ids.some(workerId=>!workerId)||new Set(worker_user_ids).size!==worker_user_ids.length||worker_user_ids.length>30) throw new Error("請完整填寫專案資料、狀態與有效的負責人。"); const category=text(payload.construction_category);if(category&&!["small_purchase","tender"].includes(category)||category&&project_type!=="construction")throw new Error("工程施工分類不正確。");const args={p_project_date:project_date,p_id:id,p_row_version:rowVersion,p_name:name,p_customer_id:customer_id,p_project_type:project_type,p_status:status,p_description:description||null,p_estimated_cost:estimated_cost,p_note:note||null,p_worker_user_ids:worker_user_ids,p_actor:actor};return Object.hasOwn(payload,"department_id")?rpc("upsert_erp_project_department_v1",{...args,p_construction_category:category||null,p_construction_category_provided:Object.hasOwn(payload,"construction_category"),p_department_id:departmentIdInput(payload.department_id)}):Object.hasOwn(payload,"construction_category")?rpc("upsert_erp_project_with_workers_v4",{...args,p_construction_category:category||null}):rpc("upsert_erp_project_with_workers_v3",args); }
   if (operation === "delete_erp_project") { requireOperation(user,operation,payload,["admin","operator"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version); if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("專案資料或版本不正確。"); return rpc("delete_project_record",{p_id:id,p_row_version:rowVersion,p_actor:actor}); }
+  if (operation === "create_work_assignment") {
+    requireOperation(user,operation,payload,["admin"]);
+    if(user!.role!=="admin")throw new Error("只有管理員可以建立工作指派。");
+    const projectId=uuid(payload.project_id),assigneeId=uuid(payload.assignee_user_id),assignmentType=text(payload.assignment_type),instructions=limited(payload.instructions,2000),itemId=text(payload.inventory_item_id)?uuid(payload.inventory_item_id):null,quantity=payload.pickup_quantity==null||payload.pickup_quantity===""?null:positive(payload.pickup_quantity);
+    if(!projectId||!assigneeId||!["general","pickup"].includes(assignmentType)||!instructions||(assignmentType==="pickup"&&(!itemId||quantity===null))||(assignmentType==="general"&&(itemId!==null||quantity!==null)))throw new Error("請完整填寫工作內容、責任人與有效的指派資料。");
+    return rpc("create_work_assignment_v1",{p_project_id:projectId,p_assignee_user_id:assigneeId,p_assignment_type:assignmentType,p_instructions:instructions,p_inventory_item_id:itemId,p_pickup_quantity:quantity,p_created_by_user_id:user!.id,p_actor:actor});
+  }
+  if (operation === "complete_work_assignment") {
+    if(!user)throw new Error("請先以有效帳號登入。");
+    const id=uuid(payload.id),rowVersion=Number(payload.row_version);
+    if(!id||!Number.isInteger(rowVersion)||rowVersion<1)throw new Error("工作指派資料或版本不正確。");
+    return rpc("complete_work_assignment_v1",{p_id:id,p_row_version:rowVersion,p_actor_user_id:user.id,p_actor:actor});
+  }
+  if (operation === "acknowledge_work_assignment") {
+    if(!user)throw new Error("請先以有效帳號登入。");
+    const id=uuid(payload.id),rowVersion=Number(payload.row_version);
+    if(!id||!Number.isInteger(rowVersion)||rowVersion<1)throw new Error("完成通知資料或版本不正確。");
+    return rpc("acknowledge_work_assignment_v1",{p_id:id,p_row_version:rowVersion,p_actor_user_id:user.id,p_actor:actor});
+  }
   if (operation === "bulk_update_inventory_items") { requireOperation(user,operation,payload,["admin"]); const ids=Array.isArray(payload.item_ids) ? payload.item_ids.map(uuid) : []; const patch=payload.patch; if(!ids.length||ids.some(id=>!id)||!patch||typeof patch!=="object"||Array.isArray(patch)) throw new Error("請選擇商品並填寫有效的批次修改內容。"); return rpc("apply_inventory_bulk_update_v2",{p_item_ids:ids,p_patch:patch,p_actor:actor}); }
   if (operation === "update_product_category") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),row_version=Number(payload.row_version),name=limited(payload.name,80),prefix=text(payload.code_prefix).toUpperCase(); if(!id||!Number.isInteger(row_version)||row_version<1||!name||!/^[A-Z]{1,3}$/.test(prefix)||typeof payload.is_active!=="boolean")throw new Error("請填寫有效的貨品種類資料。"); return rpc("update_product_category_v1",{p_id:id,p_row_version:row_version,p_name:name,p_code_prefix:prefix,p_is_active:payload.is_active,p_actor:actor}); }
   if (operation === "delete_product_category") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),row_version=Number(payload.row_version); if(!id||!Number.isInteger(row_version)||row_version<1)throw new Error("請重新載入貨品種類後再操作。"); return rpc("delete_product_category_v1",{p_id:id,p_row_version:row_version,p_actor:actor}); }
@@ -1332,7 +1353,7 @@ function redactAuditValue(value: unknown, depth=0): unknown {
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
-const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_details","maintenance_details","project_costs"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
+const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_details","maintenance_details","project_costs","work_assignment"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
 async function auditRecords(params: URLSearchParams, user: AppUser) {
   if(user.permissions)requirePermission(user,"audit");else requireRole(user,["admin"]);
   const page=Math.max(1,Math.min(10000,Number(params.get("page"))||1)),size=Math.max(1,Math.min(100,Number(params.get("page_size"))||25));
@@ -1383,26 +1404,31 @@ async function auditDisplayNames(records: Row[]) {
 }
 async function dashboardSnapshot(user: AppUser) {
   const started=performance.now();
+  const previousBusinessDate=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(Date.now()-86400000));
   const scoped=user.project_scoped?await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row:null;
-  const [projects,repairs,logs]=await Promise.all([
-    scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed").slice(0,15):get("projects?select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
+  const [projects,repairs,logs,pendingAssignments,completedAssignments]=await Promise.all([
+    scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,15):get("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
     get("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
-    scoped?((scoped.site_work_logs||[]) as Row[]).slice(0,15):get("site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&order=log_date.desc,created_at.desc,id.desc&limit=15")
+    scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):get(`site_work_logs?select=id,log_date,project_id,customer_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
+    get(`work_assignments?select=id,project_id,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=eq.pending&order=created_at.asc,id.asc&limit=100`),
+    get(`work_assignments?select=id,project_id,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`)
   ]) as Row[][];
   const unique=(rows:Row[],field:string)=>[...new Set(rows.map(row=>uuid(row[field])).filter(Boolean))];
-  const projectIds=unique(logs,"project_id"),itemIds=unique(repairs,"inventory_item_id"),logIds=unique(logs,"id");
-  const [logProjects,items,workers]=await Promise.all([
-    projectIds.length?get(`projects?select=id,name,customer_id&id=in.(${projectIds})`):[],
+  const assignments=[...pendingAssignments,...completedAssignments],projectIds=unique([...logs,...assignments],"project_id"),itemIds=unique([...repairs,...assignments],"inventory_item_id"),logIds=unique(logs,"id"),assignmentUserIds=[...new Set([...unique(assignments,"assignee_user_id"),...unique(assignments,"created_by_user_id")])];
+  const [relatedProjects,items,workers,assignmentUsers]=await Promise.all([
+    projectIds.length?get(`projects?select=id,project_code,name,customer_id&id=in.(${projectIds})`):[],
     itemIds.length?get(`inventory_items?select=id,item_name,brand,model&id=in.(${itemIds})`):[],
-    logIds.length?get(`site_work_log_workers?select=work_log_id,user_id&work_log_id=in.(${logIds})`):[]
+    logIds.length?get(`site_work_log_workers?select=work_log_id,user_id&work_log_id=in.(${logIds})`):[],
+    assignmentUserIds.length?get(`app_users?select=id,display_name&id=in.(${assignmentUserIds})`):[]
   ]) as Row[][];
-  const customerIds=unique([...projects,...repairs,...logs,...logProjects],"customer_id"),workerIds=unique(workers,"user_id");
+  const customerIds=unique([...projects,...repairs,...logs,...relatedProjects],"customer_id"),workerIds=unique(workers,"user_id");
   const [customers,users]=await Promise.all([
     customerIds.length?get(`customers?select=id,name&id=in.(${customerIds})`):[],
     workerIds.length?get(`app_users?select=id,display_name&id=in.(${workerIds})`):[]
   ]) as Row[][];
   const lookup=(rows:Row[],id:unknown,field:string)=>rows.find(row=>row.id===id)?.[field]||"—";
-  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,p.customer_id||lookup(logProjects,p.project_id,"customer_id"),"name"),project:lookup(logProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")}))},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
+  const assignmentProjection=(row:Row)=>{const project=relatedProjects.find(project=>project.id===row.project_id);return {...row,project_code:project?.project_code||"—",project:project?.name||"已刪除工作內容",customer:lookup(customers,project?.customer_id,"name"),assignee:lookup(assignmentUsers,row.assignee_user_id,"display_name"),creator:lookup(assignmentUsers,row.created_by_user_id,"display_name"),item:lookup(items,row.inventory_item_id,"item_name")};};
+  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,p.customer_id||relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:pendingAssignments.map(assignmentProjection),completed:completedAssignments.map(assignmentProjection)}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
 }
 async function monitoringIpConflicts(payload: Row) {
   const customerId=uuid(payload.customer_id),ips=Array.isArray(payload.ips)?[...new Set(payload.ips.map(v=>ipAddress(v)).filter(Boolean))]:[];
