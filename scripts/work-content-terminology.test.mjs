@@ -9,9 +9,10 @@ const audit = readFileSync(new URL("../audit-ui.js", import.meta.url), "utf8");
 
 test("ERP visible project terminology is renamed to work content", () => {
   for (const source of [html, app, permissions, audit]) assert.doesNotMatch(source, /專案/);
-  for (const marker of ["工作內容管理", "工作內容統計報表", "工作內容名稱", "角色／工作內容權限"]) {
+  for (const marker of ["工作內容管理", "工作內容統計報表", "工作內容名稱"]) {
     assert.ok(html.includes(marker) || app.includes(marker), marker);
   }
+  assert.doesNotMatch(html, /角色／工作內容權限|permissionSettings/);
   assert.match(permissions, /使用者可存取工作內容/);
   assert.match(audit, /PROJECT_UPDATE: "修改工作內容"/);
 });

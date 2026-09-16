@@ -7,9 +7,9 @@ import assert from 'node:assert/strict';
 const compiled=stripTypeScriptTypes(readFileSync(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8').replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'});
 const id=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 function harness(role='admin'){let handler;const calls=[];const user={id:id(1),username:'tester',display_name:'測試員',role,is_active:true};const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:fn=>handler=fn},URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});vm.runInContext(compiled,context);context.currentUser=async()=>user;context.get=async path=>{calls.push(path);return[];};context.rpc=async(name,args)=>{calls.push({name,args});return{};};return{context,calls,handler,user};}
-test('site navigation reads three master datasets without loading equipment or history',async()=>{
+test('site navigation reads shared customer/category/service catalogs without loading equipment or history',async()=>{
   const h=harness();const response=await h.handler(new Request('https://example.test/inventory-gateway?scope=site_navigation'));assert.equal(response.status,200);
-  assert.equal(h.calls.length,3);assert.deepEqual(h.calls.map(p=>p.split('?')[0]).sort(),['contract_service_types','customer_contract_services','customers']);
+  assert.equal(h.calls.length,4);assert.deepEqual(h.calls.map(p=>p.split('?')[0]).sort(),['contract_service_types','customer_categories','customer_contract_services','customers']);
 });
 test('selected customer phone request scopes every equipment read and never fetches monitoring/history',async()=>{
   const h=harness();h.context.get=async path=>{h.calls.push(path);if(path.startsWith('customer_contract_services'))return[{customer_id:id(2)}];if(path.startsWith('contract_service_types'))return[{code:'phone_system'}];return[];};
