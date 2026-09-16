@@ -13,7 +13,7 @@ test('手機原檔逐檔分段上傳：平台限制、HEIC、重試、校驗、�
   const sandbox = vm.createContext({ FormData, File, Blob, crypto, Uint8Array });
   vm.runInContext(readFileSync(new URL('../attachment-upload.js',import.meta.url),'utf8'),sandbox);
   let requests = [], registered = [], failChunkOnce = false;
-  const request = async (body, _timeout, token = 'fixture-token') => {
+  const request = async (body, _timeout, _onProgress, token = 'fixture-token') => {
     const req = new Request('https://erp.fixture.test/api/nas', { method:'POST',headers:{ Authorization:'Bearer '+token },body });
     const size = (await req.clone().arrayBuffer()).byteLength;
     assert.ok(size < 4_500_000, 'Every multipart request fits the conservative decimal hosting limit');
@@ -42,7 +42,7 @@ test('手機原檔逐檔分段上傳：平台限制、HEIC、重試、校驗、�
     assert.ok(registered.some(row=>row.original_name==='success.jpg'));
     // A signed chunk may not be used by another session or moved to another project.
     const chunkRequest = requests.find(r=>r.mode==='upload_chunk').body;
-    await assert.rejects(request(chunkRequest,0,'different-token'),/預檢結果已失效/);
+    await assert.rejects(request(chunkRequest,0,undefined,'different-token'),/預檢結果已失效/);
     const tampered=new FormData();for(const [key,value]of chunkRequest.entries())tampered.append(key,value);tampered.set('project_id','other-project');
     await assert.rejects(request(tampered),/預檢結果已失效/);
     const invalid=new FormData();for(const [key,value]of chunkRequest.entries())invalid.append(key,value);invalid.set('chunk_index','999');

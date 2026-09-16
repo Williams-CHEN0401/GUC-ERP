@@ -312,7 +312,7 @@ function requirePermission(user:AppUser,module:string,action:PermissionAction="V
 const OPERATION_MODULES:Record<string,string[]>={
  users:["create_account","update_account","delete_account"],
  settings:["save_app_role","save_user_project_access"],
- customers:["create_customer_department","update_customer_department","deactivate_customer_department","create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
+ customers:["create_contract_service_type","update_contract_service_type","delete_contract_service_type","create_customer_department","update_customer_department","deactivate_customer_department","create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
  suppliers:["create_supplier","update_supplier","delete_supplier"],
  projects:["create_project","create_erp_project","update_erp_project","delete_erp_project"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
@@ -434,7 +434,7 @@ const datasets: Record<string, DatasetDefinition> = {
   customer_departments: { path: "customer_departments?select=id,customer_id,name,is_active,row_version,created_at,updated_at&order=customer_id.asc,name.asc,id.asc", paged: true },
   customer_categories: { path: "customer_categories?select=id,code,name,row_version&order=sort_order.asc,created_at.asc,id.asc", paged: true },
   customers: { path: "customers?select=id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc,id.asc", paged: true },
-  contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,created_at,updated_at&order=sort_order.asc,name.asc" },
+  contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,row_version,created_at,updated_at&order=sort_order.asc,name.asc", paged: true },
   customer_contract_services: { path: "customer_contract_services?is_active=eq.true&select=customer_id,service_type_id,created_at&order=created_at.asc" },
   customer_contacts: { path: "customer_contacts?select=id,customer_id,name,title,phone,email,is_primary,note,created_at,updated_at,row_version&order=is_primary.desc,name.asc" },
   construction_details: { path: "construction_details?select=project_id,scope,planned_start_on,planned_end_on,actual_start_on,actual_end_on,acceptance_on,acceptance_note" },
@@ -954,6 +954,13 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!isDeactivate&&(!name||(payload.is_active!=null&&typeof payload.is_active!=="boolean")))throw new Error("科室名稱須為 1–120 個字，狀態須有效。");
     return rpc("manage_customer_department_v1",{p_action:isCreate?"create":isDeactivate?"deactivate":"update",p_id:isCreate?null:id,p_row_version:isCreate?null:rowVersion,p_customer_id:customer_id,p_name:name,p_is_active:isDeactivate?false:typeof payload.is_active==="boolean"?payload.is_active:isCreate?true:null,p_actor:actor});
   }
+  if (["create_contract_service_type","update_contract_service_type","delete_contract_service_type"].includes(operation)) {
+    requireOperation(user,operation,payload,["admin"]);
+    const id=uuid(payload.id),rowVersion=Number(payload.row_version),name=limited(payload.name,80),sortOrder=payload.sort_order;
+    if(operation!=="create_contract_service_type"&&(!id||!Number.isInteger(rowVersion)||rowVersion<1))throw new Error("請重新載入承攬內容後再操作。");
+    if(operation!=="delete_contract_service_type"&&(!name||typeof sortOrder!=="number"||!Number.isInteger(sortOrder)||sortOrder<0||sortOrder>100000))throw new Error("承攬名稱須為 1–80 個字；排序須為 0–100000 的整數。");
+    return rpc("manage_contract_service_type_v1",{p_action:operation.split("_")[0],p_id:id,p_row_version:operation==="create_contract_service_type"?null:rowVersion,p_name:name,p_sort_order:operation==="delete_contract_service_type"?null:sortOrder,p_actor:actor});
+  }
   if (["create_customer_category","update_customer_category","delete_customer_category"].includes(operation)) {
     requireOperation(user,operation,payload,["admin"]);
     const id=uuid(payload.id),rowVersion=Number(payload.row_version),name=limited(payload.name,80);
@@ -1440,7 +1447,7 @@ async function handleRequest(request: Request) {
        if (entity === "monitoring_device_detail") return json({...(await monitoringDeviceDetail(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
        if (entity === "customer_service_management") {
          const customer=uuid(params.get("customer_id"));if(!customer)throw new Error("客戶編號不正確。");
-         const [records,services]=await Promise.all([get(`customer_contract_services?customer_id=eq.${customer}&select=customer_id,service_type_id,is_active,notes,created_at,updated_at,row_version&order=created_at.asc`),get(datasets.contract_service_types.path)]);
+         const [records,services]=await Promise.all([getAll(`customer_contract_services?customer_id=eq.${customer}&select=customer_id,service_type_id,is_active,notes,created_at,updated_at,row_version&order=created_at.asc`),getAll(datasets.contract_service_types.path)]);
          return json({records,services,current_user:publicUser(user),preview_readonly:isPreviewGateway});
        }
        if (entity === "equipment_history_search") {
