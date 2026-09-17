@@ -11,9 +11,10 @@ import {ids,sql} from './worklog-save-fixture.mjs';
 import {departmentDatabase} from './department-cross-system-fixture.mjs';
 import {titlePickerDatabase} from './worklog-title-fixture.mjs';
 import {contractCatalogDatabase} from './contract-service-fixture.mjs';
+import {assignmentDatabase,restRead} from './work-assignment-fixture.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
-export async function createWorklogTestServer({workflow=false,titlePicker=false,contractCatalog=false}={}){
- const db=await (contractCatalog?contractCatalogDatabase():titlePicker?titlePickerDatabase():departmentDatabase()),calls=[];
+export async function createWorklogTestServer({workflow=false,titlePicker=false,contractCatalog=false,assignments=false}={}){
+ const db=await (assignments?assignmentDatabase():contractCatalog?contractCatalogDatabase():titlePicker?titlePickerDatabase():departmentDatabase()),calls=[];
  if(workflow){await db.exec('drop trigger project_sync on projects');await db.exec(await sql('20260915150407_shared_work_types_and_worklog_rename.sql'));}
  let handler;
  const currentUser={id:ids.actor,username:'fixture-admin',role:'admin',display_name:'隔離測試員',is_active:true};
@@ -21,8 +22,9 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
  const context=vm.createContext({AsyncLocalStorage,performance,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,crypto,console,Deno:{env:{get:()=>''},serve:fn=>handler=fn}});
  vm.runInContext(source,context);
  context.currentUser=async()=>currentUser;
+ if(assignments)context.db=async(path,init={})=>{if(init.method&&init.method!=='GET')throw Error('Isolated REST writes denied');return new Response(JSON.stringify(await restRead(db,path)),{headers:{'Content-Type':'application/json'}});};
  context.rpc=async(name,args)=>{
-  if(!['upsert_customer_project_work_log_department_v1','upsert_erp_project_department_v1','upsert_repair_item_department_v1','manage_customer_department_v1','create_stock_receipts_department_v1','update_stock_receipt_department_v1',...(contractCatalog?['manage_contract_service_type_v1','update_customer_with_contracts_v1']:[])].includes(name))throw Error('Test denies unrelated RPC: '+name);
+  if(!['upsert_customer_project_work_log_department_v1','upsert_erp_project_department_v1','upsert_repair_item_department_v1','manage_customer_department_v1','create_stock_receipts_department_v1','update_stock_receipt_department_v1',...(contractCatalog?['manage_contract_service_type_v1','update_customer_with_contracts_v1']:[]),...(assignments?['create_work_assignment_v1','create_work_assignment_with_project_v1','complete_work_assignment_v1','acknowledge_work_assignment_v1','work_log_scope_v1']:[])].includes(name))throw Error('Test denies unrelated RPC: '+name);
   const payload=Object.fromEntries(Object.entries(args).map(([k,v])=>[k.slice(2),v]));
   const keys=Object.keys(args);if(keys.some(key=>!/^p_[a-z_]+$/.test(key)))throw Error('Invalid test argument');
   await db.exec('set role service_role');
@@ -38,9 +40,10 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
    if(url.pathname==='/api/public-config'){res.setHeader('Content-Type','application/javascript');res.end('globalThis.GUC_PUBLIC_CONFIG={};sessionStorage.setItem("GUC_ERP_ACCESS_TOKEN","isolated-fixture-only");');return;}
    if(url.pathname==='/api/inventory'){
     res.setHeader('Content-Type','application/json');
+    if(assignments&&req.method==='GET'&&url.searchParams.get('scope')==='dashboard'){const result=await handler(new Request('http://127.0.0.1/inventory-gateway'+url.search));res.writeHead(result.status);res.end(await result.text());return;}
     if(req.method==='GET'){const data=await snapshot(url.searchParams.get('scope')||'session'),links=await all('stock_receipt_customers');data.suppliers=await all('suppliers');data.receipts=(await all('stock_receipts')).map(row=>({...row,stock_receipt_customers:links.filter(link=>link.stock_receipt_id===row.id)}));res.end(JSON.stringify(data));return;}
     let body='';for await(const chunk of req){body+=chunk;if(body.length>1000000)throw Error('Too large');}
-    if(!['upsert_customer_project_work_log','create_erp_project','update_erp_project','upsert_repair_item','create_stock_receipt_batch','update_stock_receipt','create_customer_department','update_customer_department','deactivate_customer_department',...(contractCatalog?['create_contract_service_type','update_contract_service_type','delete_contract_service_type','update_customer']:[])].includes(JSON.parse(body).operation)){res.writeHead(403);res.end('{"error":"隔離環境僅允許核准的測試操作"}');return;}
+    if(!['upsert_customer_project_work_log','create_erp_project','update_erp_project','upsert_repair_item','create_stock_receipt_batch','update_stock_receipt','create_customer_department','update_customer_department','deactivate_customer_department',...(contractCatalog?['create_contract_service_type','update_contract_service_type','delete_contract_service_type','update_customer']:[]),...(assignments?['create_work_assignment','complete_work_assignment','acknowledge_work_assignment']:[])].includes(JSON.parse(body).operation)){res.writeHead(403);res.end('{"error":"隔離環境僅允許核准的測試操作"}');return;}
     const result=await handler(new Request('http://127.0.0.1/inventory-gateway',{method:'POST',body}));res.writeHead(result.status);res.end(await result.text());return;
    }
    if(url.pathname.startsWith('/api/')){res.writeHead(403,{'Content-Type':'application/json'});res.end('{"error":"隔離環境不提供正式 API 或 NAS"}');return;}
@@ -52,7 +55,7 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
    res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':file.endsWith('.svg')?'image/svg+xml':'text/html');res.end(content);
   }catch(e){res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:e.message}));}
  });
- return{server,db,calls,snapshot};
+ return{server,db,calls,snapshot,...(assignments?{currentUser}: {})};
 }
 if(process.argv[1]?.endsWith('worklog-save-preview-server.mjs')){
  const {server}=await createWorklogTestServer(),port=Number(process.env.WORKLOG_TEST_PORT||4199);server.listen(port,'127.0.0.1',()=>console.log('http://127.0.0.1:'+port+'/?page=worklogs — cross-system isolated DB only'));

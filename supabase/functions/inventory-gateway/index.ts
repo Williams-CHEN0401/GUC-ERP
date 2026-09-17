@@ -980,8 +980,16 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     requireOperation(user,operation,payload,["admin"]);
     if(user!.role!=="admin")throw new Error("只有管理員可以建立工作指派。");
     const projectId=uuid(payload.project_id),assigneeId=uuid(payload.assignee_user_id),assignmentType=text(payload.assignment_type),instructions=limited(payload.instructions,2000),itemId=text(payload.inventory_item_id)?uuid(payload.inventory_item_id):null,quantity=payload.pickup_quantity==null||payload.pickup_quantity===""?null:positive(payload.pickup_quantity);
-    if(!projectId||!assigneeId||!["general","pickup"].includes(assignmentType)||!instructions||(assignmentType==="pickup"&&(!itemId||quantity===null))||(assignmentType==="general"&&(itemId!==null||quantity!==null)))throw new Error("請完整填寫工作內容、責任人與有效的指派資料。");
-    return rpc("create_work_assignment_v1",{p_project_id:projectId,p_assignee_user_id:assigneeId,p_assignment_type:assignmentType,p_instructions:instructions,p_inventory_item_id:itemId,p_pickup_quantity:quantity,p_created_by_user_id:user!.id,p_actor:actor});
+    const mode=text(payload.project_mode)||"existing";
+    if(!["existing","manual"].includes(mode)||!assigneeId||!["general","pickup"].includes(assignmentType)||!instructions||(assignmentType==="pickup"&&(!itemId||quantity===null))||(assignmentType==="general"&&(itemId!==null||quantity!==null)))throw new Error("請完整填寫工作內容、責任人與有效的指派資料。");
+    const args={p_assignee_user_id:assigneeId,p_assignment_type:assignmentType,p_instructions:instructions,p_inventory_item_id:itemId,p_pickup_quantity:quantity,p_created_by_user_id:user!.id,p_actor:actor};
+    if(mode==="manual"){
+      const name=limited(payload.project_name,120),customerId=uuid(payload.customer_id),projectType=text(payload.project_type),projectDate=date(payload.project_date);
+      if(text(payload.project_id)||!name||!customerId||!projectDate||!["construction","repair","maintenance","delivery","clerical","site_survey"].includes(projectType))throw new Error("請填寫新工作內容名稱、客戶、工作日期與類型。");
+      return rpc("create_work_assignment_with_project_v1",{...args,p_project_name:name,p_customer_id:customerId,p_department_id:departmentIdInput(payload.department_id),p_project_type:projectType,p_project_date:projectDate});
+    }
+    if(!projectId)throw new Error("請選擇尚未完成的工作內容。");
+    return rpc("create_work_assignment_v1",{...args,p_project_id:projectId});
   }
   if (operation === "complete_work_assignment") {
     if(!user)throw new Error("請先以有效帳號登入。");
@@ -1409,7 +1417,7 @@ async function dashboardSnapshot(user: AppUser) {
   const [projects,repairs,logs,pendingAssignments,completedAssignments]=await Promise.all([
     scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,15):get("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
     get("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
-    scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):get(`site_work_logs?select=id,log_date,project_id,customer_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
+    scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):get(`site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
     get(`work_assignments?select=id,project_id,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=eq.pending&order=created_at.asc,id.asc&limit=100`),
     get(`work_assignments?select=id,project_id,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`)
   ]) as Row[][];
@@ -1421,14 +1429,14 @@ async function dashboardSnapshot(user: AppUser) {
     logIds.length?get(`site_work_log_workers?select=work_log_id,user_id&work_log_id=in.(${logIds})`):[],
     assignmentUserIds.length?get(`app_users?select=id,display_name&id=in.(${assignmentUserIds})`):[]
   ]) as Row[][];
-  const customerIds=unique([...projects,...repairs,...logs,...relatedProjects],"customer_id"),workerIds=unique(workers,"user_id");
+  const customerIds=unique([...projects,...repairs,...relatedProjects],"customer_id"),workerIds=unique(workers,"user_id");
   const [customers,users]=await Promise.all([
     customerIds.length?get(`customers?select=id,name&id=in.(${customerIds})`):[],
     workerIds.length?get(`app_users?select=id,display_name&id=in.(${workerIds})`):[]
   ]) as Row[][];
   const lookup=(rows:Row[],id:unknown,field:string)=>rows.find(row=>row.id===id)?.[field]||"—";
   const assignmentProjection=(row:Row)=>{const project=relatedProjects.find(project=>project.id===row.project_id);return {...row,project_code:project?.project_code||"—",project:project?.name||"已刪除工作內容",customer:lookup(customers,project?.customer_id,"name"),assignee:lookup(assignmentUsers,row.assignee_user_id,"display_name"),creator:lookup(assignmentUsers,row.created_by_user_id,"display_name"),item:lookup(items,row.inventory_item_id,"item_name")};};
-  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,p.customer_id||relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:pendingAssignments.map(assignmentProjection),completed:completedAssignments.map(assignmentProjection)}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
+  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:pendingAssignments.map(assignmentProjection),completed:completedAssignments.map(assignmentProjection)}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
 }
 async function monitoringIpConflicts(payload: Row) {
   const customerId=uuid(payload.customer_id),ips=Array.isArray(payload.ips)?[...new Set(payload.ips.map(v=>ipAddress(v)).filter(Boolean))]:[];
