@@ -36,5 +36,5 @@ test("只有選擇 ERP 後才載入 Dashboard scope", () => {
   const choose = functionSource("chooseSystem", "logout");
   const erp = choose.slice(choose.indexOf('if(target!=="erp")'));
   assert.match(erp, /await switchPage\("dashboard"\)/);
-  assert.match(app, /async function switchPage[\s\S]*await loadPageData\(name\)/);
+  assert.match(app, /async function switchPage[\s\S]*await loadPageData\(name,\{force:name==="dashboard"\}\)/);
 });

@@ -24,7 +24,7 @@ test("deep-linked pages keep tokens out of the URL and lazy-load only their page
   assert.doesNotMatch(js, /searchParams\.set\([^\n]*(?:accessToken|SESSION_KEY)/);
   assert.match(js, /function storeAccessToken\(token\)[\s\S]*sessionStorage\.setItem\(SESSION_KEY, accessToken\)/);
   assert.match(js, /continueAfterAuthentication\(\).*switchPage\(requestedPage\)/);
-  assert.match(js, /switchPage\(name\).*loadPageData\(name\)/);
+  assert.match(js, /switchPage\(name\).*loadPageData\(name,\{force:name==="dashboard"\}\)/);
   assert.match(js, /function logout\(options=\{\}\).*clearPageUrl\(\)/);
   assert.match(js, /logout\(\{preservePage:true\}\)/);
 });
