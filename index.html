@@ -202,7 +202,16 @@
     <script src="/receipt-customers.js" defer></script>
     <script src="/attachment-upload.js" defer></script>
     <script src="/contract-service-catalog.js" defer></script>
+    <dialog id="assignmentCompletionDialog" class="assignment-completion-dialog" aria-labelledby="assignmentCompletionTitle" aria-describedby="assignmentCompletionMessage">
+      <h2 id="assignmentCompletionTitle">完成工作指派</h2>
+      <p id="assignmentCompletionProject"></p>
+      <p id="assignmentCompletionMessage"></p>
+      <p id="assignmentCompletionStatus" role="status"></p>
+      <p id="assignmentCompletionError" role="alert"></p>
+      <div class="assignment-completion-actions" id="assignmentCompletionActions"></div>
+    </dialog>
     <script src="/app.js" defer></script>
+    <script src="/assignment-ui.js" defer></script>
     <script src="/customer-services.js" defer></script>
   </body>
 </html>

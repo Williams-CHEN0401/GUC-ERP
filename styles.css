@@ -153,3 +153,14 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 @media(max-width:640px){.work-log-title-controls{grid-template-columns:minmax(0,1fr)}}
 .attachment-upload-progress{min-width:0;overflow-wrap:anywhere}.attachment-upload-progress progress{display:block;width:100%;height:12px;margin:8px 0;accent-color:var(--green-700)}.attachment-progress-total{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;margin-top:10px}.attachment-upload-progress small{display:block}.attachment-progress-files{list-style:none;margin:12px 0 0;padding:0;max-height:240px;overflow:auto}.attachment-progress-files li{padding:9px 0;border-top:1px solid var(--line)}.attachment-progress-files li>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px}.attachment-progress-files li span{min-width:0;overflow-wrap:anywhere}.attachment-progress-files li b{font-size:12px}.attachment-progress-files [data-upload-state="error"]{color:var(--danger)}.attachment-progress-files [data-upload-state="done"]{color:var(--green-800)}
 .busy.attachment-transfer-active{opacity:1;pointer-events:auto}.attachment-transfer-active [data-upload-inert]{opacity:.65}
+/* Only the assignment completion prompt; no changes to existing form layouts. */
+.assignment-completion-dialog{box-sizing:border-box;width:min(460px,calc(100vw - 32px));max-height:calc(100dvh - 32px);margin:auto;padding:24px;border:1px solid var(--line);border-radius:16px;overflow:auto;color:var(--text);background:#fff;box-shadow:0 20px 60px #0003;overflow-wrap:anywhere}
+.assignment-completion-dialog::backdrop{background:#172d2866}
+.assignment-completion-dialog h2{margin:0 0 16px;font-size:22px}
+.assignment-completion-dialog p{line-height:1.6}
+#assignmentCompletionProject{font-weight:700}
+#assignmentCompletionError{color:var(--danger)}
+#assignmentCompletionError:empty,#assignmentCompletionStatus:empty{display:none}
+.assignment-completion-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.assignment-completion-actions button{min-height:44px;white-space:normal;max-width:100%}
+.assignment-completion-actions button:disabled{opacity:.55;cursor:not-allowed}

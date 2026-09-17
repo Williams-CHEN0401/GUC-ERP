@@ -3,7 +3,8 @@
 import {titlePickerDatabase} from './worklog-title-fixture.mjs';
 import {ids,sql,saveLog,sample} from './worklog-save-fixture.mjs';
 export const assignmentMigration='20260917003129_work_assignment_manual_project.sql';
-export async function assignmentDatabase(){
+export const completionMigration='20260917041026_fix_work_assignment_completion_audit.sql';
+export async function assignmentDatabase({completionFix=true}={}){
  const db=await titlePickerDatabase();
  await db.exec(`
  alter table repair_items add created_at timestamptz default now();
@@ -19,6 +20,12 @@ export async function assignmentDatabase(){
  await db.exec(await sql('20260916232954_work_assignments_dashboard.sql'));
  await db.exec(await sql('20260916233046_index_work_assignments_inventory_item.sql'));
  await db.exec(await sql(assignmentMigration));
+ // Mirror the actual production constraint: completion is an update, not a new action.
+ await db.exec(`alter table audit_logs add constraint audit_logs_action_check check(action in
+ ('insert','update','delete','import','export','UPDATE_CREDENTIAL','IMPORT_DEVICES',
+ 'BATCH_UPDATE','BATCH_DELETE','CREATE_REPAIR_ITEM','UPDATE_REPAIR_ITEM',
+ 'DELETE_REPAIR_ITEM','LOGIN','LOGOUT'))`);
+ if(completionFix)await db.exec(await sql(completionMigration));
  const previousDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()-86400000));
  await saveLog(db,{...sample(),log_date:previousDate,maintenance_events:[]});
  return db;
