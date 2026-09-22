@@ -12,9 +12,10 @@ import {departmentDatabase} from './department-cross-system-fixture.mjs';
 import {titlePickerDatabase} from './worklog-title-fixture.mjs';
 import {contractCatalogDatabase} from './contract-service-fixture.mjs';
 import {assignmentDatabase,restRead} from './work-assignment-fixture.mjs';
+import {dailyTypeDatabase} from './daily-work-type-fixture.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
-export async function createWorklogTestServer({workflow=false,titlePicker=false,contractCatalog=false,assignments=false}={}){
- const db=await (assignments?assignmentDatabase():contractCatalog?contractCatalogDatabase():titlePicker?titlePickerDatabase():departmentDatabase()),calls=[];
+export async function createWorklogTestServer({workflow=false,titlePicker=false,contractCatalog=false,assignments=false,dailyTypes=false}={}){
+ const db=await (dailyTypes?dailyTypeDatabase():assignments?assignmentDatabase():contractCatalog?contractCatalogDatabase():titlePicker?titlePickerDatabase():departmentDatabase()),calls=[];
  if(workflow){await db.exec('drop trigger project_sync on projects');await db.exec(await sql('20260915150407_shared_work_types_and_worklog_rename.sql'));}
  let handler;
  const currentUser={id:ids.actor,username:'fixture-admin',role:'admin',display_name:'隔離測試員',is_active:true};
