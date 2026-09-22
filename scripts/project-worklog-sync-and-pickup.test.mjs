@@ -21,10 +21,12 @@ test("work-log work-content selection preloads shared type and status", () => {
   assert.doesNotMatch(app, /工作類型與狀態會同步到工作內容管理，以及同一工作內容的其他工作日誌/);
 });
 
-test("preview mutations mirror type and status in both directions", () => {
-  assert.ok(app.includes("project.rawType=projectType;project.completedOn=globalThis.GUCProjectReport.nextCompletionDate(project,payload.status);project.status=payload.status"));
-  assert.ok(app.includes("log.work_type=payload.work_type;log.status=payload.status"));
-  assert.ok(app.includes("log.work_type=workType;log.status=payload.status"));
+test("preview keeps daily types independent while retaining shared status", () => {
+  assert.ok(app.includes("project.completedOn=globalThis.GUCProjectReport.nextCompletionDate(project,payload.status);project.status=payload.status"));
+  assert.ok(app.includes("rawType:projectType"));
+  assert.ok(app.includes("work_type:payload.work_type"));
+  assert.ok(!app.includes("log.work_type=payload.work_type;log.status=payload.status"));
+  assert.ok(!app.includes("log.work_type=workType;log.status=payload.status"));
 });
 
 test("new work log offers the existing pickup workflow", () => {
