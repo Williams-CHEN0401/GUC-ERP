@@ -32,12 +32,14 @@ function applyPermissionUI(){
   const active=section.querySelector('.section-tabs [data-tab].active');if(active?.hidden)section.querySelector('.section-tabs [data-tab]:not([hidden])')?.click();
  }
 }
-let selectedRoleCode='worker',selectedAccessUser='';
+let selectedRoleCode='worker',selectedAccessUser='',permissionRoleEditVersion=null,projectAccessEditVersion=null;
 function renderPermissionSettings(){
  const host=document.querySelector('#permissionSettings');if(!host)return;
  host.hidden=!canAdmin();if(!canAdmin()){host.replaceChildren();return;}
  const roles=state.appRoles||[],chosen=roles.find(r=>r.code===selectedRoleCode),perms=state.rolePermissions||[];
  const role=chosen||{code:'',name:'',project_scoped:false};
+ permissionRoleEditVersion=chosen?.row_version??null;
+ projectAccessEditVersion=byId(state.accounts,selectedAccessUser)?.rowVersion??null;
  host.innerHTML=`<article class="panel"><h2>角色功能權限</h2><div class="permission-toolbar"><label>角色<select id="permissionRoleChoice"><option value="">新增角色</option>${roles.map(r=>`<option value="${esc(r.code)}" ${r.code===selectedRoleCode?'selected':''}>${esc(r.name)} (${esc(r.code)})</option>`).join('')}</select></label><button type="button" class="outline" data-new-role>新增角色</button></div><form id="permissionRoleForm"><div class="permission-toolbar"><label>角色代碼<input name="code" value="${esc(role.code)}" required pattern="[a-z][a-z0-9_]{0,39}" maxlength="40" ${chosen?'readonly':''}></label><label>角色名稱<input name="name" value="${esc(role.name)}" required maxlength="80"></label><label><input type="checkbox" name="projectScoped" ${role.project_scoped?'checked':''} ${role.is_system?'disabled':''}>工作日誌限授權工作內容</label></div><div class="table-wrap"><table class="permission-matrix"><thead><tr><th>功能模組</th><th>查看</th><th>新增</th><th>修改</th><th>刪除</th></tr></thead><tbody>${Object.entries(PERMISSION_LABELS).map(([module,label])=>{const p=perms.find(p=>p.role_code===role.code&&p.module===module)||{};return `<tr data-permission-module="${module}"><th scope="row">${label}</th>${['view','create','update','delete'].map(action=>`<td><input type="checkbox" name="${module}_${action}" aria-label="${label} ${action}" ${p[`can_${action}`]?'checked':''} ${role.code==='admin'?'disabled':''}></td>`).join('')}</tr>`;}).join('')}</tbody></table></div><button class="primary" ${role.code==='admin'?'disabled':''}>儲存角色權限</button></form></article><article class="panel"><h2>使用者可存取工作內容</h2><label>使用者<select id="projectAccessUser"><option value="">請選擇使用者</option>${state.accounts.map(u=>`<option value="${u.id}" ${u.id===selectedAccessUser?'selected':''}>${esc(u.displayName)} (${esc(u.username)})</option>`).join('')}</select></label><form id="projectAccessForm"><label>搜尋工作內容<input id="projectAccessSearch" type="search" placeholder="工作內容編號或名稱"></label><div class="table-wrap permission-project-list"><table><thead><tr><th>工作內容</th><th>查看</th><th>新增日誌</th><th>修改日誌</th><th>刪除日誌</th></tr></thead><tbody>${(state.accessProjects||[]).map(p=>{const g=(state.projectAccess||[]).find(g=>g.user_id===selectedAccessUser&&g.project_id===p.id)||{};return `<tr data-access-project="${p.id}" data-search="${esc((p.project_code+' '+p.name).toLowerCase())}"><th scope="row">${esc(p.project_code)}｜${esc(p.name)}</th>${['view','create_work_log','update_work_log','delete_work_log'].map(action=>`<td><input type="checkbox" name="${action}" aria-label="${esc(p.name)} ${action}" ${g[`can_${action}`]?'checked':''} ${selectedAccessUser?'':'disabled'}></td>`).join('')}</tr>`;}).join('')}</tbody></table></div><button class="primary" ${selectedAccessUser?'':'disabled'}>儲存工作內容授權</button></form></article>`;
 }
 document.addEventListener('change',event=>{
@@ -53,16 +55,16 @@ document.addEventListener('click',event=>{if(event.target.closest('[data-new-rol
 document.addEventListener('submit',async event=>{
  const form=event.target;if(!['permissionRoleForm','projectAccessForm'].includes(form.id))return;
  event.preventDefault();if(!canAdmin())return;
- const submit=form.querySelector('button[type=submit],button.primary');if(submit.disabled)return;submit.disabled=true;
+ const submit=form.querySelector('button[type=submit],button.primary');if(submit.disabled)return;submit.disabled=true;form.setAttribute('aria-busy','true');
  try{
   if(form.id==='permissionRoleForm'){
    const existing=(state.appRoles||[]).find(r=>r.code===selectedRoleCode),data=new FormData(form);
    const permissions=[...form.querySelectorAll('[data-permission-module]')].map(row=>({module:row.dataset.permissionModule,...Object.fromEntries(['view','create','update','delete'].map(a=>[`can_${a}`,row.querySelector(`[name="${row.dataset.permissionModule}_${a}"]`).checked]))}));
    selectedRoleCode=String(data.get('code'));
-   await mutate('save_app_role',{code:selectedRoleCode,name:data.get('name'),project_scoped:existing?.is_system?existing.project_scoped:data.has('projectScoped'),row_version:existing?.row_version??null,permissions},'角色權限已儲存',{reloadScope:'settings'});
+   await mutate('save_app_role',{code:selectedRoleCode,name:data.get('name'),project_scoped:existing?.is_system?existing.project_scoped:data.has('projectScoped'),row_version:permissionRoleEditVersion,permissions},'角色權限已儲存',{reloadScope:'settings'});
   }else{
    const user=byId(state.accounts,selectedAccessUser),grants=[...form.querySelectorAll('[data-access-project]')].filter(row=>row.querySelector('[name=view]').checked).map(row=>({project_id:row.dataset.accessProject,...Object.fromEntries(['create_work_log','update_work_log','delete_work_log'].map(a=>[`can_${a}`,row.querySelector(`[name="${a}"]`).checked]))}));
-   await mutate('save_user_project_access',{user_id:user.id,row_version:user.rowVersion,grants},'工作內容授權已儲存',{reloadScope:'settings'});
+   await mutate('save_user_project_access',{user_id:user.id,row_version:projectAccessEditVersion,grants},'工作內容授權已儲存',{reloadScope:'settings'});
   }
- }catch(error){showToast(error.message,'儲存失敗');}finally{submit.disabled=false;}
+ }catch(error){showToast(error.message,'儲存失敗');}finally{submit.disabled=false;form.removeAttribute('aria-busy');}
 });

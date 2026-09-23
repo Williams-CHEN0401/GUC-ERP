@@ -37,7 +37,7 @@ const httpUrl = (value: unknown, max = 1000) => {
 const DEVICE_TYPES = ["monitoring_host", "camera", "hub"] as const;
 type MonitoringDeviceType = typeof DEVICE_TYPES[number];
 const monitoringDeviceType = (value: unknown): MonitoringDeviceType | null => DEVICE_TYPES.includes(text(value) as MonitoringDeviceType) ? text(value) as MonitoringDeviceType : null;
-const MAINTENANCE_EVENT_TYPES = ["SOFTWARE_CONFIG","LINE_REPAIR","LINE_REPLACEMENT","REPAIR","REPLACEMENT"] as const;
+const MAINTENANCE_EVENT_TYPES = ["SOFTWARE_CONFIG","LINE_REPAIR","LINE_REPLACEMENT","REPAIR","REPLACEMENT","EQUIPMENT_TEST"] as const;
 // Existing records may retain a deprecated type; the RPC verifies it is unchanged.
 const LEGACY_MAINTENANCE_EVENT_TYPES = ["INSTALLATION","MAINTENANCE","PROGRAM_CONFIG","INSPECTION","OTHER"] as const;
 const bytesToBase64 = (value: Uint8Array) => {
@@ -381,13 +381,13 @@ async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
   if(projects.length!==1||(payload.customer_id&&projects[0].customer_id!==payload.customer_id)||(payload.project_name&&projects[0].name!==payload.project_name))throw new Error("您的帳號沒有執行變更專案的權限。");
  }
 }
-async function restrictedSnapshot(user:AppUser,scopeName:string):Promise<Row|null> {
+async function restrictedSnapshot(user:AppUser,scopeName:string,optionsOnly=false):Promise<Row|null> {
  if(scopeName==="worklogs"&&user.project_scoped){const data=await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row;return {scope:scopeName,...data,customer_departments:await customerDepartmentRows(data.customers),customer_categories:await getAll(datasets.customer_categories.path),current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString()};}
  if(!user.permissions||user.role==="admin")return null;
  if(scopeName==="transactions"&&!hasPermission(user,"purchases")){
   requirePermission(user,"pickups");
-  const data=await scopedSnapshot(user,"materials");
-  return {...data,scope:scopeName,receipts:[],suppliers:[]};
+  const data=await scopedSnapshot(user,"materials",optionsOnly);
+  return {...data,scope:scopeName,categories:await get(datasets.categories.path),receipts:[],suppliers:[]};
  }
  if(scopeName==="transactions"&&!hasPermission(user,"pickups")){
   requirePermission(user,"purchases");
@@ -498,8 +498,13 @@ async function siteCustomerSnapshot(params: URLSearchParams, user: AppUser, isPr
   return result;
 }
 
-async function scopedSnapshot(user: AppUser, scopeName: string) {
-  const restricted=await restrictedSnapshot(user,scopeName);if(restricted)return restricted;
+// Option refresh reuses the same scope authorization and row restrictions.
+const FORM_REFERENCE_DATASETS = new Set(["customers","customer_categories","customer_departments","projects","project_workers","project_access","site_workers","suppliers","categories","items","contract_service_types","customer_contract_services","equipment_registry","app_roles","role_permissions","accounts","access_projects"]);
+function referenceSnapshot(snapshot: Row): Row {
+  return Object.fromEntries(Object.entries(snapshot).filter(([name])=>FORM_REFERENCE_DATASETS.has(name)||["scope","current_user","refreshed_at","errors","work_content_types"].includes(name)));
+}
+async function scopedSnapshot(user: AppUser, scopeName: string, optionsOnly = false) {
+  const restricted=await restrictedSnapshot(user,scopeName,optionsOnly);if(restricted)return optionsOnly?referenceSnapshot(restricted):restricted;
   if(scopeName === "dashboard")return dashboardSnapshot(user);
   let names = scopes[scopeName];
   if(scopeName==="crm"&&user.permissions&&user.role!=="admin")names=[...new Set([...(hasPermission(user,"customers")?["customers","contract_service_types","customer_contract_services"]:[]),...(hasPermission(user,"projects")?["customers","projects","project_workers","site_workers"]:[]),...(hasPermission(user,"suppliers")?["suppliers"]:[])])];
@@ -507,6 +512,7 @@ async function scopedSnapshot(user: AppUser, scopeName: string) {
   if(!scopeName.startsWith("site")&&names.includes("customers"))names=[...new Set([...names,"customer_categories","customer_departments"])];
   const scopedData=user.project_scoped?(hasPermission(user,"worklogs")?await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row:{}):null;
   const protectedDatasets=["customers","projects","project_workers","sites","site_work_logs","site_work_log_workers","site_workers","site_assets","maintenance_events","maintenance_event_equipment","maintenance_event_workers"];
+  if(optionsOnly)names=names.filter(name=>FORM_REFERENCE_DATASETS.has(name));
   const requests = names.map(async name => {
     if(scopedData&&name==="customer_departments")return [name,await customerDepartmentRows(scopedData.customers)] as const;
     if(scopedData&&protectedDatasets.includes(name))return [name,scopedData[name]||[]] as const;
@@ -1498,7 +1504,7 @@ async function handleRequest(request: Request) {
       if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
       if (scopeName === "site_customer") return json(await siteCustomerSnapshot(params,user,isPreviewGateway));
       if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
-      return json(await scopedSnapshot(user, scopeName));
+      return json(await scopedSnapshot(user, scopeName, params.get("options_only")==="1"));
     }
     if(request.method !== "POST") return json({error:"僅支援 GET 與 POST。"},405);
     const body=await request.json() as {operation?:unknown;payload?:unknown};

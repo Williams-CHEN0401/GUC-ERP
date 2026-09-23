@@ -15,6 +15,34 @@ function harness(permissions,scoped=false){let handler;const calls=[];
  return {context,calls,user,read:query=>handler(new Request('https://example.test/inventory-gateway?'+query)),write:(operation,payload)=>handler(new Request('https://example.test/inventory-gateway',{method:'POST',body:JSON.stringify({operation,payload})}))};
 }
 
+test('option-only refresh uses existing scope permissions and excludes history queries',async()=>{
+ const denied=harness([permission('worklogs','view')],true);
+ for(const scope of ['crm','inventory','settings','transactions'])assert.equal((await denied.read('scope='+scope+'&options_only=1')).status,403);
+ assert.equal(denied.calls.length,0);
+ const allowed=harness([permission('worklogs','view')]);
+ const response=await allowed.read('scope=worklogs&options_only=1');assert.equal(response.status,200);
+ const data=await response.json();assert.ok(Object.hasOwn(data,'categories'));assert.ok(Object.hasOwn(data,'items'));assert.ok(Object.hasOwn(data,'customers'));
+ for(const name of ['site_work_logs','pickups','site_assets','maintenance_events','audit_logs'])assert.ok(!Object.hasOwn(data,name),name);
+ assert.ok(!allowed.calls.some(path=>typeof path==='string'&&/^(site_work_logs|pickup_records|site_assets|maintenance_events|audit_logs)\?/.test(path)));
+ const scoped=harness([permission('worklogs','view')],true);
+ scoped.context.rpc=async(name,args)=>{assert.equal(name,'work_log_scope_v1');assert.equal(args.p_user_id,id(1));return{projects:[{id:id(2)}],project_access:[{project_id:id(2)}],customers:[],site_work_logs:[{id:id(99)}]};};
+ const scopedData=await(await scoped.read('scope=worklogs&options_only=1')).json();assert.deepEqual(scopedData.projects,[{id:id(2)}]);assert.deepEqual(scopedData.project_access,[{project_id:id(2)}]);assert.ok(!Object.hasOwn(scopedData,'site_work_logs'));
+ const pickupOnly=harness([permission('pickups','view','create')]);
+ const pickupChoices=await(await pickupOnly.read('scope=transactions&options_only=1')).json();
+ assert.ok(Object.hasOwn(pickupChoices,'categories'));assert.ok(Object.hasOwn(pickupChoices,'items'));
+ assert.ok(!Object.hasOwn(pickupChoices,'pickups'));
+ assert.ok(!pickupOnly.calls.some(path=>typeof path==='string'&&/^(pickup_records|stock_receipts)\?/.test(path)));
+});
+
+test('equipment testing is accepted by the existing log gateway and invalid work types remain denied',async()=>{
+ const h=harness([permission('worklogs','view','create')]);
+ const payload={project_id:id(3),customer_id:id(2),project_name:'設備測試',log_date:'2026-09-23',work_type:'維修紀錄',summary:'確認功能',worker_user_ids:[],status:'in_progress',maintenance_events:[{event_type:'EQUIPMENT_TEST',service_id:id(4),occurred_at:'2026-09-23',description:'設備測試',result:'正常'}]};
+ const response=await h.write('upsert_customer_project_work_log',payload);assert.equal(response.status,201);assert.ok(h.calls.some(call=>call.args?.p_maintenance_events?.[0]?.event_type==='EQUIPMENT_TEST'));
+ assert.equal((await h.write('upsert_customer_project_work_log',{...payload,work_type:'設備測試'})).status,400);
+ assert.equal((await h.write('upsert_customer_project_work_log',{...payload,work_type:'無效'})).status,400);
+ const denied=harness([permission('worklogs','view')]);assert.equal((await denied.write('upsert_customer_project_work_log',payload)).status,403);
+});
+
 test('product category CRUD uses inventory grants and stale versions reach the atomic RPC',async()=>{
  const payload={id:id(2),row_version:3,name:'New category',code_prefix:'ZZ',is_active:true};
  for(const [operation,action,rpc] of [['create_product_category','create','create_product_category_v1'],['update_product_category','update','update_product_category_v1'],['delete_product_category','delete','delete_product_category_v1']]){

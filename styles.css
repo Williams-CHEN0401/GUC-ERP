@@ -164,3 +164,10 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .assignment-completion-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
 .assignment-completion-actions button{min-height:44px;white-space:normal;max-width:100%}
 .assignment-completion-actions button:disabled{opacity:.55;cursor:not-allowed}
+.customer-department-selector>.customer-selector-search{grid-column:1/-1}
+.receipt-customers>.customer-selector-search{display:block;margin-bottom:16px}
+.inventory-search-choice input[type=search]{margin-bottom:6px}
+.pickup-item-search>label{display:block;margin-top:12px}
+.pickup-item-results{display:grid;gap:8px;max-height:260px;overflow-y:auto;margin-top:12px;min-width:0}
+.pickup-item-results>button{display:grid;gap:4px;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0;width:100%}
+.pickup-item-results span,.pickup-item-search>p{font-size:13px;color:var(--muted)}
