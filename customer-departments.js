@@ -38,6 +38,7 @@ function modalDepartmentValue({project=null}={}){
 }
 function projectMatchesDepartment(project,value){return value===undefined||value==="*"||(project.departmentId||"")===(value||"");}
 function workLogDepartmentValue(existingProject,customerId,projectName){
+ if(!existingProject&&typeof isNewRepairWorkLog==="function"&&isNewRepairWorkLog())return modalDepartmentValue();
  const project=existingProject||state.projects.find(row=>row.customerId===customerId&&valueText(row.name.trim())===valueText(projectName.trim()));
  return modalDepartmentValue({project:project||null});
 }
