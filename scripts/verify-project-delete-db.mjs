@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {independentDatabase,seedIndependent} from './independent-work-fixture.mjs';
+import {sql,ids} from './worklog-save-fixture.mjs';
+import {callAsService} from './department-cross-system-fixture.mjs';
+const db=await independentDatabase();
+const row=async(table,id)=>(await db.query(`select to_jsonb(t) data from ${table} t where id=$1`,[id])).rows[0].data;
+try{
+ const {a,b}=await seedIndependent(db);
+ const pending=await callAsService(db,'create_work_assignment_v1',[a.project.id,ids.actor,'general','刪除時取消待辦',null,null,ids.actor,'fixture-admin']);
+ const completed=await callAsService(db,'create_work_assignment_v1',[a.project.id,ids.actor,'general','保留已完成工作',null,null,ids.actor,'fixture-admin']);
+ await db.query("update work_assignments set status='completed',completed_at=now() where id=$1",[completed.id]);
+ const other=await callAsService(db,'create_work_assignment_v1',[b.project.id,ids.actor,'general','另一工作不受影響',null,null,ids.actor,'fixture-admin']);
+ const snapshot=async()=>{const result={};for(const t of ['site_work_logs','pickup_records','site_assets'])result[t]=(await db.query('select to_jsonb(t) data from '+t+' t order by id')).rows;return result;};
+ const history=await snapshot(),original=await row('projects',a.project.id);
+ const remove=(version)=>callAsService(db,'delete_project_record',[a.project.id,version,'fixture-admin']);
+ await assert.rejects(remove(original.row_version),e=>e.code==='23514'&&e.message.includes('audit_logs_action_check'));
+ assert.deepEqual(await row('projects',a.project.id),original);assert.equal((await row('work_assignments',pending.id)).status,'pending','failed audit rolls cancellation back');
+ await db.exec(await sql('20260923004454_fix_project_soft_delete_audit.sql'));
+ await db.exec(await sql('20260923004454_fix_project_soft_delete_audit.sql'));
+ await assert.rejects(remove(original.row_version+10),/其他使用者更新/);
+ assert.equal(await remove(original.row_version),1);
+ const removed=await row('projects',a.project.id);
+ assert.ok(removed.deleted_at);assert.equal(removed.delete_reason,'使用者刪除');
+ assert.equal((await row('work_assignments',pending.id)).status,'cancelled');
+ assert.equal((await row('work_assignments',completed.id)).status,'completed');
+ assert.equal((await row('work_assignments',other.id)).status,'pending');
+ assert.deepEqual(await snapshot(),history,'all worklogs, pickups and attachments remain byte-for-byte intact');
+ assert.equal((await db.query("select action from audit_logs where entity_id=$1 and after_data->>'delete_reason'='使用者刪除'",[a.project.id])).rows[0].action,'update');
+ await assert.rejects(remove(removed.row_version),/找不到工作內容/);
+ const acl=(await db.query("select prosecdef,has_function_privilege('anon',oid,'execute') anon,has_function_privilege('authenticated',oid,'execute') authenticated,has_function_privilege('service_role',oid,'execute') service from pg_proc where proname='delete_project_record'")).rows[0];
+ assert.deepEqual(acl,{prosecdef:true,anon:false,authenticated:false,service:true});
+ console.log('PASS: exact production audit constraint reproduced; soft delete succeeds; stale/repeat rejected; only pending tasks cancelled; histories preserved; audit and ACL unchanged.');
+}catch(error){console.error(error.message,error.where||'');process.exitCode=1;}finally{await db.close();}

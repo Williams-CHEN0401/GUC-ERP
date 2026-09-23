@@ -15,9 +15,9 @@ test('editable title has manual text, datalist and visible dropdown; readonly do
  const {ctx}=fixture();const html=ctx.workLogProjectTitleField('c','原工作');assert.match(html,/name="projectName"/);assert.match(html,/id="workLogProjectChoice"/);assert.match(html,/<datalist/);
  const readonly=ctx.workLogProjectTitleField('c','原工作',true);assert.match(readonly,/readonly aria-readonly/);assert.doesNotMatch(readonly,/id="workLogProjectChoice"/);
 });
-test('selecting moves only the chosen ID and locks target defaults; manual text restores preselection fields',()=>{
+test('selecting moves only the chosen ID and locks status but preserves daily type; manual text restores status',()=>{
  const {ctx,target,original,input,choice,form,hint}=fixture();choice.value=target.id;ctx.syncWorkLogTitleChoice(true);
- assert.equal(input.value,target.name);assert.equal(ctx.workLogSaveProject(original).id,target.id);assert.equal(form.elements.workType.value,'場勘');assert.equal(form.elements.status.value,'in_progress');assert.ok(form.elements.workType.disabled);assert.match(hint.textContent,/只將這筆日誌/);
+ assert.equal(input.value,target.name);assert.equal(ctx.workLogSaveProject(original).id,target.id);assert.equal(form.elements.workType.value,'文書作業');assert.equal(form.elements.status.value,'in_progress');assert.equal(form.elements.workType.disabled,false);assert.match(hint.textContent,/只將這筆日誌/);assert.match(hint.textContent,/取貨保留原工作/);
  input.value='手動新名稱';ctx.syncWorkLogTitleChoice();assert.equal(choice.value,'');assert.equal(ctx.workLogSaveProject(original).id,original.id);assert.equal(form.elements.workType.value,'文書作業');assert.equal(form.elements.status.value,'completed');assert.equal(form.elements.workType.disabled,false);assert.match(hint.textContent,/同步原工作內容/);
 });
 test('native title suggestions resolve the same project and preserve server-aligned permission boundary',()=>{
