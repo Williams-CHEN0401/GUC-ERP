@@ -314,7 +314,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  settings:["save_app_role","save_user_project_access"],
  customers:["create_contract_service_type","update_contract_service_type","delete_contract_service_type","create_customer_department","update_customer_department","deactivate_customer_department","create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
  suppliers:["create_supplier","update_supplier","delete_supplier"],
- projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment"],
+ projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups"],
  purchases:["create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
@@ -334,7 +334,7 @@ function operationPermission(operation:string,payload:Row):{module:string;action
  if((["upsert_project_site_entry","delete_project_site_entry"].includes(operation)&&payload.module==="logs")||(operation==="delete_site_entry"&&payload.entity==="work_log"))module="worklogs";
  let action:PermissionAction=operation==="check_monitoring_ip_conflicts"||operation==="reveal_phone_system_credential"?"VIEW":/^(delete|batch_delete|void)_/.test(operation)?"DELETE":/^(update|bulk_update|batch_update|set|restore)_/.test(operation)?"UPDATE":/^(upsert|save|manage)_/.test(operation)?payload.id||payload.row_version?"UPDATE":"CREATE":"CREATE";
   if(operation==="deactivate_customer_department")action="DELETE";
-  if(["complete_work_assignment","acknowledge_work_assignment"].includes(operation))action="UPDATE";
+  if(["complete_work_assignment","acknowledge_work_assignment","close_work_content"].includes(operation))action="UPDATE";
  if(operation==="save_equipment_history")action=(payload.event as Row)?.id?"UPDATE":"CREATE";
  if(operation==="manage_customer_service")action=({create:"CREATE",update:"UPDATE",delete:"DELETE"} as Record<string,PermissionAction>)[text(payload.action)]||"UPDATE";
  return {module,action};
@@ -996,6 +996,12 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     }
     if(!projectId)throw new Error("請選擇尚未完成的工作內容。");
     return rpc("create_work_assignment_v1",{...args,p_project_id:projectId});
+  }
+  if (operation === "close_work_content") {
+    requireOperation(user,operation,payload,["admin","operator"]);
+    const id=uuid(payload.id),workLogId=uuid(payload.work_log_id),rowVersion=Number(payload.row_version);
+    if(!id||!workLogId||!Number.isInteger(rowVersion)||rowVersion<1)throw new Error("結案資料不完整，請重新整理後再試。");
+    return rpc("close_work_content_from_log_v1",{p_id:id,p_row_version:rowVersion,p_work_log_id:workLogId,p_actor_user_id:user.id,p_actor:actor});
   }
   if (operation === "complete_work_assignment") {
     if(!user)throw new Error("請先以有效帳號登入。");

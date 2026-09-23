@@ -29,6 +29,6 @@ test('soft-delete fix changes only the invalid audit action, not security or his
 });
 test('preview detaches only changed pickup ownership and log links without relying on unloaded logs',()=>{
  assert.match(source,/workLogId:r.projectId===payload.project_id\?r.workLogId:""/);
- assert.match(source,/row.workLogId===payload.id&&row.projectId!==target.id/);
+ assert.match(source,/row.workLogId===payload.id&&row.projectId!==project.id/);
  assert.doesNotMatch(source,/work_type:moving\?workTypeFromProjectType/);
 });

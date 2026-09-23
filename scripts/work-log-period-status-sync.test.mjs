@@ -25,11 +25,10 @@ test("工作日誌表單可填時段與選擇進行中或已完成", () => {
   assert.match(js, /status:data\.status/);
 });
 
-test("Preview 中從工作日誌或專案修改狀態都同步同專案日誌", () => {
-  assert.match(js, /state\.siteData\.logs\.filter\(\(log\)=>log\.projectId===r\.id\)/);
-  assert.match(js, /project\.status=payload\.status/);
-  assert.match(js, /state\.siteData\.logs\.filter\(\(log\)=>log\.projectId===project\.id\)/);
-  assert.match(js, /log\.status=payload\.status/);
+test("Preview 中工作日誌與工作內容狀態分離，只接受明確結案", () => {
+  assert.doesNotMatch(js, /project\.status=payload\.status|log\.status=payload\.status/);
+  assert.match(js, /operation==="close_work_content"/);
+  assert.match(js, /project\.status="completed"/);
 });
 
 test("Gateway 新版請求使用狀態同步 RPC，舊版前端仍可在切換期間寫入", () => {
