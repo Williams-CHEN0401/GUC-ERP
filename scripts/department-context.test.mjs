@@ -10,7 +10,7 @@ function fixture(){
  const ctx=vm.createContext({state,document:{querySelector:selector=>selector==='#modalForm'?form:selector==='#simpleModal'?modal:null,addEventListener(){}},esc:v=>String(v??''),byId:(rows,id)=>rows.find(row=>row.id===id),matches:()=>true,valueText:v=>String(v).trim().toLowerCase(),syncWorkLogMaintenanceType(){},workTypeFromProjectType:type=>({maintenance:'維護保養',repair:'維修紀錄'}[type]||'工程施工')});
  vm.runInContext(departments,ctx);
  ctx.modalDepartmentFilter=()=>form.elements.departmentId.value;
- vm.runInContext(['isNewRepairWorkLog','workLogOriginalProject','workLogTitleDepartment','workLogFormCustomerId','workLogSelectableProjects','syncWorkLogProjectNames','syncWorkLogProjectDefaults','syncModalProjectOptions'].map(extract).join('\n'),ctx);
+ vm.runInContext(['isMaintenanceWorkLog','workLogDepartmentId','workLogOriginalDepartment','isNewRepairWorkLog','workLogOriginalProject','workLogTitleDepartment','workLogFormCustomerId','workLogSelectableProjects','syncWorkLogProjectNames','syncWorkLogProjectDefaults','syncModalProjectOptions'].map(extract).join('\n'),ctx);
  return{ctx,state,field,form,list,modal};
 }
 test('department labels distinguish missing master data from actual legacy NULL',()=>{const {ctx}=fixture();assert.equal(ctx.customerDepartmentLabel(''),'尚未設定科室');assert.match(ctx.customerDepartmentLabel('missing'),/尚未載入/);assert.equal(ctx.customerDepartmentLabel('d1'),'資訊室');});
@@ -36,9 +36,9 @@ test('new repair keeps its selected type and status when a same-name constructio
  field.value='資訊維護';form.elements.workType.value='維修紀錄';form.elements.status.value='in_progress';
  ctx.syncWorkLogProjectDefaults();assert.equal(form.elements.workType.value,'維修紀錄');assert.equal(form.elements.status.value,'in_progress');assert.equal(form.elements.departmentId.required,true);
 });
-test('changing department clears stale selected work content but preserves a new free-text title',()=>{
+test('maintenance retains shared title across departments and preserves a new free-text title',()=>{
  const {ctx,field,form}=fixture();ctx.syncWorkLogProjectNames();ctx.syncWorkLogProjectDefaults();assert.equal(form.elements.workType.value,'維護保養');
- form.elements.departmentId.value='d2';ctx.syncWorkLogProjectNames();ctx.syncWorkLogProjectDefaults();assert.equal(field.value,'');assert.equal(form.elements.workType.value,'工程施工');
+ form.elements.departmentId.value='d2';ctx.syncWorkLogProjectNames();ctx.syncWorkLogProjectDefaults();assert.equal(field.value,'資訊維護');assert.equal(form.elements.workType.value,'維護保養');
  field.value='新工作內容';form.elements.departmentId.value='d1';ctx.syncWorkLogProjectNames();assert.equal(field.value,'新工作內容');
 });
 test('scoped dropdown keeps an allowed selection when refreshed and removes cross-department selection',()=>{

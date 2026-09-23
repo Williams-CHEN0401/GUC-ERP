@@ -1,0 +1,11 @@
+import {createWorklogTestServer} from './worklog-save-preview-server.mjs';
+import {applyEditContext} from './worklog-edit-context-fixture.mjs';
+import {sample,saveLog} from './worklog-save-fixture.mjs';
+import {extraIds} from './department-cross-system-fixture.mjs';
+const {server,db}=await createWorklogTestServer({formSync:true,customerCategories:[{id:'school',code:'school',name:'學校機關'},{id:'government',code:'government',name:'政府機關'}]});
+await applyEditContext(db);
+await db.query("update customers set customer_category='government' where id=$1",[extraIds.otherCustomer]);
+await saveLog(db,{...sample(),project_name:'原客戶工作（日誌編輯驗收）',work_type:'文書作業',maintenance_events:[]});
+await saveLog(db,{...sample(),project_name:'另一客戶既有工作',customer_id:extraIds.otherCustomer,department_id:extraIds.otherDepartment,work_type:'文書作業',maintenance_events:[]});
+const port=Number(process.env.WORKLOG_TEST_PORT||4221);
+server.listen(port,'127.0.0.1',()=>console.log('Isolated ERP work-log edit http://127.0.0.1:'+port+'/?page=worklogs'));

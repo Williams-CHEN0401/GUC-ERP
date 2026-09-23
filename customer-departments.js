@@ -38,8 +38,10 @@ function modalDepartmentValue({project=null}={}){
 }
 function projectMatchesDepartment(project,value){return value===undefined||value==="*"||(project.departmentId||"")===(value||"");}
 function workLogDepartmentValue(existingProject,customerId,projectName){
+ if(typeof isMaintenanceWorkLog==="function"&&isMaintenanceWorkLog())return modalDepartmentValue();
  if(!existingProject&&typeof isNewRepairWorkLog==="function"&&isNewRepairWorkLog())return modalDepartmentValue();
- const project=existingProject||state.projects.find(row=>row.customerId===customerId&&valueText(row.name.trim())===valueText(projectName.trim()));
+ const selected=typeof workLogChosenProject==="function"?workLogChosenProject():null;
+ const project=selected||(existingProject&&existingProject.customerId===customerId&&projectMatchesDepartment(existingProject,modalDepartmentFilter())?existingProject:null)||state.projects.find(row=>row.customerId===customerId&&projectMatchesDepartment(row,modalDepartmentFilter())&&valueText(row.name.trim())===valueText(projectName.trim()));
  return modalDepartmentValue({project:project||null});
 }
 function assertProjectCustomerNameUnique(id,customerId,name){

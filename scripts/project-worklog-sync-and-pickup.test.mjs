@@ -15,14 +15,14 @@ test("project and work-log types share labels while preserving canonical databas
   assert.match(gateway, /\["工程施工","維修紀錄","維護保養","送貨","文書作業","場勘"\]/);
 });
 
-test("work-log work-content selection preloads shared type and status", () => {
+test("work-log work-content selection preloads type without changing status", () => {
   assert.ok(app.includes("form.elements.workType.value=workTypeFromProjectType(project.rawType)"));
-  assert.ok(app.includes("form.elements.status.value=project.status"));
+  assert.ok(!app.includes("form.elements.status.value=project.status"));
   assert.doesNotMatch(app, /工作類型與狀態會同步到工作內容管理，以及同一工作內容的其他工作日誌/);
 });
 
-test("preview keeps daily types independent while retaining shared status", () => {
-  assert.ok(app.includes("project.completedOn=globalThis.GUCProjectReport.nextCompletionDate(project,payload.status);project.status=payload.status"));
+test("preview keeps daily types independent while keeping status independent", () => {
+  assert.ok(!app.includes("project.status=payload.status"));
   assert.ok(app.includes("rawType:projectType"));
   assert.ok(app.includes("work_type:payload.work_type"));
   assert.ok(!app.includes("log.work_type=payload.work_type;log.status=payload.status"));
@@ -32,7 +32,7 @@ test("preview keeps daily types independent while retaining shared status", () =
 test("new work log offers the existing pickup workflow", () => {
   assert.ok(app.includes("result?.work_log?.id||result?.result?.work_log?.id"));
   assert.ok(app.includes('confirm("工作日誌已建立。是否要立即進入「操作 → 登錄取貨」？")'));
-  assert.ok(app.includes('openModal("workLogPickupModal",pickupLogId)'));
+  assert.ok(app.includes('openModal("workLogPickupModal",newWorkLogId)'));
 });
 
 test("migration enforces bidirectional project-level synchronization", () => {

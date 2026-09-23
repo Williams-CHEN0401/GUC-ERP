@@ -69,7 +69,7 @@ test('新增日誌選維修/查修直接顯示維修明細，其他類型隱藏�
   modal.dataset.type='projectModal';context.syncWorkLogMaintenanceType();
   assert.equal(syncs,4);
   assert.doesNotMatch(app,/是否要登錄維修設備|promptWorkLogRepairRegistration/);
-  assert.match(app,/event\.target\.closest\("#modalForm"\)&&event\.target\.name==="workType"\)syncWorkLogMaintenanceType\(\)/);
+  assert.match(app,/event\.target\.closest\("#modalForm"\)&&event\.target\.name==="workType"\)\{syncWorkLogProjectNames\(\);syncWorkLogMaintenanceType\(\)/);
 });
 
 test('切換種類清除上一種類品項，清除種類後停用品項選取',()=>{
