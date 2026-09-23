@@ -10,12 +10,12 @@ function sourceBetween(start,end){
   return app.slice(first,last);
 }
 
-test('新事件僅顯示五種指定分類；舊事件保留原值，不加入其他舊分類',()=>{
+test('新事件顯示六種指定分類含設備測試；舊事件保留原值，不加入其他舊分類',()=>{
   const context=vm.createContext({});
   vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('const MAINTENANCE_EVENT_TYPES')),context);
   vm.runInContext(sourceBetween('const LEGACY_MAINTENANCE_EVENT_TYPES','function maintenanceEventTypeOptions'),context);
   vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function maintenanceEventTypeOptions')),context);
-  const expected=[['SOFTWARE_CONFIG','軟體設定'],['LINE_REPAIR','線路維修'],['LINE_REPLACEMENT','線路更換'],['REPAIR','設備維修'],['REPLACEMENT','設備更換']];
+  const expected=[['SOFTWARE_CONFIG','軟體設定'],['LINE_REPAIR','線路維修'],['LINE_REPLACEMENT','線路更換'],['REPAIR','設備維修'],['REPLACEMENT','設備更換'],['EQUIPMENT_TEST','設備測試']];
   const options=event=>JSON.parse(JSON.stringify(context.maintenanceEventTypeOptions(event)));
   assert.deepEqual(options({}),expected);
   assert.deepEqual(options({eventType:'OTHER'}),expected);

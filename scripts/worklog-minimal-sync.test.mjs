@@ -36,7 +36,7 @@ test('非設備事件不送出未登錄的品項；已登錄關聯與設備履�
 test('返回表單僅重抓既有 inventory scope；背景、其他視窗、預覽不抓正式資料',async()=>{
   const modal={dataset:{type:'workLogModal'},classList:{contains:()=>true}},document={visibilityState:'visible',querySelector:()=>modal},calls=[];
   const ctx=vm.createContext({document,PREVIEW_MODE:false,loadScope:async(...args)=>calls.push(args)});
-  vm.runInContext(between('async function refreshOpenWorkLogInventory','window.addEventListener("focus"'),ctx);
+  vm.runInContext(between('async function refreshOpenWorkLogInventory','// Open forms are refreshed together'),ctx);
   await ctx.refreshOpenWorkLogInventory();assert.equal(calls.length,1);assert.equal(calls[0][0],'inventory');assert.equal(calls[0][1].force,true);
   document.visibilityState='hidden';await ctx.refreshOpenWorkLogInventory();assert.equal(calls.length,1);
   document.visibilityState='visible';modal.dataset.type='repairModal';await ctx.refreshOpenWorkLogInventory();assert.equal(calls.length,1);

@@ -62,5 +62,16 @@
     });
     dialog.querySelector('form').addEventListener('submit',event=>{event.preventDefault();const form=event.currentTarget;void change({service_id:selected?.service_type_id||form.elements.service_id.value,action:selected?'update':'create',row_version:selected?.row_version||null,is_active:form.elements.is_active.value==='true',notes:form.elements.notes.value});});
   }
+  document.addEventListener('guc:form-references-updated',async()=>{
+    if(!dialog?.open||busy||!data)return;
+    const customer=customerId,number=loadNumber,token=accessToken;
+    try{
+      const response=await fetch(`${API_ENDPOINT}?entity=customer_service_management&customer_id=${encodeURIComponent(customer)}`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
+      const fresh=await response.json();if(!response.ok)throw new Error(fresh.error||'承攬選項更新失敗。');
+      if(!dialog.open||busy||number!==loadNumber||customer!==customerId||token!==accessToken)return;
+      data=fresh;const select=dialog.querySelector('[name="service_id"]');
+      if(select&&!selected)replaceReferenceOptions(select,data.services.filter(row=>row.is_active&&!data.records.some(link=>link.service_type_id===row.id)).map(row=>[row.id,row.name]),{placeholder:'請選擇承攬內容'});
+    }catch(error){if(dialog.open&&number===loadNumber)message('承攬選項暫時無法更新，已保留輸入內容。',true);}
+  });
   document.addEventListener('click',event=>{const entry=event.target.closest('[data-customer-services]');if(!entry)return;ensureDialog();if(busy)return;closeModal();customerId=entry.dataset.customerServices;data=null;dialog.querySelector('h2').textContent=byId(state.customers,customerId)?.name||'客戶承攬內容';dialog.querySelector('tbody').innerHTML='';dialog.querySelector('form').hidden=true;dialog.querySelector('[data-service-search]').value='';dialog.showModal();void load();});
 })();
