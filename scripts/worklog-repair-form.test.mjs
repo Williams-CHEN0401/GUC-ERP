@@ -92,7 +92,7 @@ test('空設備維修明細可被收集，設備與處理流程會保留在送�
   const form={elements:{hasMaintenance:{value:'yes'},summary:{value:'現場檢查'}},querySelectorAll:()=>[card]};
   const context=vm.createContext({document:{querySelector:()=>form},projectTypeFromWorkType:()=> 'maintenance'});
   vm.runInContext(sourceBetween('function isEquipmentRepairEvent','function syncMaintenanceInventoryOptions'),context);
-  vm.runInContext(sourceBetween('function collectMaintenanceEvents','function projectOwnerPickerField'),context);
+  vm.runInContext(sourceBetween('function workLogContentFields','function workLogSummaryForSave')+sourceBetween('function collectMaintenanceEvents','function projectOwnerPickerField'),context);
   let events=context.collectMaintenanceEvents();
   assert.equal(events.length,1);
   assert.equal(events[0].equipment_ids.length,0);

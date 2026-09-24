@@ -43,7 +43,7 @@ test('both pickup submit paths send notes, hydrate and edit retain them, Gateway
  assert.match(gateway,/hasNote\?"update_pickup_record_v2":"update_pickup_record"/);
 });
 test('note-aware edit keeps the original locks, inventory/link logic and versioned single update',()=>{
- const actual=definition(migration,'update_pickup_record_v2')
+ const actual=definition(migration,'update_pickup_record_v2').replaceAll('\r','')
   .replace('public.update_pickup_record_v2(','public.update_pickup_record(')
   .replace('  p_note text,\n','')
   .replace("  if char_length(p_note) > 500 then raise exception '取貨備註不可超過 500 個字。'; end if;\n",'')

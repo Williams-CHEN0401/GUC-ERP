@@ -23,7 +23,7 @@ test('closure failure does not re-save the log or repeat submission',async()=>{
 });
 test('pickup save or cancellation clears the followup before invoking it',()=>{
  const source=app.split(/\r?\n/).find(line=>line.startsWith('function closeModal('));
- assert.match(source,/delete modal.dataset.closeProjectLogId;if\(followup\)queueMicrotask/);
- assert.ok(app.includes('else await promptCloseWorkContent(newWorkLogId)'));
- assert.ok(app.includes('dataset.closeProjectLogId=newWorkLogId'));
+ assert.match(source,/delete modal.dataset.followupStep;if\(followup\)queueMicrotask/);
+ assert.ok(app.includes('await continueWorkLogFollowup(newWorkLogId,"pickup")'));
+ assert.ok(app.includes('followupStep:"repair"'));
 });

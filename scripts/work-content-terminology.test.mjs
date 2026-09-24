@@ -46,6 +46,6 @@ test("work-log operation annotations and repair prompt are removed", () => {
   ]) assert.ok(!app.includes(annotation), annotation);
   assert.doesNotMatch(app, /是否要登錄維修設備/);
   assert.match(app, /function syncWorkLogMaintenanceType/);
-  assert.match(app, /工作日誌已建立。是否要立即進入/);
+  assert.match(app, /工作日誌已建立。是否登錄取貨/);
   assert.match(app, /已選 \$\{selectedCount\} 位/);
 });
