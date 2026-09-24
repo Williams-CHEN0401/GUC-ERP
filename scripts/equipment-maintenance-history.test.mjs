@@ -48,7 +48,7 @@ test("ERP form supports multiple events, multi-device drawer and preview-only si
 
 test("work log content is shared with maintenance event descriptions", () => {
   assert.match(app, /inputField\("summary","工作內容"/);
-  assert.match(app, /sharedDescription=form\.elements\.summary/);
+  assert.match(app, /sharedDescription=workLogPlainContent\(form\)/);
   assert.match(app, /description=repair\?.*?:sharedDescription/);
   assert.doesNotMatch(app, /inputField\("eventDescription"/);
 });

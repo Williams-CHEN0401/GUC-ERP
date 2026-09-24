@@ -9,7 +9,7 @@ function harness(){
  const card={dataset:{equipmentIds:'[]'},querySelector:s=>({value:values[s.match(/name="([^"]+)"/)[1]]})};
  const label={hidden:false},modal={dataset:{type:'workLogModal',id:''}},form={elements:{summary:{value:'原本工作內容',closest:()=>label},hasMaintenance:{value:'yes'},workType:{value:'維修紀錄'},projectName:{value:'應用數學系查修'}},querySelectorAll:()=>[card]};
  const ctx=vm.createContext({document:{querySelector:s=>s==='#simpleModal'?modal:form},projectTypeFromWorkType:t=>t==='維修紀錄'?'repair':'maintenance',isEquipmentRepairEvent:t=>['REPAIR','REPLACEMENT'].includes(t),syncMaintenanceVisibility:()=>{}});
- vm.runInContext(between('function workLogSummaryForSave','function projectOwnerPickerField')+between('function syncWorkLogMaintenanceType','function syncMaintenanceVisibility'),ctx);
+ vm.runInContext(between('function workLogContentFields','function projectOwnerPickerField')+between('function syncWorkLogMaintenanceType','function syncMaintenanceVisibility'),ctx);
  return {ctx,form,label,card,values,modal};
 }
 test('repair hides/disables summary, restores entered value when switching back',()=>{

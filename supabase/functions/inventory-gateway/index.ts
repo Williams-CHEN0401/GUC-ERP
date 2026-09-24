@@ -503,8 +503,27 @@ const FORM_REFERENCE_DATASETS = new Set(["customers","customer_categories","cust
 function referenceSnapshot(snapshot: Row): Row {
   return Object.fromEntries(Object.entries(snapshot).filter(([name])=>FORM_REFERENCE_DATASETS.has(name)||["scope","current_user","refreshed_at","errors","work_content_types"].includes(name)));
 }
+async function withMaintenanceRepairState(snapshot: Row) {
+  const events=Array.isArray(snapshot.maintenance_events)?snapshot.maintenance_events as Row[]:[];
+  const ids=events.map(event=>uuid(event.id)).filter((id):id is string=>!!id);
+  if(!ids.length)return snapshot;
+  try {
+    const linked=new Set<string>();
+    // Only query IDs already permitted by this snapshot; expose a boolean, not repair records.
+    for(let offset=0;offset<ids.length;offset+=100){
+      const rows=await getAll(`repair_items?select=source_maintenance_event_id&source_maintenance_event_id=in.(${ids.slice(offset,offset+100).join(",")})`);
+      rows.forEach(row=>linked.add(String(row.source_maintenance_event_id)));
+    }
+    snapshot.maintenance_events=events.map(event=>({...event,repair_registered:linked.has(String(event.id))}));
+  } catch(error) {
+    // Fail closed for historical item associations; SQL remains the authority.
+    snapshot.maintenance_events=events.map(event=>({...event,repair_registered:!!event.inventory_item_id}));
+    snapshot.errors=[...(Array.isArray(snapshot.errors)?snapshot.errors:[]),{dataset:"maintenance_events",message:"維修品關聯查核失敗，請重新整理後再修改維修明細。"}];
+  }
+  return snapshot;
+}
 async function scopedSnapshot(user: AppUser, scopeName: string, optionsOnly = false) {
-  const restricted=await restrictedSnapshot(user,scopeName,optionsOnly);if(restricted)return optionsOnly?referenceSnapshot(restricted):restricted;
+  const restricted=await restrictedSnapshot(user,scopeName,optionsOnly);if(restricted)return optionsOnly?referenceSnapshot(restricted):withMaintenanceRepairState(restricted);
   if(scopeName === "dashboard")return dashboardSnapshot(user);
   let names = scopes[scopeName];
   if(scopeName==="crm"&&user.permissions&&user.role!=="admin")names=[...new Set([...(hasPermission(user,"customers")?["customers","contract_service_types","customer_contract_services"]:[]),...(hasPermission(user,"projects")?["customers","projects","project_workers","site_workers"]:[]),...(hasPermission(user,"suppliers")?["suppliers"]:[])])];
@@ -531,7 +550,7 @@ async function scopedSnapshot(user: AppUser, scopeName: string, optionsOnly = fa
     else errors.push({ dataset: name, message: entry.reason instanceof Error ? entry.reason.message : "資料載入失敗。" });
   });
   result.errors = errors;
-  return result;
+  return withMaintenanceRepairState(result);
 }
 
 const queryDefinitions: Record<string, { table: string; select: string; search: string[]; sort: Record<string,string> }> = {
@@ -999,6 +1018,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   }
   if (operation === "close_work_content") {
     requireOperation(user,operation,payload,["admin","operator"]);
+    if(!user)throw new Error("請先以有效帳號登入。");
     const id=uuid(payload.id),workLogId=uuid(payload.work_log_id),rowVersion=Number(payload.row_version);
     if(!id||!workLogId||!Number.isInteger(rowVersion)||rowVersion<1)throw new Error("結案資料不完整，請重新整理後再試。");
     return rpc("close_work_content_from_log_v1",{p_id:id,p_row_version:rowVersion,p_work_log_id:workLogId,p_actor_user_id:user.id,p_actor:actor});
@@ -1173,7 +1193,15 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
       if(time_period===null||!["in_progress","completed"].includes(status))throw new Error("請完整填寫工作日誌時段與狀態。");
       const requestId=payload.request_id==null||payload.request_id===""?null:uuid(payload.request_id);
       if(payload.request_id!=null&&payload.request_id!==""&&!requestId)throw new Error("工作日誌送出識別碼不正確。");
-      return rpc("upsert_customer_project_work_log_department_v1",{p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_maintenance_events:maintenanceEventsInput(payload.maintenance_events??[]),p_actor:actor,p_department_id:departmentIdInput(payload.department_id),p_request_id:requestId});
+      const parameters={p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_maintenance_events:maintenanceEventsInput(payload.maintenance_events??[]),p_actor:actor,p_department_id:departmentIdInput(payload.department_id),p_request_id:requestId};
+      if(Object.hasOwn(payload,"completed_content")||Object.hasOwn(payload,"pending_content")){
+        if(!Object.hasOwn(payload,"completed_content")||!Object.hasOwn(payload,"pending_content")||!requestId)throw new Error("請完整送出已完成／未完成內容與送出識別碼。");
+        const completed=payload.completed_content,pending=payload.pending_content;
+        if(!(completed===null&&pending===null)&&!(typeof completed==="string"&&typeof pending==="string"&&completed.length<=2000&&pending.length<=2000))throw new Error("已完成／未完成內容格式不正確。");
+        if(typeof completed==="string"&&typeof pending==="string"&&[completed.trim(),pending.trim()].filter(Boolean).join("\n")!==(summary||""))throw new Error("工作內容與已完成／未完成內容不一致。");
+        return rpc("upsert_work_log_sections_v1",{...parameters,p_completed_content:completed,p_pending_content:pending});
+      }
+      return rpc("upsert_customer_project_work_log_department_v1",parameters);
     }
     if(legacyRequest)return rpc("upsert_customer_project_work_log_v2",{p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_actor:actor});
     if(time_period===null||!["in_progress","completed"].includes(status))throw new Error("請完整填寫工作日誌時段與狀態。");

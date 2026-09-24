@@ -20,7 +20,7 @@ test('非設備事件不送出未登錄的品項；已登錄關聯與設備履�
   const card={dataset:{equipmentIds:'["equipment"]'},querySelector:s=>({value:values[s.match(/name="([^"]+)"/)[1]]})};
   const form={elements:{hasMaintenance:{value:'yes'},summary:{value:'檢查'}},querySelectorAll:()=>[card]};
   const ctx=vm.createContext({document:{querySelector:()=>form},projectTypeFromWorkType:()=> 'maintenance'});
-  vm.runInContext(helper+between('function collectMaintenanceEvents','function projectOwnerPickerField'),ctx);
+  vm.runInContext(helper+between('function workLogContentFields','function workLogSummaryForSave')+between('function collectMaintenanceEvents','function projectOwnerPickerField'),ctx);
   for(const type of ['REPAIR','REPLACEMENT','SOFTWARE_CONFIG','LINE_REPAIR','LINE_REPLACEMENT','INSPECTION']){
     values.eventType=type;
     const event=ctx.collectMaintenanceEvents()[0];

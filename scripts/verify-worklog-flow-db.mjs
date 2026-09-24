@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {worklogFlowServer} from './worklog-flow-fixture.mjs';
+import {ids,sample} from './worklog-save-fixture.mjs';
+import {secondItem} from './pickup-notes-fixture.mjs';
+const {server,db,legacy,currentUser,calls,historical,historicalPayload}=await worklogFlowServer({historicalRepair:true});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const url='http://127.0.0.1:'+server.address().port+'/api/inventory';
+const send=async(operation,payload)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation,payload})});return {status:r.status,body:await r.json()};};
+const save=p=>send('upsert_customer_project_work_log',p);
+const snapshot=async()=>await (await fetch(url+'?scope=worklogs')).json();
+const count=async table=>Number((await db.query('select count(*) n from '+table)).rows[0].n);
+const valid=r=>{assert.equal(r.status,201,JSON.stringify(r.body));return r.body;};
+try{
+ for(const row of (await db.query('select * from site_work_logs order by id')).rows){const {completed_content,pending_content,...old}=row;assert.equal(completed_content,null);assert.equal(pending_content,null);assert.deepEqual(old,legacy.find(x=>x.id===row.id));}
+ const historicalEvent=(await snapshot()).maintenance_events.find(e=>e.work_log_id===historical.work_log.id);
+ const historicalItem=(await snapshot()).repair_items.find(r=>r.source_maintenance_event_id===historicalEvent.id);
+ assert.ok(historicalItem);
+ const historicalEdit={...historicalPayload,id:historical.work_log.id,row_version:historical.work_log.row_version,project_id:historical.project.id,request_id:randomUUID(),log_date:'2026-09-24',maintenance_events:[{...historicalPayload.maintenance_events[0],id:historicalEvent.id,row_version:historicalEvent.row_version,occurred_at:'2026-09-24'}]};
+ valid(await save(historicalEdit));
+ const historicalSnap=await snapshot(),savedHistorical=historicalSnap.site_work_logs.find(r=>r.id===historical.work_log.id),savedEvent=historicalSnap.maintenance_events.find(r=>r.id===historicalEvent.id);
+ assert.equal(historicalSnap.repair_items.find(r=>r.id===historicalItem.id).received_on,'2026-09-24');
+ assert.ok((await save({...historicalEdit,request_id:randomUUID(),row_version:savedHistorical.row_version,maintenance_events:[{...historicalEdit.maintenance_events[0],row_version:savedEvent.row_version,inventory_item_id:secondItem}]})).status>=400);
+ const payload={...sample(),project_name:'0924保養流程',work_type:'維護保養',maintenance_events:[],completed_content:'完成檢查',pending_content:'等待換線',summary:'完成檢查\n等待換線'};
+ valid(await save(payload));let snap=await snapshot(),log=snap.site_work_logs.find(x=>x.title===payload.project_name),project=snap.projects.find(x=>x.id===log.project_id);
+ assert.equal(log.completed_content,'完成檢查');assert.equal(log.pending_content,'等待換線');
+ const replayCounts=await Promise.all(['site_work_logs','projects','audit_logs'].map(count));
+ valid(await save(payload));assert.deepEqual(await Promise.all(['site_work_logs','projects','audit_logs'].map(count)),replayCounts);
+ assert.ok((await save({...payload,completed_content:'換過內容',summary:'換過內容\n等待換線'})).status>=400);
+ const edit={...payload,id:log.id,row_version:log.row_version,project_id:log.project_id,request_id:randomUUID(),completed_content:'完成檢查\n換線完成',pending_content:'',summary:'完成檢查\n換線完成'};
+ valid(await save(edit));log=(await snapshot()).site_work_logs.find(x=>x.id===log.id);assert.equal(log.pending_content,'');assert.equal(log.completed_content,edit.completed_content);
+ assert.ok((await save({...edit,request_id:randomUUID()})).status>=400);
+ const statusOnly={...edit,row_version:log.row_version,request_id:randomUUID(),status:'completed'};valid(await save(statusOnly));log=(await snapshot()).site_work_logs.find(x=>x.id===log.id);assert.equal(log.completed_content,edit.completed_content);assert.equal((await snapshot()).projects.find(x=>x.id===project.id).status,'in_progress');
+ const {completed_content:_,pending_content:__,...oldClient}=statusOnly;
+ valid(await save({...oldClient,row_version:log.row_version,request_id:randomUUID(),summary:'舊版修改內容'}));log=(await snapshot()).site_work_logs.find(x=>x.id===log.id);assert.equal(log.summary,'舊版修改內容');assert.equal(log.completed_content,null);assert.equal(log.pending_content,null);
+ const beforeInvalid=await count('site_work_logs');
+ for(const patch of [{pending_content:123},{completed_content:null},{summary:'不一致'},{pending_content:'字'.repeat(2001)},{department_id:randomUUID()},{worker_user_ids:[randomUUID()]}])assert.ok((await save({...payload,request_id:randomUUID(),...patch})).status>=400,JSON.stringify(patch));
+ assert.equal(await count('site_work_logs'),beforeInvalid);
+ currentUser.role='viewer';const called=calls.length;assert.equal((await save({...payload,request_id:randomUUID()})).status,403);assert.equal(calls.length,called);currentUser.role='admin';
+ const repairPayload={...sample(),project_name:'0924手動維修',completed_content:null,pending_content:null};const beforeRepairs=await count('repair_items');valid(await save(repairPayload));snap=await snapshot();
+ const repairLog=snap.site_work_logs.find(x=>x.title.startsWith('0924手動維修')),event=snap.maintenance_events.find(x=>x.work_log_id===repairLog.id);
+ assert.equal(await count('repair_items'),beforeRepairs);assert.equal(event.inventory_item_id,ids.item);
+ valid(await save({...repairPayload,id:repairLog.id,row_version:repairLog.row_version,project_id:repairLog.project_id,request_id:randomUUID(),maintenance_events:[{...repairPayload.maintenance_events[0],id:event.id,row_version:event.row_version,inventory_item_id:secondItem}]}));assert.equal(await count('repair_items'),beforeRepairs);
+ // Older clients also no longer auto-create repair items.
+ valid(await save({...sample(),project_name:'舊版維修不自動建品'}));assert.equal(await count('repair_items'),beforeRepairs);
+ valid(await send('upsert_repair_item',{received_on:'2026-09-24',customer_id:ids.customer,department_id:ids.department,inventory_item_id:ids.item,quantity:1,issue_description:'使用者明確登錄',status:'received',serial_number:'',notes:''}));assert.equal(await count('repair_items'),beforeRepairs+1);
+ const pickupId=randomUUID();valid(await send('create_pickup_batch',{work_log_id:log.id,request_id:pickupId,rows:[{customer_id:ids.customer,project_id:project.id,pickup_date:'2026-09-24',inventory_item_id:secondItem,quantity:1,note:'流程備註'}]}));
+ snap=await snapshot();assert.equal(snap.pickups.find(x=>x.request_id===pickupId).note,'流程備註');project=snap.projects.find(x=>x.id===project.id);const logBeforeClose=snap.site_work_logs.find(x=>x.id===log.id);
+ valid(await send('close_work_content',{id:project.id,row_version:project.row_version,work_log_id:log.id}));snap=await snapshot();assert.equal(snap.projects.find(x=>x.id===project.id).status,'completed');assert.deepEqual(snap.site_work_logs.find(x=>x.id===log.id),logBeforeClose);
+ const acl=(await db.query("select has_function_privilege('anon',oid,'execute') anon,has_function_privilege('authenticated',oid,'execute') authenticated,has_function_privilege('service_role',oid,'execute') service,proconfig from pg_proc where proname='upsert_work_log_sections_v1'")).rows[0];assert.equal(acl.anon,false);assert.equal(acl.authenticated,false);assert.equal(acl.service,true);assert.ok(acl.proconfig.includes('search_path=""'));
+ await assert.rejects(db.query('update site_work_logs set completed_content=$2,pending_content=null where id=$1',[log.id,'不完整']),/content_sections/);
+ console.log('PASS: old-row preservation; Gateway → SQL → reread; sections edit/clear; replay/conflict; stale version; legacy clients; invalid input/department/worker/RBAC; manual-only repairs; pickups/notes; independent closure; service-only ACL.');
+}finally{await new Promise(resolve=>server.close(resolve));await db.close();}

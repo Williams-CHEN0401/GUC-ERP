@@ -40,5 +40,5 @@ test('customer/department edit resolves a new destination without changing the o
 test('repair receipt migration preserves the existing entrypoint ACL and uses work-log date without bulk backfill',()=>{
  const sql=readFileSync(new URL('../supabase/migrations/20260916002422_worklog_repair_received_date.sql',import.meta.url),'utf8');
  assert.match(sql,/v_notes,p_log_date,null,null,v_cause/);assert.match(sql,/r\.received_on is distinct from p_log_date/);assert.match(sql,/e\.work_log_id=v_work_log_id/);assert.match(sql,/'UPDATE_REPAIR_ITEM'/);
- assert.doesNotMatch(sql,/\b(?:grant|revoke|alter table|create table|create trigger)\b/i);assert.match(source,/receivedOn:payload\.log_date/);
+ assert.doesNotMatch(sql,/\b(?:grant|revoke|alter table|create table|create trigger)\b/i);assert.match(source,/form\.elements\.receivedOn\.value=log\.log_date/);
 });

@@ -31,8 +31,8 @@ test("preview keeps daily types independent while keeping status independent", (
 
 test("new work log offers the existing pickup workflow", () => {
   assert.ok(app.includes("result?.work_log?.id||result?.result?.work_log?.id"));
-  assert.ok(app.includes('confirm("工作日誌已建立。是否要立即進入「操作 → 登錄取貨」？")'));
-  assert.ok(app.includes('openModal("workLogPickupModal",newWorkLogId)'));
+  assert.ok(app.includes('confirm("工作日誌已建立。是否登錄取貨？")'));
+  assert.ok(app.includes('openModal("workLogPickupModal",workLogId)'));
 });
 
 test("migration enforces bidirectional project-level synchronization", () => {

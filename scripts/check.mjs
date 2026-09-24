@@ -61,7 +61,7 @@ for (const marker of ["projectOwnerPickerField", "projectWorkerIds", "syncWorkLo
   if (!js.includes(marker)) throw new Error(`Project-owner or inventory-adjustment fix missing: ${marker}`);
 }
 if (js.includes("syncWorkLogWorkersFromProject") || js.includes("checkbox.checked=ownerIds.has")) throw new Error("Work-log workers must remain independent from project owners");
-for (const marker of ["PROJECT_WORK_TYPES", '["repair", "維修/查修", "維修紀錄"]', "result?.result?.work_log?.id", "是否要立即進入", 'openModal("workLogPickupModal",newWorkLogId)']) {
+for (const marker of ["PROJECT_WORK_TYPES", '["repair", "維修/查修", "維修紀錄"]', "result?.result?.work_log?.id", "是否登錄取貨", 'openModal("workLogPickupModal",workLogId)']) {
   if (!js.includes(marker)) throw new Error(`Project/work-log shared fields or pickup handoff missing: ${marker}`);
 }
 if (js.includes("preview_site_upsert") || js.includes("preview_site_delete")) throw new Error("Preview-only site CRUD operation remains");
