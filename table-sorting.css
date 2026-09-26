@@ -1,0 +1,27 @@
+/* Use the existing table/theme layout, with an accessible header button. */
+.content th[data-table-sort]::after,
+.content th[data-local-sort]::after { content: none; }
+.content th:has(> .table-sort-button) { padding: 0; }
+.content th > .table-sort-button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .45rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 14px 16px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.content th > .table-sort-button:hover { background: rgba(72, 96, 67, .08); }
+.content th > .table-sort-button:focus-visible { outline: 2px solid var(--primary, #496044); outline-offset: -3px; }
+.table-sort-arrow { flex: none; opacity: .55; }
+.content th[aria-sort="ascending"] .table-sort-arrow,
+.content th[aria-sort="descending"] .table-sort-arrow { opacity: 1; font-weight: 800; }

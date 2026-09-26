@@ -1406,7 +1406,9 @@ async function auditRecords(params: URLSearchParams, user: AppUser) {
   if(user.permissions)requirePermission(user,"audit");else requireRole(user,["admin"]);
   const page=Math.max(1,Math.min(10000,Number(params.get("page"))||1)),size=Math.max(1,Math.min(100,Number(params.get("page_size"))||25));
   if(!Number.isInteger(page)||!Number.isInteger(size))throw new Error("分頁格式不正確。");
-  const query=new URLSearchParams({select:"*",order:"created_at.desc,id.desc",limit:String(size),offset:String((page-1)*size)});
+  const direction=params.get("sort_direction")||"desc";
+  if(!["asc","desc"].includes(direction))throw new Error("日誌排序方向不正確。");
+  const query=new URLSearchParams({select:"*",order:`created_at.${direction},id.${direction}`,limit:String(size),offset:String((page-1)*size)});
   const from=params.get("from"),to=params.get("to"),moduleName=params.get("module")||"",action=params.get("action")||"";
   if((from&&!date(from))||(to&&!date(to))||(from&&to&&from>to))throw new Error("日期區間不正確。");
   if(from)query.append("created_at",`gte.${from}T00:00:00+08:00`);

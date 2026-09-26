@@ -26,6 +26,15 @@ test('audit endpoint is admin-only, server-paginated, ordered, bounded, filtered
  await assert.rejects(h.context.auditRecords(new URLSearchParams({page:'1.5'}),user));
  await assert.rejects(h.context.auditRecords(new URLSearchParams({from:'2026-09-08',to:'2026-09-01'}),user));
 });
+test('audit header ordering is allowlisted, stable and applied before server pagination',async()=>{
+ const h=harness();let query,calls=0;h.context.db=async p=>{calls++;query=new URLSearchParams(p.split('?')[1]);return Response.json([],{headers:{'content-range':'25-49/80'}});};
+ await h.context.auditRecords(new URLSearchParams({page:'2',page_size:'25',sort_direction:'asc'}),user);
+ assert.equal(query.get('order'),'created_at.asc,id.asc');assert.equal(query.get('offset'),'25');assert.equal(query.get('limit'),'25');
+ for(const sort_direction of ['asc,id.desc','ASC','desc;delete','created_at'])await assert.rejects(h.context.auditRecords(new URLSearchParams({sort_direction}),user),/排序方向/);
+ assert.equal(calls,1);
+ await assert.rejects(h.context.auditRecords(new URLSearchParams({sort_direction:'asc'}),{...user,role:'viewer'}));
+ assert.equal(calls,1);
+});
 test('each concurrent write forwards only its verified actor context',async()=>{
  const h=harness(),contexts=[];h.context.currentUser=async r=>({...user,username:r.headers.get('x-test-user'),display_name:r.headers.get('x-test-user')});
  h.context.change=async()=>{await new Promise(resolve=>setTimeout(resolve,5));contexts.push(vm.runInContext('auditContext.getStore()',h.context));return{};};
