@@ -1,0 +1,54 @@
+/* Scoped to list/search panels; create/edit forms and data tables are unchanged. */
+.search-panel { min-width: 0; margin: 0 0 18px; }
+.search-panel-trigger {
+  display: flex; align-items: center; gap: 12px; width: min(100%, 640px); min-width: 0;
+  min-height: 60px; padding: 11px 16px; text-align: left; color: var(--ink);
+  background: var(--surface); border: 1px solid #cdd2c3; border-radius: 7px;
+}
+.search-panel-trigger:hover, .search-panel-trigger[aria-expanded="true"] { border-color: var(--green-800); background: var(--green-50); }
+.search-panel-icon { width: 22px; height: 22px; flex: 0 0 22px; color: var(--green-800); }
+.search-panel-icon svg { width: 100%; height: 100%; display: block; }
+.search-panel-text { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.search-panel-text strong { font-size: 14px; font-weight: 650; }
+.search-panel-summary { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-panel-count { flex: 0 0 auto; font-size: 12px; color: var(--green-900); border-radius: 4px; padding: 4px 7px; background: var(--green-100); }
+.search-panel-count[hidden], .search-panel-popup[hidden] { display: none !important; }
+.search-panel-chevron { flex: 0 0 auto; font-size: 20px; color: var(--muted); }
+.search-panel-trigger[aria-expanded="true"] .search-panel-chevron { transform: rotate(180deg); }
+.search-panel-popup {
+  position: fixed; z-index: 35; overflow: auto; overscroll-behavior: contain;
+  border: 1px solid var(--line); border-radius: 8px; padding: 0 22px;
+  background: var(--surface); color: var(--ink); box-shadow: 0 12px 36px #303b3429;
+}
+.search-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.search-panel-heading strong { font-size: 15px; }
+.search-panel-dismiss { border: 0; background: transparent; color: var(--muted); font-size: 25px; min-width: 44px; min-height: 44px; border-radius: 5px; }
+.search-panel-dismiss:hover { background: var(--green-50); }
+.search-panel-popup .search-panel-fields,
+.search-panel-popup .search-panel-fields:has(#materialCustomerCategory) {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px;
+  margin: 0; padding: 0 0 8px; min-width: 0; border: 0; box-shadow: none; background: transparent;
+}
+.search-panel-fields > .search-panel-field {
+  display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 14px;
+  min-width: 0; width: 100%; margin: 0; padding: 0; color: var(--muted); font-size: 14px; font-weight: 500;
+}
+.search-panel-fields .search-panel-field input, .search-panel-fields .search-panel-field select {
+  box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 44px;
+  height: auto; padding: 10px 9px; border: 1px solid #cdd2c3; border-radius: 5px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; outline: revert;
+}
+.search-panel-fields .search-panel-field :disabled { color: var(--muted); background: var(--green-50); opacity: .7; }
+.search-panel-fields .search-panel-field :focus-visible { outline: 2px solid var(--green-800); outline-offset: 2px; }
+.search-panel-fields .report-filter-hint { grid-column: 1 / -1; margin: 0; font-size: 12px; }
+.search-panel-popup .search-panel-actions {
+  grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px;
+  position: sticky; bottom: 0; padding: 16px 0; margin-top: 8px; background: var(--surface); border-top: 1px solid var(--line);
+}
+@media (max-width: 640px) {
+  .search-panel-trigger { width: 100%; }
+  .search-panel-popup { padding-inline: 16px; }
+  .search-panel-fields > .search-panel-field { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .search-panel-fields .search-panel-field input, .search-panel-fields .search-panel-field select { font-size: 16px; }
+  .search-panel-popup .search-panel-actions > button { flex: 1; }
+}
