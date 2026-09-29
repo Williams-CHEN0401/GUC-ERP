@@ -331,10 +331,11 @@ function maintenanceEventsForLog(logId){return state.maintenanceEvents.filter((e
 function maintenanceEquipmentSummary(ids=[]){const rows=ids.map((id)=>byId(state.equipmentRegistry,id)).filter(Boolean);return rows.length?rows.slice(0,4).map((row)=>row.displayName).join("、")+(rows.length>4?` 等 ${rows.length} 台`:""):"尚未選擇設備";}
 
 function maintenanceInventoryFields(event={}){
-  const item=byId(state.inventory,event.inventoryItemId||""),categoryId=event.inventoryCategoryId||item?.categoryId||"",registered=Boolean(event.id&&(event.repairRegistered||state.repairItems.some(repair=>repair.sourceMaintenanceEventId===event.id)));
-  const categoryOptions=registered?`<option value="${esc(categoryId)}">${esc(byId(state.categories,categoryId)?.name||"原設備種類")}</option>`:itemCategoryOptions(categoryId);
-  const itemOptions=registered?`<option value="${esc(event.inventoryItemId)}">${esc(item?.code||"")}｜${esc(item?.name||"原設備品項")}</option>`:inventoryItemOptions(categoryId,event.inventoryItemId||"");
-  return `<label data-maintenance-inventory-field ${isEquipmentRepairEvent(event.eventType||"SOFTWARE_CONFIG")?"":"hidden"}>更換設備種類<select name="eventInventoryCategoryId" data-maintenance-category ${registered?"disabled":""}>${categoryOptions}</select></label><label data-maintenance-inventory-field ${isEquipmentRepairEvent(event.eventType||"SOFTWARE_CONFIG")?"":"hidden"}>更換設備品項（選填）<select name="eventInventoryItemId" ${!categoryId||registered?"disabled":""}>${itemOptions}</select></label>`;
+  const item=byId(state.inventory,event.inventoryItemId||""),categoryId=event.inventoryCategoryId||item?.categoryId||"";
+  // Source repair links are provenance, not a lock on this event's own fields.
+  const categoryOptions=itemCategoryOptions(categoryId)+(categoryId&&!state.categories.some(c=>c.id===categoryId&&c.active)?`<option value="${esc(categoryId)}" selected>${esc(byId(state.categories,categoryId)?.name||"原設備種類")}</option>`:"");
+  const itemOptions=inventoryItemOptions(categoryId,event.inventoryItemId||"")+(event.inventoryItemId&&(!item||item.categoryId!==categoryId)?`<option value="${esc(event.inventoryItemId)}" selected>${esc(item?.name||"原設備品項")}</option>`:"");
+  return `<label data-maintenance-inventory-field ${isEquipmentRepairEvent(event.eventType||"SOFTWARE_CONFIG")?"":"hidden"}>更換設備種類<select name="eventInventoryCategoryId" data-maintenance-category>${categoryOptions}</select></label><label data-maintenance-inventory-field ${isEquipmentRepairEvent(event.eventType||"SOFTWARE_CONFIG")?"":"hidden"}>更換設備品項（選填）<select name="eventInventoryItemId" ${!categoryId?"disabled":""}>${itemOptions}</select></label>`;
 }
 function isEquipmentRepairEvent(type){return ["REPAIR","REPLACEMENT"].includes(type);}
 function syncMaintenanceInventoryOptions(category){
@@ -361,7 +362,6 @@ function refreshMaintenanceInventoryChoices(){
   const modal=document.querySelector("#simpleModal"),form=document.querySelector("#modalForm");
   if(modal?.dataset.type!=="workLogModal"||!modal.classList.contains("open"))return;
   form.querySelectorAll("[data-maintenance-event]").forEach((card)=>{
-    if(card.dataset.repairRegistered==="true")return;
     const category=card.querySelector('[name="eventInventoryCategoryId"]'),item=card.querySelector('[name="eventInventoryItemId"]');
     const categoryId=category.value,itemId=item.value,categoryLabel=category.selectedOptions[0]?.textContent||"",itemLabel=item.selectedOptions[0]?.textContent||"";
     category.innerHTML=itemCategoryOptions(categoryId);
@@ -409,7 +409,7 @@ function syncMaintenanceVisibility(){
     const card=field.closest("[data-maintenance-event]"),inventoryField=["eventInventoryCategoryId","eventInventoryItemId"].includes(field.name);
     const equipmentEvent=isEquipmentRepairEvent(card?.querySelector('[name="eventType"]')?.value);
     if(inventoryField)field.closest("[data-maintenance-inventory-field]").hidden=!equipmentEvent;
-    field.disabled=!canWrite()||editor.hidden||(inventoryField&&(!equipmentEvent||card?.dataset.repairRegistered==="true"))||
+    field.disabled=!canWrite()||editor.hidden||(inventoryField&&!equipmentEvent)||
       (field.name==="eventInventoryItemId"&&!card?.querySelector('[name="eventInventoryCategoryId"]').value);
   });
 }
@@ -676,7 +676,6 @@ function applyPreviewMutation(operation,payload){const version=1,now=formatDateT
     for(const event of payload.maintenance_events||[]){
       const saved=event.id?byId(state.maintenanceEvents,event.id):null;
       if(!isEquipmentRepairEvent(event.event_type)&&!saved?.inventoryItemId){event.inventory_category_id=null;event.inventory_item_id=null;}
-      if(saved&&state.repairItems.some(repair=>repair.sourceMaintenanceEventId===saved.id)&&(saved.inventoryItemId!==event.inventory_item_id||saved.inventoryCategoryId!==event.inventory_category_id))throw new Error("此明細已登錄維修品，品項請至維修品管理修改。");
       if(event.inventory_item_id&&byId(state.inventory,event.inventory_item_id)?.categoryId!==event.inventory_category_id)throw new Error("設備品項不屬於所選設備種類。");
     }
     const independentDepartment=payload.work_type==="維護保養",originalLog=payload.id?byId(state.siteData.logs,payload.id):null,originalProject=originalLog?byId(state.projects,originalLog.projectId):null,target=payload.project_id?byId(state.projects,payload.project_id):null,moving=!!(originalLog&&(payload.project_id?originalLog.projectId!==payload.project_id:originalProject?.customerId!==payload.customer_id||!independentDepartment&&(originalProject?.departmentId||"")!==(payload.department_id||"")));
@@ -686,11 +685,9 @@ function applyPreviewMutation(operation,payload){const version=1,now=formatDateT
       if(target&&(target.status!=="in_progress"||target.name!==payload.project_name))throw new Error("所選工作內容已變更，請重新選擇。");
       if((state.siteData.assets||[]).some(row=>row.work_log_id===payload.id||row.workLogId===payload.id))throw new Error("此日誌已有歷史附件關聯，不能直接變更工作內容歸屬；附件與原資料保持不變。");
       if(!target&&!canModule("projects","CREATE"))throw new Error("沒有建立新工作內容的權限。");
-      const contextChanged=originalProject?.customerId!==payload.customer_id||(originalProject?.departmentId||"")!==(payload.department_id||"");
-      if(contextChanged&&state.maintenanceEvents.some(event=>event.workLogId===payload.id&&(event.repairRegistered||state.repairItems.some(repair=>repair.sourceMaintenanceEventId===event.id))))throw new Error("此日誌已登錄維修品，不能直接變更客戶或科室。");
       if(originalProject?.customerId!==payload.customer_id&&state.maintenanceEvents.some(event=>event.workLogId===payload.id&&(state.maintenanceEventEquipment||[]).some(link=>link.eventId===event.id)))throw new Error("此日誌已有客戶設備關聯，不能直接移至另一客戶。");
     }
-    if(originalLog&&(workLogDepartmentId(originalLog,originalProject)||"")!==(payload.department_id||"")&&state.maintenanceEvents.some(event=>event.workLogId===payload.id&&(event.repairRegistered||state.repairItems.some(repair=>repair.sourceMaintenanceEventId===event.id))))throw new Error("此日誌已登錄維修品，不能直接變更科室。");const createdRepairItemIds=[],maintenanceEventIds=[];
+    const createdRepairItemIds=[],maintenanceEventIds=[];
     let project=payload.project_id?byId(state.projects,payload.project_id):state.projects.find((item)=>item.customerId===payload.customer_id&&valueText(item.name)===valueText(payload.project_name));
     const projectType=projectTypeFromWorkType(payload.work_type);
     if(!payload.id&&projectType==="repair"){
@@ -705,7 +702,6 @@ function applyPreviewMutation(operation,payload){const version=1,now=formatDateT
     const existing=payload.id?byId(state.siteData.logs,payload.id):null,values={projectId:project.id,department_id:independentDepartment?payload.department_id||null:null,log_date:payload.log_date,time_period:payload.time_period||"",title:project.name,work_type:payload.work_type,status:payload.status,summary:payload.summary||"",completed_content:payload.completed_content??null,pending_content:payload.pending_content??null,workerIds:[...(payload.worker_user_ids||[])]};
     let workLog=existing;if(existing)Object.assign(existing,values,{row_version:(existing.row_version||1)+1});else{workLog={id:uid(),row_version:1,...values};state.siteData.logs.unshift(workLog);}
     (payload.maintenance_events||[]).forEach((event)=>{let saved=event.id?byId(state.maintenanceEvents,event.id):null;if(!saved){saved={id:uid(),workLogId:workLog.id,rowVersion:1,status:"active"};state.maintenanceEvents.unshift(saved);}else saved.rowVersion=(saved.rowVersion||1)+1;maintenanceEventIds.push(saved.id);Object.assign(saved,{inventoryCategoryId:event.inventory_category_id||"",inventoryItemId:event.inventory_item_id||"",serviceId:event.service_id,eventType:event.event_type,occurredAt:event.occurred_at,description:event.description,cause:event.cause||"",handlingProcess:Object.prototype.hasOwnProperty.call(event,"handling_process")?event.handling_process||"":saved.handlingProcess||"",result:event.result,notes:event.notes||""});state.maintenanceEventEquipment=state.maintenanceEventEquipment.filter((link)=>link.eventId!==saved.id);event.equipment_ids.forEach((equipmentId)=>state.maintenanceEventEquipment.push({eventId:saved.id,equipmentId}));state.maintenanceEventWorkers=state.maintenanceEventWorkers.filter((link)=>link.eventId!==saved.id);(event.worker_user_ids.length?event.worker_user_ids:payload.worker_user_ids||[]).forEach((userId)=>state.maintenanceEventWorkers.push({eventId:saved.id,userId}));});
-    const linkedEvents=new Set(state.maintenanceEvents.filter(event=>event.workLogId===workLog.id).map(event=>event.id));state.repairItems.filter(repair=>linkedEvents.has(repair.sourceMaintenanceEventId)).forEach(repair=>{if(repair.receivedOn!==payload.log_date){repair.receivedOn=payload.log_date;repair.rowVersion=(repair.rowVersion||1)+1;}});
     mutationResult={work_log:workLog,project:{id:project.id,name:project.name,customer_id:project.customerId,department_id:project.departmentId||null},repair_visit:!payload.id&&projectType==="repair",project_type:project.rawType,project_status:payload.status,maintenance_event_count:(payload.maintenance_events||[]).length,created_repair_item_ids:createdRepairItemIds,maintenance_event_ids:maintenanceEventIds};
     if(payload.request_id)previewWorkLogRequests.set(payload.request_id,{fingerprint,result:mutationResult});
   }
