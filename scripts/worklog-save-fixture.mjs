@@ -5,7 +5,8 @@ import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 export const migrationName='20260914200535_fix_worklog_department_save_boundary.sql';
 export const ids={customer:'30000000-0000-4000-8000-000000000001',department:'30000000-0000-4000-8000-000000000002',actor:'10000000-0000-4000-8000-000000000001',viewer:'10000000-0000-4000-8000-000000000002',scoped:'10000000-0000-4000-8000-000000000003',service:'20000000-0000-4000-8000-000000000001',category:'20000000-0000-4000-8000-000000000002',item:'20000000-0000-4000-8000-000000000003'};
-export const sql=name=>readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8');
+// Match Git/server LF contents even in an autocrlf Windows checkout.
+export const sql=async name=>(await readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8')).replaceAll('\r\n','\n');
 export function definition(source,name){
  const start=source.search(new RegExp('create (?:or replace )?function public\\.'+name+'\\b','i'));
  if(start<0)throw Error('Missing function '+name);
