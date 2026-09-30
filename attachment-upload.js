@@ -1,6 +1,7 @@
 const NAS_BROWSER_CHUNK_BYTES = 3 * 1024 * 1024;
 const NAS_BROWSER_DIRECT_BYTES = 4 * 1024 * 1024;
-const NAS_BROWSER_FILE_CONCURRENCY = 2;
+const NAS_BROWSER_FILE_CONCURRENCY = 3;
+const attachmentDigests = new WeakMap();
 
 // Upload progress measures browser -> server transport, not NAS persistence.
 function setAttachmentFormUploading(form, active) {
@@ -41,10 +42,13 @@ function setAttachmentUploadProgress(stage, message, snapshot) {
   if (first) host.scrollIntoView?.({behavior:'smooth',block:'nearest'});
 }
 
-async function transferNasFiles({ files, context, description = '', attachmentType = 'photo', request, progress, conflictChoice, register }) {
-  const outcomes = new Array(files.length);
-  let uploadFolder = '', cursor = 0, completed = 0;
-  const fileProgress = files.map(file=>({name:file.name,size:file.size,loaded:0,state:'waiting'}));
+async function transferNasFiles({ files, context, description = '', attachmentType = 'photo', request, progress, conflictChoice, register, batchState = {} }) {
+  const outcomes = batchState.outcomes ||= new Array(files.length);
+  let uploadFolder = batchState.uploadFolder || '', cursor = 0, completed = outcomes.filter(Boolean).length;
+  const fileProgress = batchState.progress ||= files.map(file=>({name:file.name,size:file.size,loaded:0,state:'waiting'}));
+  const pending = files.map((file,index)=>({file,index})).filter(({index})=>!outcomes[index]?.uploaded && !outcomes[index]?.failed?.skipped);
+  for(const {index} of pending){outcomes[index]=undefined;fileProgress[index].state='waiting';delete fileProgress[index].error;}
+  completed = outcomes.filter(Boolean).length;
   const emit = (stage, message) => {
     const totalBytes = fileProgress.reduce((sum,file)=>sum+file.size,0);
     progress(stage,message,{total:files.length,completed,percent:Math.floor(fileProgress.reduce((sum,file)=>sum+file.loaded,0)/(totalBytes||1)*100),succeeded:fileProgress.filter(f=>f.state==='done').length,failed:fileProgress.filter(f=>f.state==='error').length,skipped:fileProgress.filter(f=>f.state==='skipped').length,files:fileProgress.map(f=>({...f}))});
@@ -57,14 +61,15 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
   // Prepare the shared folder once; each file receives its own short-lived signed ticket.
   emit('checking', `正在檢查 ${files.length} 個檔案…`);
   const prepare = bodyFor('prepare_batch');
-  prepare.append('file_metadata', JSON.stringify(files.map(file => ({ name: file.name, size: file.size }))));
+  prepare.append('file_metadata', JSON.stringify(pending.filter(({index})=>!fileProgress[index].nasRows).map(({file}) => ({ name: file.name, size: file.size }))));
   let batch;
-  try { batch = await request(prepare, 45000); }
-  catch (error) { fileProgress.forEach(file=>Object.assign(file,{state:'error',error:error.message}));emit('error','檔案檢查失敗，尚未上傳。');return { uploaded: [], failed: files.map(file => ({ name: file.name, error: error.message })), upload_folder: '' }; }
+  const toTransfer=pending.filter(({index})=>!fileProgress[index].nasRows);
+  try { batch = toTransfer.length ? await request(prepare, 45000) : {files:[],file_tickets:[]}; }
+  catch (error) { pending.forEach(({index})=>{Object.assign(fileProgress[index],{state:'error',error:error.message});outcomes[index]={failed:{name:files[index].name,error:error.message}};});emit('error','檔案檢查失敗，成功附件仍保留。');return {uploaded:outcomes.flatMap(row=>row?.uploaded||[]),failed:outcomes.flatMap(row=>row?.failed?[row.failed]:[]),upload_folder:uploadFolder}; }
   const choices = new Map();
   // Conflict dialogs are sequential, even though transfers run in parallel.
-  for (const [index] of files.entries()) {
-    const conflict = batch.files?.[index];
+  for (const [ticketIndex,{index}] of toTransfer.entries()) {
+    const conflict = batch.files?.[ticketIndex];
     if (conflict?.exists) choices.set(index, await conflictChoice(conflict));
   }
   const transfer = async (file, fileIndex) => {
@@ -77,8 +82,13 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
       const result = await request(body,120_000,report);report(1);return result;
     };
     try {
+      if(item.nasRows){
+        item.state='registering';notify(`${file.name}：只重試附件紀錄，不重傳 NAS 原檔。`);
+        await register(item.nasRows);item.state='done';return {uploaded:item.nasRows};
+      }
       item.state = 'preparing';notify(`正在準備 ${file.name}`);
-      let preflight = { preflight_ticket: batch.file_tickets?.[fileIndex], conflicts: batch.files?.[fileIndex]?.exists ? [batch.files[fileIndex]] : [] };
+      const ticketIndex=toTransfer.findIndex(row=>row.index===fileIndex);
+      let preflight = { preflight_ticket: batch.file_tickets?.[ticketIndex], conflicts: batch.files?.[ticketIndex]?.exists ? [batch.files[ticketIndex]] : [] };
       // Refresh expired tickets after a slow transfer or a long conflict dialog.
       if (!preflight.preflight_ticket || Date.now() + 5000 >= batch.expires_at) {
         const check = bodyFor('preflight');check.append('file_names', JSON.stringify([file.name]));
@@ -94,7 +104,8 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
       body.append('description', description);body.append('attachment_type', attachmentType);
       let result;
       if (large) {
-        const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+        if(!attachmentDigests.has(file))attachmentDigests.set(file,file.arrayBuffer().then(bytes=>crypto.subtle.digest('SHA-256',bytes)));
+        const digest = await attachmentDigests.get(file);
         body.append('sha256', [...new Uint8Array(digest)].map(n => n.toString(16).padStart(2, '0')).join(''));
         body.append('file_name', file.name);body.append('file_size', String(file.size));
         body.append('mime_type', file.type || 'application/octet-stream');body.append('conflict_action', action);
@@ -124,6 +135,7 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
       uploadFolder = result.upload_folder || uploadFolder;
       if (!result.uploaded?.length) throw new Error(result.failed?.[0]?.error || '附件未能完成寫入，請重試。');
       item.state='registering';notify(`${file.name}：NAS 已完成寫入與檔案大小驗證，正在儲存附件紀錄…`);
+      item.nasRows=result.uploaded;
       try { await register(result.uploaded); }
       catch (error) { throw new Error(`檔案已寫入 NAS，但 ERP 附件索引保存失敗：${file.name}。${error.message}`); }
       item.state='done';return { uploaded: result.uploaded };
@@ -136,9 +148,10 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
       return { failed: { name: file.name, error: error.message } };
     } finally { completed++;notify('請等待所有附件處理完成。'); }
   };
-  await Promise.all(Array.from({ length: Math.min(files.length, NAS_BROWSER_FILE_CONCURRENCY) }, async () => {
-    while (cursor < files.length) { const index = cursor++;outcomes[index] = await transfer(files[index], index); }
+  await Promise.all(Array.from({ length: Math.min(pending.length, NAS_BROWSER_FILE_CONCURRENCY) }, async () => {
+    while (cursor < pending.length) { const {file,index} = pending[cursor++];outcomes[index] = await transfer(file, index); }
   }));
   emit(fileProgress.every(file=>file.state==='done')?'complete':'error',fileProgress.every(file=>file.state==='done')?'全部附件已上傳、校驗並儲存完成。':'附件處理結束，請查看各檔案結果。');
+  batchState.uploadFolder=uploadFolder;
   return { uploaded: outcomes.flatMap(result => result.uploaded || []), failed: outcomes.flatMap(result => result.failed ? [result.failed] : []), upload_folder: uploadFolder };
 }

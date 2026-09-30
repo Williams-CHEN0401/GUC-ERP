@@ -8,13 +8,24 @@ function harness(){
  const values={eventType:'SOFTWARE_CONFIG',eventServiceId:'service',eventOccurredAt:'2026-09-15',eventCause:'無法連線',eventHandlingProcess:'檢查網路設定',eventNotes:'',eventInventoryCategoryId:'',eventInventoryItemId:''};
  const card={dataset:{equipmentIds:'[]'},querySelector:s=>({value:values[s.match(/name="([^"]+)"/)[1]]})};
  const label={hidden:false},modal={dataset:{type:'workLogModal',id:''}},form={elements:{summary:{value:'原本工作內容',closest:()=>label},hasMaintenance:{value:'yes'},workType:{value:'維修紀錄'},projectName:{value:'應用數學系查修'}},querySelectorAll:()=>[card]};
- const ctx=vm.createContext({document:{querySelector:s=>s==='#simpleModal'?modal:form},projectTypeFromWorkType:t=>t==='維修紀錄'?'repair':'maintenance',isEquipmentRepairEvent:t=>['REPAIR','REPLACEMENT'].includes(t),syncMaintenanceVisibility:()=>{}});
+ const ctx=vm.createContext({document:{querySelector:s=>s==='#simpleModal'?modal:form},projectTypeFromWorkType:t=>({'維修紀錄':'repair','送貨':'delivery','文書作業':'clerical'}[t]||'maintenance'),isEquipmentRepairEvent:t=>['REPAIR','REPLACEMENT'].includes(t),syncMaintenanceVisibility:()=>{}});
  vm.runInContext(between('function workLogContentFields','function projectOwnerPickerField')+between('function syncWorkLogMaintenanceType','function syncMaintenanceVisibility'),ctx);
  return {ctx,form,label,card,values,modal};
 }
 test('repair hides/disables summary, restores entered value when switching back',()=>{
  const {ctx,form,label}=harness();ctx.syncWorkLogMaintenanceType();assert.equal(label.hidden,true);assert.equal(form.elements.summary.disabled,true);
  form.elements.workType.value='維護保養';ctx.syncWorkLogMaintenanceType();assert.equal(label.hidden,false);assert.equal(form.elements.summary.disabled,false);assert.equal(form.elements.summary.value,'原本工作內容');
+});
+
+for(const type of ['送貨','文書作業'])test(`${type} hides all content inputs without requiring text or deleting historical summary`,()=>{
+ const {ctx,form,label}=harness();form.elements.workType.value=type;
+ const labels={completedContent:{hidden:false},pendingContent:{hidden:false}};
+ for(const name of Object.keys(labels))form.elements[name]={value:'',required:true,closest:()=>labels[name]};
+ ctx.syncWorkLogMaintenanceType();assert.equal(label.hidden,true);
+ for(const name of ['summary','completedContent','pendingContent']){assert.equal(form.elements[name].disabled,true);assert.equal(form.elements[name].required,false);}
+ assert.equal(ctx.workLogSummaryForSave(form,[]),'原本工作內容');form.elements.summary.value='';assert.equal(ctx.workLogSummaryForSave(form,[]),'');
+ assert.equal(ctx.workLogContentSections(form).completed_content,null);assert.equal(ctx.workLogContentSections(form).pending_content,null);
+ form.elements.workType.value='維護保養';ctx.syncWorkLogMaintenanceType();for(const name of Object.keys(labels)){assert.equal(labels[name].hidden,false);assert.equal(form.elements[name].disabled,false);}
 });
 test('repair saves without hidden content, derives from visible details and keeps optional fields optional',()=>{
  const {ctx,form,values}=harness();form.elements.summary.value='';

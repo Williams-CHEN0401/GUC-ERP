@@ -27,7 +27,7 @@ test('department preview CRUD validates names, concurrency, ownership and soft-d
 });
 test('ERP mutation payloads include departments and existing receipt multi-customer shape remains',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8'),html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
- assert.match(app,/department_id:modalDepartmentValue\(\)/);assert.match(app,/department_id:workLogDepartmentValue/);assert.match(app,/customer_ids,customer_departments/);
+ assert.match(app,/department_id:modalDepartmentValue\(\)/);assert.match(app,/department_id:workLogDepartmentValue/);const receipts=readFileSync(new URL("../receipt-documents.js",import.meta.url),"utf8");assert.match(receipts,/customer_ids:/);assert.match(receipts,/customer_departments:collectReceiptCustomerDepartments\(\)/);
  for(const id of ['customerDepartmentsPane','worklogDepartmentFilter','materialDepartment'])assert.ok(html.includes('id="'+id+'"'));
  assert.match(html,/customer-departments\.js/);assert.match(source,/所選工作內容與客戶／科室不一致/);
 });

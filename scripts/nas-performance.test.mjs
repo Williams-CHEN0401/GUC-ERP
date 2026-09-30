@@ -34,7 +34,7 @@ test('batch uploads reduce NAS bytes, share folder checks and bound parallel tra
    const files=[new File([Buffer.alloc(6*1024*1024,11)],`large-${round}.heic`),new File([Buffer.alloc(4*1024*1024,22)],`direct-${round}.jpg`),new File([Buffer.alloc(5*1024*1024,33)],`photo-${round}.jpg`)];
    modes.length=0;fixture.calls.length=0;fixture.gatewayCalls.length=0;peak=0;
    const result=await sandbox.transferNasFiles({...options,files});
-   assert.equal(result.failed.length,0);assert.equal(result.uploaded.length,3);assert.equal(peak,2);
+   assert.equal(result.failed.length,0);assert.equal(result.uploaded.length,3);assert.equal(peak,3);
    assert.equal(modes.filter(mode=>mode==='prepare_batch').length,1);assert.equal(modes.filter(mode=>mode==='preflight').length,0);
    assert.equal(fixture.gatewayCalls.filter(scope=>scope==='sites').length,0);
    const transferred=fixture.calls.reduce((sum,call)=>sum+call.bytes,0);

@@ -30,11 +30,11 @@ test("NAS 新附件使用客戶、承攬內容、工作內容、日期完整路�
   assert.match(migration, /project_id = p_project_id/);
 });
 
-test("上傳案場附件不再顯示或建立關聯工作日誌", () => {
+test("一般承攬附件維持既有關聯；日誌入口可驗證並使用原日誌 ID", () => {
   const attachmentModal = js.slice(js.indexOf('if(type==="attachmentModal")'), js.indexOf('if(type==="workLogModal")'));
   const contractAttachmentGateway = edge.slice(edge.indexOf('operation === "create_contract_site_attachment_batch"'), edge.indexOf('operation === "create_site_attachment_batch"'));
   assert.doesNotMatch(attachmentModal, /selectField\("workLogId"|關聯工作日誌/);
-  assert.doesNotMatch(nas, /form\.get\("work_log_id"\)/);
+  assert.match(nas, /if\(workLogId[\s\S]*?await resolveUploadContext/);
   assert.match(contractAttachmentGateway, /work_log_id:null/);
   assert.match(migration, /work_log_id = null/);
 });
