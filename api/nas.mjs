@@ -94,6 +94,7 @@ export function verifyPreflightTicket(config, ticket, expected, authorization, n
   for (const key of ["customer_id", "contract_service_type_id", "project_id"]) {
     if (payload[key] !== expected[key]) throw ticketError();
   }
+  if((payload.work_log_id||"")!==(expected.work_log_id||""))throw ticketError();
   const expectedNames = validateFileNames(expected.file_names);
   if (!Array.isArray(payload.file_names) || payload.file_names.length !== expectedNames.length || payload.file_names.some((name, index) => name !== expectedNames[index])) throw ticketError();
   if (!Array.isArray(payload.folder_parts) || payload.folder_parts.length !== 4 || payload.folder_parts.some((part) => part !== safePart(part))) throw ticketError();
@@ -166,11 +167,12 @@ async function currentUser(request) {
   return { user: data.current_user, authorization };
 }
 
-async function resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization) {
-  const params = new URLSearchParams({ scope: "nas_upload_context", customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId });
+async function resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization, workLogId = "") {
+  const params = new URLSearchParams({ scope: "nas_upload_context", customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}) });
   const response = await gatewayRequest(`?${params}`, authorization, "ERP 承攬資料服務");
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new HttpError([400, 401, 403, 404, 409].includes(response.status) ? response.status : 502, data.error || "無法讀取 ERP 承攬資料。", "CONTRACT_LOOKUP_FAILED");
+  if(workLogId&&data.work_log_id!==workLogId)throw new HttpError(400,"工作日誌關聯驗證失敗。","WORK_LOG_INVALID");
   const customer = Array.isArray(data.customers) ? data.customers.find((row) => row.id === customerId) : null;
   const contractService = Array.isArray(data.contract_service_types) ? data.contract_service_types.find((row) => row.id === contractServiceTypeId && row.is_active !== false) : null;
   const linked = Array.isArray(data.customer_contract_services) && data.customer_contract_services.some((row) => row.customer_id === customerId && row.service_type_id === contractServiceTypeId && row.is_active !== false);
@@ -182,7 +184,8 @@ async function resolveUploadContext(customerId, contractServiceTypeId, projectId
     contractServiceName: safePart(contractService.name, "未命名承攬內容"),
     customerName: safePart(customer.name, "未命名客戶"),
     projectName: safePart(project.name, "未命名專案"),
-    logDate: formatTaipeiDate()
+    logDate: formatTaipeiDate(),
+    protectedPaths: Array.isArray(data.protected_paths)?data.protected_paths:[]
   };
 }
 
@@ -287,8 +290,8 @@ export async function allocateRenamedFile(config, targetFolder, fileName, reques
   throw new HttpError(409, "同名檔案過多，無法取得可用的新檔名。", "NAS_RENAME_LIMIT");
 }
 
-async function preflightFiles(config, targetFolder, fileNames, request = davRequest) {
-  return mapWithConcurrency(validateFileNames(fileNames), NAS_CONCURRENCY, async (storedName) => {
+async function preflightFiles(config, targetFolder, fileNames, request = davRequest, maxFiles = MAX_FILES) {
+  return mapWithConcurrency(validateFileNames(fileNames,maxFiles), NAS_CONCURRENCY, async (storedName) => {
     const nasPath = `${targetFolder}/${storedName}`;
     const exists = await pathExists(config, nasPath, request);
     const suggestion = exists ? await allocateRenamedFile(config, targetFolder, storedName, request) : null;
@@ -338,9 +341,9 @@ function supportedFile(file) {
   return ALLOWED_EXTENSIONS.has(extension);
 }
 
-export function validateUploadFiles(files) {
-  if (!files.length || files.length > MAX_FILES) throw new HttpError(400, `請選擇 1～${MAX_FILES} 個附件。`, "FILE_COUNT_INVALID");
-  if (files.reduce((sum, file) => sum + Number(file.size || 0), 0) > MAX_TOTAL_BYTES) throw new HttpError(413, "單次附件合計不可超過 80 MB。", "TOTAL_SIZE_EXCEEDED");
+export function validateUploadFiles(files, maxFiles = MAX_FILES, maxTotal = MAX_TOTAL_BYTES) {
+  if (!files.length || files.length > maxFiles) throw new HttpError(400, `請選擇 1～${maxFiles} 個附件。`, "FILE_COUNT_INVALID");
+  if (files.reduce((sum, file) => sum + Number(file.size || 0), 0) > maxTotal) throw new HttpError(413, `單次附件合計不可超過 ${maxTotal/1024/1024} MB。`, "TOTAL_SIZE_EXCEEDED");
   for (const file of files) {
     if (!Number(file.size)) throw new HttpError(400, `${safePart(file.name, "附件")} 是空白檔案，請重新選擇。`, "EMPTY_FILE");
     if (file.size > MAX_FILE_BYTES) throw new HttpError(413, `${safePart(file.name, "附件")} 超過 20 MB。`, "FILE_SIZE_EXCEEDED");
@@ -351,8 +354,8 @@ export function validateUploadFiles(files) {
   if (new Set(names).size !== names.length) throw new HttpError(400, "同一批附件不可包含重複檔名。", "DUPLICATE_FILE_NAME");
 }
 
-export function validateFileNames(names) {
-  if (!Array.isArray(names) || names.length < 1 || names.length > MAX_FILES) throw new HttpError(400, `請提供 1～${MAX_FILES} 個附件檔名。`, "FILE_COUNT_INVALID");
+export function validateFileNames(names, maxFiles = MAX_FILES) {
+  if (!Array.isArray(names) || names.length < 1 || names.length > maxFiles) throw new HttpError(400, `請提供 1～${maxFiles} 個附件檔名。`, "FILE_COUNT_INVALID");
   const sanitized = names.map((name) => {
     const original = firstText(name);
     if (!original || original.length > 160) throw new HttpError(400, "附件檔名不可空白或超過 160 個字元。", "FILE_NAME_INVALID");
@@ -426,6 +429,7 @@ export function verifyChunkTicket(config, value, expected, authorization, now = 
   if (ticket.version !== 2 || ticket.purpose !== "nas-chunks" || !Number.isFinite(ticket.expires_at) || ticket.expires_at <= now || ticket.expires_at - ticket.issued_at !== CHUNK_TICKET_TTL_MS || ticket.issued_at > now + 30000) throw ticketError();
   if (ticket.authorization_hash !== authorizationHash(authorization) || ticket.actor !== expected.actor) throw ticketError();
   for (const key of ["customer_id", "contract_service_type_id", "project_id"]) if (ticket[key] !== expected[key]) throw ticketError();
+  if((ticket.work_log_id||"")!==(expected.work_log_id||""))throw ticketError();
   if (!/^[a-f0-9-]{36}$/.test(ticket.nonce) || !/^[a-f0-9]{64}$/.test(ticket.sha256) || !Number.isInteger(ticket.size) || ticket.size < 1 || ticket.size > MAX_FILE_BYTES) throw ticketError();
   if (ticket.tail_bytes !== undefined && (!Number.isInteger(ticket.tail_bytes) || ticket.tail_bytes < 0 || ticket.tail_bytes > Math.min(ticket.size, INLINE_TAIL_BYTES))) throw ticketError();
   if (ticket.existing_folder_depth !== undefined && (!Number.isInteger(ticket.existing_folder_depth) || ticket.existing_folder_depth < 0 || ticket.existing_folder_depth > 4)) throw ticketError();
@@ -435,9 +439,9 @@ export function verifyChunkTicket(config, value, expected, authorization, now = 
   return ticket;
 }
 
-async function handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, requestId, authMs, formMs }) {
+async function handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, requestId, authMs, formMs }) {
   const startedAt = Date.now();
-  const expected = { actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId };
+  const expected = { actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}) };
   if (mode === "begin_file") {
     const name = firstText(form.get("file_name")), size = Number(form.get("file_size")), sha256 = firstText(form.get("sha256"));
     validateUploadFiles([{ name, size }]);
@@ -481,7 +485,8 @@ async function handleChunkUpload({ config, form, mode, user, authorization, cust
   if (tailBytes && (!tail || typeof tail.arrayBuffer !== "function" || tail.size !== tailBytes)) throw new HttpError(409, "照片最後一段不完整，請重新上傳。", "CHUNK_TAIL_INVALID");
   if (!tailBytes && tail) throw new HttpError(400, "照片分段格式不正確。", "CHUNK_TAIL_INVALID");
   const contextStartedAt = Date.now();
-  await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization);
+  const finalContext=await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId);
+  if(ticket.conflict==="overwrite"&&finalContext.protectedPaths.includes(`${ticket.target_folder}/${safePart(ticket.name)}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
   const contextMs = elapsedMs(contextStartedAt), readStartedAt = Date.now();
   const parts = await mapWithConcurrency(Array.from({ length: count }, (_, i) => i), NAS_CONCURRENCY, async index => {
     const response = await davRequest(config, "GET", `${stage}/${index}.part`);
@@ -534,12 +539,14 @@ export default {
       const customerId = firstText(form.get("customer_id"));
       const contractServiceTypeId = firstText(form.get("contract_service_type_id"));
       const projectId = firstText(form.get("project_id"));
+      const workLogId=firstText(form.get("work_log_id"));
+      const maxFiles=workLogId?30:MAX_FILES;
       const description = firstText(form.get("description")).slice(0, 1000);
       const assetType = firstText(form.get("attachment_type")) === "document" ? "document" : "photo";
       if (!customerId || !contractServiceTypeId || !projectId) throw new HttpError(400, "缺少客戶、承攬內容或專案資料；附件未上傳。", "UPLOAD_CONTEXT_REQUIRED");
 
       if (["begin_file", "upload_chunk", "complete_file", "cancel_file"].includes(mode)) {
-        return await handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, requestId, authMs, formMs });
+        return await handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, requestId, authMs, formMs });
       }
 
       if (mode === "preflight" || mode === "prepare_batch") {
@@ -548,27 +555,27 @@ export default {
         if (mode === "prepare_batch") {
           try { metadata = JSON.parse(firstText(form.get("file_metadata")) || "[]"); } catch { throw new HttpError(400, "附件檔案清單格式不正確。", "FILE_NAMES_INVALID"); }
           if (!Array.isArray(metadata) || metadata.some(file => !file || typeof file.name !== "string" || !Number.isInteger(file.size) || file.size < 1)) throw new HttpError(400, "附件檔案清單格式不正確。", "FILE_NAMES_INVALID");
-          validateUploadFiles(metadata);fileNames = metadata.map(file => file.name);
+          validateUploadFiles(metadata,maxFiles,workLogId?30*MAX_FILE_BYTES:MAX_TOTAL_BYTES);fileNames = metadata.map(file => file.name);
         } else {
           try { fileNames = JSON.parse(firstText(form.get("file_names")) || "[]"); } catch { throw new HttpError(400, "附件檔名清單格式不正確。", "FILE_NAMES_INVALID"); }
         }
-        validateFileNames(fileNames);
+        validateFileNames(fileNames,maxFiles);
         const rootStartedAt = Date.now();
         await requireRoot(config);
         const rootMs = elapsedMs(rootStartedAt), contextStartedAt = Date.now();
-        const { customerName, contractServiceName, projectName, logDate } = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization);
+        const { customerName, contractServiceName, projectName, logDate } = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId);
         const contextMs = elapsedMs(contextStartedAt), folderParts = [customerName, contractServiceName, projectName, logDate];
         const targetFolder = `${config.root}/${customerName}/${contractServiceName}/${projectName}/${logDate}`, nasPreflightStartedAt = Date.now();
         const [folders, files] = await Promise.all([
           inspectNestedFolders(config, folderParts),
-          preflightFiles(config, targetFolder, fileNames)
+          preflightFiles(config, targetFolder, fileNames, davRequest, maxFiles)
         ]);
         const existingFolderDepth = folders.findIndex((folder) => !folder.exists);
         if (mode === "prepare_batch") {
           await ensureNestedFolder(config, folderParts, davRequest, existingFolderDepth < 0 ? folderParts.length : existingFolderDepth);
           const now = Date.now();
           const fileTickets = files.map((file, index) => createPreflightTicket(config, {
-            actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId,
+            actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}),
             file_names: [file.name], expected_size: metadata[index].size, batch_prepared: true,
             folder_parts: folderParts, target_folder: targetFolder, existing_folder_depth: folderParts.length
           }, authorization, now));
@@ -581,6 +588,7 @@ export default {
           customer_id: customerId,
           contract_service_type_id: contractServiceTypeId,
           project_id: projectId,
+          ...(workLogId?{work_log_id:workLogId}:{}),
           file_names: files.map((file) => file.name),
           folder_parts: folderParts,
           target_folder: targetFolder,
@@ -598,18 +606,19 @@ export default {
       try { conflictActions = JSON.parse(firstText(form.get("conflict_actions")) || "{}"); } catch { throw new HttpError(400, "同名檔案處理選項格式不正確。", "CONFLICT_ACTION_INVALID"); }
       if (!conflictActions || typeof conflictActions !== "object" || Array.isArray(conflictActions)) throw new HttpError(400, "同名檔案處理選項格式不正確。", "CONFLICT_ACTION_INVALID");
       const ticketStartedAt = Date.now(), preflightTicket = firstText(form.get("preflight_ticket"));
-      let folderParts, targetFolder, existingFolderDepth = 0, fallbackValidationMs = 0, ticketReused = false;
+      let folderParts, targetFolder, existingFolderDepth = 0, fallbackValidationMs = 0, ticketReused = false, protectedPaths=[];
       if (preflightTicket) {
         const ticket = verifyPreflightTicket(config, preflightTicket, {
           actor: user.username,
           customer_id: customerId,
           contract_service_type_id: contractServiceTypeId,
           project_id: projectId,
+          ...(workLogId?{work_log_id:workLogId}:{}),
           file_names: files.map((file) => file.name)
         }, authorization);
         if (ticket.expected_size !== undefined && (files.length !== 1 || ticket.expected_size !== files[0].size)) throw ticketError();
         // Tickets share folder preparation, while final writes still check current business access.
-        if (ticket.batch_prepared) await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization);
+        if (ticket.batch_prepared||workLogId) protectedPaths=(await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId)).protectedPaths;
         folderParts = ticket.folder_parts;
         targetFolder = ticket.target_folder;
         existingFolderDepth = ticket.existing_folder_depth;
@@ -617,7 +626,7 @@ export default {
       } else {
         const fallbackStartedAt = Date.now();
         await requireRoot(config);
-        const context = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization);
+        const context = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId);protectedPaths=context.protectedPaths;
         folderParts = [context.customerName, context.contractServiceName, context.projectName, context.logDate];
         targetFolder = `${config.root}/${folderParts.join("/")}`;
         fallbackValidationMs = elapsedMs(fallbackStartedAt);
@@ -630,6 +639,7 @@ export default {
       const uploadStartedAt = Date.now();
       const outcomes = await mapWithConcurrency(files, NAS_CONCURRENCY, async (file, index) => {
         try {
+          if((conflictActions[safePart(file.name)]||conflictActions[file.name])==="overwrite"&&protectedPaths.includes(`${targetFolder}/${safePart(file.name)}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
           const result = await uploadFile(config, targetFolder, file, firstText(conflictActions[safePart(file.name, "附件")]) || firstText(conflictActions[file.name]) || "new");
           if (result.skipped) return { failed: { name: safePart(file.name, `附件 ${index + 1}`), error: result.reason, skipped: true } };
           const uploaded = {

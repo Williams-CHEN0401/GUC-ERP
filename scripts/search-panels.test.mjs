@@ -32,7 +32,7 @@ test('reset dispatches original events in dependency order and does not change d
 });
 test('all list filters share a presentation-only module; form pickers remain out of scope',()=>{
   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
-  assert.equal((html.match(/class="filterbar/g)||[]).length,14);
+  assert.equal((html.match(/class="filterbar/g)||[]).length,15);
   assert.equal(context.GucSearchPanels.selector,'.content .filterbar, .content .report-selector, .content #auditFilters');
   assert.ok(html.indexOf('/search-panels.js')>html.indexOf('/form-reference-sync.js'));
   assert.match(html,/href="\/search-panels.css"/);

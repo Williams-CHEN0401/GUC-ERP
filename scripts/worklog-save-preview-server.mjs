@@ -18,7 +18,7 @@ import {formSyncDatabase,syncOperatorId} from './form-sync-fixture.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 export async function createWorklogTestServer({workflow=false,titlePicker=false,contractCatalog=false,assignments=false,dailyTypes=false,independent=false,formSync=false,customerCategories=[{id:'school',code:'school',name:'學校機關'}]}={}){
  if(formSync)independent=true;
- const failures=[];
+ const failures=[],additionalRpcs=[];
  const db=await (formSync?formSyncDatabase():independent?independentDatabase():dailyTypes?dailyTypeDatabase():assignments?assignmentDatabase():contractCatalog?contractCatalogDatabase():titlePicker?titlePickerDatabase():departmentDatabase()),calls=[];
  if(independent)await db.exec(await sql('20260923004454_fix_project_soft_delete_audit.sql'));
  if(workflow){await db.exec('drop trigger project_sync on projects');await db.exec(await sql('20260915150407_shared_work_types_and_worklog_rename.sql'));}
@@ -32,11 +32,11 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
  context.currentUser=async request=>requestUser(request);
  if(assignments||formSync)context.db=async(path,init={})=>{if(init.method&&init.method!=='GET')throw Error('Isolated REST writes denied');return new Response(JSON.stringify(await restRead(db,path)),{headers:{'Content-Type':'application/json'}});};
  context.rpc=async(name,args)=>{
-  if(!['upsert_work_log_sections_v1','upsert_customer_project_work_log_department_v1','upsert_erp_project_department_v1','upsert_repair_item_department_v1','manage_customer_department_v1','create_stock_receipts_department_v1','update_stock_receipt_department_v1',...(formSync?['create_product_category_v1','create_inventory_items_batch_v1','close_work_content_from_log_v1']:[]),...(independent?['update_pickup_record','update_pickup_record_v2','create_pickup_records_batch_v2','delete_project_record']:[]),...(contractCatalog?['manage_contract_service_type_v1','update_customer_with_contracts_v1']:[]),...(assignments?['create_work_assignment_v1','create_work_assignment_with_project_v1','complete_work_assignment_v1','acknowledge_work_assignment_v1','work_log_scope_v1']:[])].includes(name))throw Error('Test denies unrelated RPC: '+name);
+  if(![...additionalRpcs,'upsert_work_log_sections_v1','upsert_customer_project_work_log_department_v1','upsert_erp_project_department_v1','upsert_repair_item_department_v1','manage_customer_department_v1','create_stock_receipts_department_v1','update_stock_receipt_department_v1',...(formSync?['create_product_category_v1','create_inventory_items_batch_v1','close_work_content_from_log_v1']:[]),...(independent?['update_pickup_record','update_pickup_record_v2','create_pickup_records_batch_v2','delete_project_record']:[]),...(contractCatalog?['manage_contract_service_type_v1','update_customer_with_contracts_v1']:[]),...(assignments?['create_work_assignment_v1','create_work_assignment_with_project_v1','complete_work_assignment_v1','acknowledge_work_assignment_v1','work_log_scope_v1']:[])].includes(name))throw Error('Test denies unrelated RPC: '+name);
   const payload=Object.fromEntries(Object.entries(args).map(([k,v])=>[k.slice(2),v]));
   const keys=Object.keys(args);if(keys.some(key=>!/^p_[a-z_]+$/.test(key)))throw Error('Invalid test argument');
   await db.exec('set role service_role');
-  let result;try{result=(await db.query('select to_jsonb('+name+'('+keys.map((key,i)=>key+'=>$'+(i+1)).join(',')+')) result',keys.map(key=>Array.isArray(args[key])&&['p_maintenance_events','p_rows','p_customer_departments'].includes(key)?JSON.stringify(args[key]):args[key]))).rows[0].result;}catch(error){failures.push({name,message:error.message});throw error;}finally{await db.exec('reset role');}
+  let result;try{result=(await db.query('select to_jsonb('+name+'('+keys.map((key,i)=>key+'=>$'+(i+1)).join(',')+')) result',keys.map(key=>Array.isArray(args[key])&&['p_maintenance_events','p_rows','p_existing','p_customer_departments'].includes(key)?JSON.stringify(args[key]):args[key]))).rows[0].result;}catch(error){failures.push({name,message:error.message});throw error;}finally{await db.exec('reset role');}
   calls.push({name,payload,result});return result;
  };
  // PostgREST emits SQL date columns as YYYY-MM-DD; PGlite returns JS Dates.
@@ -63,7 +63,7 @@ const snapshot=async (scope,user=currentUser)=>{const repairLinks=new Set((await
    res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':file.endsWith('.svg')?'image/svg+xml':'text/html');res.end(content);
   }catch(e){res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:e.message}));}
  });
- return{server,db,calls,failures,snapshot,...(assignments||independent?{currentUser}: {})};
+ return{server,db,calls,failures,snapshot,customerCategories,gatewayHandler:request=>handler(request),gatewayContext:context,additionalRpcs,...(assignments||independent?{currentUser}: {})};
 }
 if(process.argv[1]?.endsWith('worklog-save-preview-server.mjs')){
  const {server}=await createWorklogTestServer(),port=Number(process.env.WORKLOG_TEST_PORT||4199);server.listen(port,'127.0.0.1',()=>console.log('http://127.0.0.1:'+port+'/?page=worklogs — cross-system isolated DB only'));

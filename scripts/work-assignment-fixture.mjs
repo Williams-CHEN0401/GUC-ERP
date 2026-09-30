@@ -40,7 +40,7 @@ export async function restRead(db,path){
   if(['select','order','limit','offset'].includes(key))continue;
   const column=identifier(key);
   if(value==='is.null')where.push(column+' is null');
-  else if(value.startsWith('eq.'))where.push(column+' = '+bind(value.slice(3)));
+  else if(value.startsWith('eq.'))where.push(column+' = '+bind(['is_active','can_view','is_assignee'].includes(key)&&['true','false'].includes(value.slice(3))?value.slice(3)==='true':value.slice(3)));
   else if(value.startsWith('neq.'))where.push(column+' <> '+bind(value.slice(4)));
   else if(/^in\.\(.*\)$/.test(value))where.push(column+' in ('+value.slice(4,-1).split(',').map(bind).join(',')+')');
   else throw Error('Unsupported isolated filter: '+value);

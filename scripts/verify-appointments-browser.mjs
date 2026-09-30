@@ -1,0 +1,80 @@
+import assert from 'node:assert/strict';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {ids} from './worklog-save-fixture.mjs';
+import {syncOperatorId} from './form-sync-fixture.mjs';
+import {extraIds} from './department-cross-system-fixture.mjs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const origin=process.env.TEST_ORIGIN||'http://127.0.0.1:4233',output=new URL('../tmp/appointments-browser/',import.meta.url);
+await mkdir(output,{recursive:true});
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const errors=[],external=[],results=[];
+try{
+  const page=await browser.newPage({viewport:{width:1440,height:1000}});
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin){external.push(url.origin);return route.abort();}if(url.pathname==='/api/nas')return route.fulfill({json:{available:false,message:'隔離環境'}});return route.continue();});
+  const goto=async(path)=>{await page.goto(origin+path);await page.waitForFunction(()=>state.currentUser);if(await page.locator('#systemChooser').evaluate(e=>e.classList.contains('open')))await page.locator('[data-system-choice="erp"]').click();await page.waitForFunction(()=>scopeRequests.size===0);};
+  await goto('/?page=appointments');
+  console.log('INITIAL',await page.locator('#loadState').count(),await page.locator('#appointmentTable').innerText(),errors);
+  assert.ok((await page.locator('body').innerText()).length>100);assert.deepEqual(errors,[]);
+  await page.screenshot({path:fileURLToPath(new URL('initial.png',output))});
+  const form=page.locator('#modalForm');
+  const save=async()=>{assert.equal(await form.evaluate(e=>e.checkValidity()),true);const response=page.waitForResponse(r=>r.url().endsWith('/api/inventory')&&r.request().method()==='POST');await form.locator('button[type="submit"]').click();const r=await response;assert.equal(r.status(),201,await r.text());await page.locator('#simpleModal.open').waitFor({state:'hidden'});};
+  const runId=Date.now(),created=[];
+  for(const [type,label]of [['repair','客戶報修'],['site_visit','預約場刊'],['quotation','索取報價']]){
+    await page.locator('[data-open="appointmentModal"]').click();
+    await form.locator('[name="customerCategory"]').selectOption('school');await form.locator('[name="customerId"]').selectOption(ids.customer);await form.locator('[name="departmentId"]').selectOption(ids.department);
+    await form.locator('[name="appointmentType"]').selectOption(type);await form.locator('[name="assigneeUserId"]').selectOption(syncOperatorId);
+    await form.locator('[name="appointmentDate"]').fill('2026-10-01');await form.locator('[name="instructions"]').fill(label+' E2E '+runId);
+    await form.locator('[name="contactName"]').fill('隔離聯絡人');await form.locator('[name="contactPhone"]').fill('07-0000000');await save();
+    const row=await page.evaluate(({type,runId})=>state.appointments.find(r=>r.appointment_type===type&&r.instructions.endsWith(runId)),{type,runId:String(runId)});assert.ok(row);created.push(row);
+  }
+  results.push('三種類型新增並重新讀取');
+  await page.locator('#appointments .search-panel-trigger').click();await page.locator('#appointmentSearch').fill(String(runId));
+  await page.locator('#appointmentFilterType').selectOption('quotation');assert.equal(await page.locator('[data-appointment-row]').count(),1);assert.match(await page.locator('#appointmentTable').innerText(),/索取報價/);
+  await page.locator('#appointmentFilterStatus').selectOption('completed');assert.equal(await page.locator('[data-appointment-row]').count(),0);
+  await page.locator('#appointmentFilterStatus').selectOption('pending');await page.locator('#appointmentFilterType').selectOption('');
+  await page.locator('#appointmentFilterFrom').fill('2026-10-02');assert.equal(await page.locator('[data-appointment-row]').count(),0);await page.locator('#appointmentFilterFrom').fill('');
+  await page.locator('#appointmentFilterCategory').selectOption('school');await page.locator('#appointmentFilterCustomer').selectOption(ids.customer);await page.locator('#appointmentFilterDepartment').selectOption(ids.department);assert.equal(await page.locator('[data-appointment-row]').count(),3);
+  await page.keyboard.press('Escape');await page.locator('th[data-table-sort="appointment"][data-key="typeLabel"]').click();assert.equal(await page.evaluate(()=>tableState.appointment.sortKey),'typeLabel');
+  results.push('預約類型、狀態、日期與客戶科室實際篩選；點標題排序');
+  const editRow=page.locator(`[data-appointment-row="${created[0].id}"]`);
+  assert.equal(await editRow.locator('[data-appointment-open]').count(),0);await editRow.locator('td').first().click();assert.equal(await page.locator('#simpleModal.open').count(),0);
+  page.once('dialog',dialog=>dialog.dismiss());await editRow.locator('[data-appointment-cancel]').click();assert.equal(await page.locator('#simpleModal.open').count(),0);
+  await editRow.locator('td').first().dblclick();await form.locator('[name="appointmentStatus"]').selectOption('in_progress');await form.locator('[name="appointmentNotes"]').fill('修改備註');await save();
+  results.push('管理員單擊不開表單、雙擊修改並重讀；取消按鈕不誤開修改');
+  await goto('/?page=dashboard');assert.equal(await page.locator(`[data-complete-assignment="${created[0].id}"]`).count(),0);results.push('非責任人 Dashboard 不見他人待辦');
+  await goto('/?page=dashboard&test_user=B');await page.locator(`[data-complete-assignment="${created[0].id}"]`).waitFor();
+  await page.locator(`[data-complete-assignment="${created[0].id}"]`).click();
+  console.log('DIALOG',await page.locator('#assignmentCompletionDialog').innerText());
+  await page.getByRole('button',{name:'確認完成',exact:true}).click();
+  await page.waitForFunction(id=>!state.dashboard.assignments.pending.some(r=>r.id===id),created[0].id);
+  await page.locator('#assignmentCompletionDialog').getByRole('button',{name:'稍後',exact:false}).click();
+  await page.locator('a[data-page="appointments"]').click();await page.waitForFunction(()=>scopeRequests.size===0);
+  assert.equal(await page.evaluate(id=>state.appointments.find(r=>r.id===id)?.status,created[0].id),'completed');results.push('責任人完成後預約及待辦共用 completed');
+  assert.equal(await page.locator(`[data-appointment-row="${created[0].id}"]`).getAttribute('data-row-editor'),null);
+  await page.locator(`[data-appointment-open="${created[0].id}"]`).click();assert.equal(await form.locator('[name="instructions"]').isDisabled(),true);assert.equal(await form.locator('button[type="submit"]').count(),0);results.push('一般使用者保留檢視入口，不能修改');
+  await goto('/?page=appointments');await page.locator(`[data-appointment-row="${created[0].id}"]`).press('Enter');await form.locator('[name="appointmentStatus"]').selectOption('pending');await save();results.push('Enter 沿用雙擊相同編輯入口');
+  await goto('/?page=dashboard&test_user=B');await page.locator(`[data-complete-assignment="${created[0].id}"]`).waitFor();results.push('預約反向重開，Dashboard 回復待辦');
+  await goto('/?page=crm');await page.locator('#crm [data-tab="projects"]').click();await page.locator('#projectListPane .search-panel-trigger').click();
+  await page.locator('#projectFilterCategory').selectOption('school');await page.locator('#projectFilterCustomer').selectOption(ids.customer);await page.locator('#projectFilterDepartment').selectOption(ids.department);
+  assert.equal(await page.locator(`#projectFilterDepartment option[value="${extraIds.otherDepartment}"]`).count(),0);
+  await page.locator('#projectFilterType').selectOption('repair');
+  const expected=await page.evaluate(()=>state.projects.filter(projectFilterMatches).length);assert.ok(expected>0);assert.equal(await page.locator('#projectTable [data-row-id]').count(),Math.min(10,expected));
+  await page.locator('#projectFilterType').selectOption('delivery');assert.equal(await page.locator('#projectTable [data-row-id]').count(),0);results.push('工作內容類型實際篩選正確');
+  await page.locator('#projectFilterCategory').selectOption('government');assert.equal(await page.locator('#projectFilterCustomer').inputValue(),'');assert.equal(await page.locator('#projectFilterDepartment').inputValue(),'');results.push('客戶分類／客戶／科室聯動清除');
+  await page.keyboard.press('Escape');await goto('/?page=appointments');
+  for(let index=0;index<10;index++){await page.evaluate(async({id,department,assignee,index,runId})=>{await apiRequest({operation:'upsert_customer_appointment',payload:{id:null,row_version:null,customer_id:id,department_id:department,appointment_type:'repair',appointment_date:'2026-10-02',contact_name:'',contact_phone:'',instructions:'分頁測試 '+runId+' '+index,assignee_user_id:assignee,status:'pending',notes:''}});},{id:ids.customer,department:ids.department,assignee:syncOperatorId,index,runId});}
+  await goto('/?page=appointments');assert.equal(await page.locator('[data-appointment-row]').count(),10);const firstId=await page.locator('[data-appointment-row]').first().getAttribute('data-appointment-row');
+  await page.locator('[data-page-move="appointment"][data-to="next"]').click();assert.notEqual(await page.locator('[data-appointment-row]').first().getAttribute('data-appointment-row'),firstId);assert.equal(await page.evaluate(()=>tableState.appointment.page),2);results.push('預約列表跨頁與每頁 10 筆');
+  await page.setViewportSize({width:390,height:844});await goto('/?page=appointments');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:fileURLToPath(new URL('mobile.png',output))});
+  const touchContext=await browser.newContext({viewport:{width:390,height:844},hasTouch:true});
+  try{
+    const touch=await touchContext.newPage();touch.on('pageerror',e=>errors.push(e.message));await touch.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin){external.push(url.origin);return route.abort();}if(url.pathname==='/api/nas')return route.fulfill({json:{available:false}});return route.continue();});
+    await touch.goto(origin+'/?page=appointments');await touch.waitForFunction(()=>state.currentUser);if(await touch.locator('#systemChooser').evaluate(e=>e.classList.contains('open')))await touch.locator('[data-system-choice="erp"]').click();await touch.waitForFunction(()=>scopeRequests.size===0);
+    await touch.locator('[data-appointment-row] td').first().tap();await touch.locator('#simpleModal.open').waitFor();assert.equal(await touch.locator('#modalTitle').innerText(),'修改客戶預約事項');
+    await touch.screenshot({path:fileURLToPath(new URL('mobile-edit.png',output))});results.push('390px 觸控模擬：點一下開啟修改');
+  }finally{await touchContext.close();}
+  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await writeFile(new URL('results.json',output),JSON.stringify({results,errors,external},null,2));console.log('PASS',results);
+}finally{await browser.close();}

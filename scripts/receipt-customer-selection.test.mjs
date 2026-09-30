@@ -81,7 +81,7 @@ test("開啟進貨表單會先確認交易資料並初始化客戶清單", () =>
   assert.match(appSource, /async function openReceiptModal\(id=""\).*loadScope\("transactions",\{silent:true\}\)/s);
   assert.match(appSource, /if\(type==="receiptModal"\)refreshReceiptCustomerPicker\(\)/);
   assert.match(appSource, /open\.dataset\.open==="receiptModal"\)await openReceiptModal\(\)/);
-  assert.match(appSource, /customer_ids=\[\.\.\.new FormData\(form\)\.getAll\("receiptCustomerId"\)\]/);
+  assert.match(readFileSync(new URL("../receipt-documents.js",import.meta.url),"utf8"), /customer_ids:\[\.\.\.new FormData\(form\)\.getAll\('receiptCustomerId'\)\]/);
   assert.match(gatewaySource, /transactions: \["customers", "projects", "items", "pickups", "receipts", "suppliers", "categories"\]/);
 });
 

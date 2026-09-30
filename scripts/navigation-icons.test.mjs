@@ -18,7 +18,7 @@ test("ERP primary pages use the supplied local navigation images", () => {
     assert.equal(png.readUInt32BE(20), 144);
     assert.ok(png.length < 50000, `${page} should be optimized for the sidebar`);
   }
-  assert.equal((html.match(/class="nav-icon-shell"/g) || []).length, pages.length);
+  assert.equal((html.match(/class="nav-icon-shell"/g) || []).length, pages.length+1);
   assert.match(styles, /\.nav-item\.active \.nav-icon-shell/);
   assert.match(styles, /\.nav-item:focus-visible/);
 });
