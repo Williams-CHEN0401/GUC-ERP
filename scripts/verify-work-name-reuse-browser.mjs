@@ -1,0 +1,51 @@
+// Real ERP UI -> real Gateway -> SQL in ephemeral PGlite. Blocks all external URLs.
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {workNameReuseServer} from './work-name-reuse-fixture.mjs';
+import {ids} from './worklog-save-fixture.mjs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const {db,server,failures}=await workNameReuseServer();
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const origin='http://127.0.0.1:'+server.address().port,output=new URL('../tmp/work-name-reuse-browser/',import.meta.url);
+let browser;
+try{
+ await mkdir(output,{recursive:true});
+ browser=await chromium.launch({channel:'chrome',headless:true});
+ const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+ page.on('dialog',d=>d.message()==='確定刪除這筆工作內容資料？'?d.accept():d.dismiss());
+ await page.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin)return route.abort();if(url.pathname==='/api/nas')return route.fulfill({json:{available:false}});return route.continue();});
+ await page.goto(origin+'/?page=worklogs');await page.waitForFunction(()=>state.currentUser);
+ if(await page.locator('#systemChooser').evaluate(e=>e.classList.contains('open')))await page.locator('[data-system-choice="erp"]').click();
+ await page.waitForFunction(()=>scopeRequests.size===0);
+ const form=page.locator('#modalForm');
+ const create=async name=>{
+  await page.locator('a[data-page="worklogs"]').click();await page.waitForFunction(()=>scopeRequests.size===0);
+  await page.locator('[data-open="workLogModal"]').click();
+  await form.locator('[name="customerCategory"]').selectOption('school');await form.locator('[name="customerId"]').selectOption(ids.customer);await form.locator('[name="departmentId"]').selectOption(ids.department);
+  await form.locator('[name="projectName"]').fill(name);await form.locator('[name="logDate"]').fill('2026-09-30');await form.locator('[name="workType"]').selectOption('維修紀錄');
+  await form.locator('[name="workerIds"]').first().check();
+  await form.locator('[name="eventServiceId"]').selectOption(ids.service);await form.locator('[name="eventCause"]').fill('隔離驗證讀卡機異常');await form.locator('[name="eventHandlingProcess"]').fill('重新測試；驗證刪除後名稱可重新使用');
+  assert.equal(await form.evaluate(e=>e.checkValidity()),true);
+  const wait=page.waitForResponse(r=>r.url().endsWith('/api/inventory')&&r.request().method()==='POST');
+  await form.locator('button[type="submit"]').click();const response=await wait;assert.equal(response.status(),201,await response.text());await page.locator('#simpleModal.open').waitFor({state:'hidden'});
+  return(await response.json()).result;
+ };
+ const base='第四棟&藝能館讀卡機查修';
+ const first=await create(base),dated=await create(base);
+ assert.equal(first.project.name,base);assert.equal(dated.project.name,base+'260930');
+ await page.locator('a[data-page="crm"]').click();await page.waitForFunction(()=>scopeRequests.size===0);
+ await page.locator('[data-tabs="crm"] [data-tab="projects"]').click();
+ const remove=page.waitForResponse(r=>r.url().endsWith('/api/inventory')&&r.request().method()==='POST');
+ await page.locator(`[data-delete-project="${dated.project.id}"]`).click();const removed=await remove;assert.equal(removed.status(),201,await removed.text());await page.locator(`[data-delete-project="${dated.project.id}"]`).waitFor({state:'hidden'});
+ const replacement=await create(base);assert.equal(replacement.project.name,dated.project.name);assert.notEqual(replacement.project.id,dated.project.id);
+ assert.equal((await db.query('select project_id from site_work_logs where id=$1',[dated.work_log.id])).rows[0].project_id,dated.project.id);
+ await page.reload();await page.waitForFunction(()=>scopeRequests.size===0&&state.currentUser);
+ await page.locator(`[data-work-log-row="${replacement.work_log.id}"]`).dblclick();assert.equal(await form.locator('[name="projectName"]').inputValue(),base+'260930');
+ await page.screenshot({path:fileURLToPath(new URL('recreated-name.png',output)),fullPage:true});await page.locator('#simpleModal button[data-close]').click();
+ const duplicate=await create(base);assert.equal(duplicate.project.name,base+'260930-2');
+ assert.ok((await db.query('select deleted_at from projects where id=$1',[dated.project.id])).rows[0].deleted_at);
+ assert.deepEqual(failures,[]);assert.deepEqual(errors,[]);
+ console.log('PASS UI: create base + dated repair -> delete dated work in CRM -> recreate same dated name (new ID) -> reload/edit unchanged name; active duplicate still -2; historical log retains old ID; no console errors.');
+}finally{await browser?.close();await new Promise(resolve=>server.close(resolve));await db.close();}
