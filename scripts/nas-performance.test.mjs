@@ -12,7 +12,7 @@ test('batch uploads reduce NAS bytes, share folder checks and bound parallel tra
  Object.assign(process.env,{VERCEL_ENV:'production',NAS_WEBDAV_URL:'https://nas.fixture.test',NAS_WEBDAV_USERNAME:'fixture',NAS_WEBDAV_PASSWORD:'fixture-only',NAS_WEBDAV_ROOT:'/GUC-ERP'});
  const sandbox=vm.createContext({FormData,File,Blob,crypto,Uint8Array});vm.runInContext(readFileSync(new URL('../attachment-upload.js',import.meta.url),'utf8'),sandbox);
  const fixture=createNasMemoryFixture();globalThis.fetch=fixture.fetch;
- const modes=[],bodies=[],registered=[];let inFlight=0,peak=0,expired=false,alter;
+ const modes=[],bodies=[],registered=[];let inFlight=0,peak=0,expired=false,alter,synchronizeFirstWave;
  const request=async(body)=>{
   if(alter)await alter(body);
   modes.push(body.get('mode'));bodies.push(body);
@@ -20,6 +20,7 @@ test('batch uploads reduce NAS bytes, share folder checks and bound parallel tra
   assert.ok((await req.clone().arrayBuffer()).byteLength<4_500_000);
   inFlight++;peak=Math.max(peak,inFlight);
   try{
+   if(synchronizeFirstWave&&['begin_file','upload'].includes(body.get('mode')))await synchronizeFirstWave();
    await new Promise(resolve=>setTimeout(resolve,2));
    const response=await nasApi.fetch(req),data=await response.json();
    if(!response.ok){const error=new Error(data.error);error.status=response.status;throw error;}
@@ -33,7 +34,16 @@ test('batch uploads reduce NAS bytes, share folder checks and bound parallel tra
   for(let round=0;round<2;round++){
    const files=[new File([Buffer.alloc(6*1024*1024,11)],`large-${round}.heic`),new File([Buffer.alloc(4*1024*1024,22)],`direct-${round}.jpg`),new File([Buffer.alloc(5*1024*1024,33)],`photo-${round}.jpg`)];
    modes.length=0;fixture.calls.length=0;fixture.gatewayCalls.length=0;peak=0;
-   const result=await sandbox.transferNasFiles({...options,files});
+   // Hashing and multipart serialization finish at different speeds on CI.
+   // Hold the first transfer from each worker until all three have arrived;
+   // keep the exact concurrency assertion without relying on a 2 ms overlap.
+   let arrivals=0,releaseWave,rejectWave;
+   const firstWave=new Promise((resolve,reject)=>{releaseWave=resolve;rejectWave=reject;});
+   const deadline=setTimeout(()=>rejectWave(new Error('Three upload workers did not reach the first-wave barrier')),5000);
+   synchronizeFirstWave=async()=>{if(++arrivals===3){synchronizeFirstWave=null;clearTimeout(deadline);releaseWave();}await firstWave;};
+   let result;
+   try{result=await sandbox.transferNasFiles({...options,files});}
+   finally{clearTimeout(deadline);synchronizeFirstWave=null;}
    assert.equal(result.failed.length,0);assert.equal(result.uploaded.length,3);assert.equal(peak,3);
    assert.equal(modes.filter(mode=>mode==='prepare_batch').length,1);assert.equal(modes.filter(mode=>mode==='preflight').length,0);
    assert.equal(fixture.gatewayCalls.filter(scope=>scope==='sites').length,0);
