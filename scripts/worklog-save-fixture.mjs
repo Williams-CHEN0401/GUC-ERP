@@ -13,8 +13,12 @@ export function definition(source,name){
  const tail=source.slice(start),body=/\bas\s+(\$[a-z_]*\$)/i.exec(tail),end=tail.indexOf(body[1],body.index+body[0].length);
  return tail.slice(0,tail.indexOf(';',end+body[1].length)+1).replace(/^create function/i,'create or replace function');
 }
+let isolatedDatabaseFactory;
+// Test-only injection. Concurrency harness supplies its own loopback database;
+// application code never imports this fixture or accepts a database URL here.
+export function useIsolatedDatabaseFactory(factory){isolatedDatabaseFactory=factory;}
 export async function worklogDatabase({fixed=true}={}){
- const {PGlite}=await import(process.env.PGLITE_MODULE||'@electric-sql/pglite'),db=new PGlite();
+ const db=isolatedDatabaseFactory?await isolatedDatabaseFactory():new (await import(process.env.PGLITE_MODULE||'@electric-sql/pglite')).PGlite();
  const previous=await readFile(new URL('./verify-customer-departments-db.mjs',import.meta.url),'utf8');
  const setup=previous.split('await db.exec(`')[1].split('`.replaceAll')[0];
  await db.exec(setup.replaceAll('language plpgsql as $$',()=> 'language plpgsql set search_path=public as $$'));

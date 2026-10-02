@@ -22,6 +22,10 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
  const db=await (formSync?formSyncDatabase():independent?independentDatabase():dailyTypes?dailyTypeDatabase():assignments?assignmentDatabase():contractCatalog?contractCatalogDatabase():titlePicker?titlePickerDatabase():departmentDatabase()),calls=[];
  if(independent)await db.exec(await sql('20260923004454_fix_project_soft_delete_audit.sql'));
  if(workflow){await db.exec('drop trigger project_sync on projects');await db.exec(await sql('20260915150407_shared_work_types_and_worklog_rename.sql'));}
+ // Old assignment-only fixtures predate the current Dashboard projection.
+ // These nullable columns model the already-released appointment schema; no
+ // application behavior or production privileges are changed by this adapter.
+ if(assignments&&!formSync)await db.exec('alter table work_assignments add column if not exists customer_id uuid references customers,add column if not exists appointment_type text,add column if not exists appointment_date date');
  let handler;
  const currentUser={id:ids.actor,username:'fixture-admin',role:'admin',display_name:'隔離測試員',is_active:true};
  const source=stripTypeScriptTypes((await readFile(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8')).replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'});
@@ -58,7 +62,7 @@ const snapshot=async (scope,user=currentUser)=>{const repairLinks=new Set((await
    const relative=decodeURIComponent(url.pathname==='/'?'/index.html':url.pathname),file=path.resolve(root,'.'+relative);
    if(!file.startsWith(root)||!(relative==='/index.html'||/^\/[\w-]+\.(js|css)$/.test(relative)||relative.startsWith('/assets/'))){res.writeHead(404);res.end();return;}
    let content=await readFile(file);
-   if(relative==='/app.js')content=content.toString().replace('const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST;','const PREVIEW_MODE = false; // Isolated local DB, never production').replace('儲存後會寫入正式資料庫並留下修改歷程','本機隔離資料庫：可測試新增與重新讀取，不影響正式資料');
+   if(relative==='/app.js')content=content.toString().replaceAll('正式系統','隔離測試系統').replaceAll('正式資料已載入','隔離資料已載入').replace('const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST;','const PREVIEW_MODE = false; // Isolated local DB, never production').replace('儲存後會寫入正式資料庫並留下修改歷程','本機隔離資料庫：可測試新增與重新讀取，不影響正式資料');
    if(relative==='/index.html')content=content.toString().replace('</body>','<div style="position:fixed;bottom:0;left:0;right:0;text-align:center;background:#fff3cd;z-index:99999;pointer-events:none;font-size:12px;line-height:1.3">隔離測試：國立高雄大學／應用數學系｜不寫入正式資料庫</div></body>');
    res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':file.endsWith('.svg')?'image/svg+xml':'text/html');res.end(content);
   }catch(e){res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:e.message}));}

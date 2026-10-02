@@ -7,17 +7,17 @@ function renderReceiptDocuments(){
     lines=receiptDocumentRows(id);const first=lines[0];
     const names=lines.map(line=>{const item=byId(state.inventory,line.itemId);return `${item?.code||''} ${item?.name||''} ${item?.brand||''} ${item?.model||''}`.trim();});
     return {id,date:first.date,supplier:byId(state.suppliers,first.supplierId)?.name||first.supplierName||'',
-      item:names.join('、'),itemNames:names,quantity:lines.length,
+      documentNo:first.documentNo||'',item:names.join('、'),itemNames:names,itemCount:new Set(lines.map(line=>line.itemId)).size,quantity:lines.reduce((sum,line)=>sum+line.quantity,0),
       customers:[...new Set(lines.flatMap(line=>line.customerIds||[]))].map(key=>byId(state.customers,key)?.name||'').join('、'),
       note:lines.map(line=>line.note).filter(Boolean).join('；')};
-  }).filter(row=>matches([row.date,row.supplier,row.item,row.customers,row.note],config.search));
+  }).filter(row=>matches([row.documentNo,row.date,row.supplier,row.item,row.customers,row.note],config.search)&&transactionDocumentFilter('receipt',row));
   const page=tablePage('receipt',sortRows(rows,config.sortKey||'date',config.direction||'desc'));
-  document.querySelector('#receiptTable').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes('receiptModal',row.id,canModule('purchases','UPDATE'))}><td>${esc(row.date)}</td><td>${esc(row.supplier)}</td><td>${row.itemNames.slice(0,3).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>3?`<small>另有 ${row.itemNames.length-3} 筆明細</small>`:''}</td><td>${row.quantity} 筆</td><td>${esc(row.customers)||'—'}</td><td>${esc(row.note)}</td><td class="actions">${canModule('purchases','DELETE')?`<button data-delete-receipt="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(7);
+  document.querySelector('#receiptTable').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes('receiptModal',row.id,canModule('purchases','UPDATE'))}><td>${esc(row.documentNo)||'舊單（未編號）'}</td><td>${esc(row.date)}</td><td>${esc(row.supplier)}</td><td>${row.itemNames.slice(0,2).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>2?`<small>另有 ${row.itemNames.length-2} 筆明細</small>`:''}</td><td>${row.itemCount} 種</td><td>${row.quantity}</td><td>${esc(row.customers)||'—'}</td><td>${esc(row.note)}</td><td class="actions">${canModule('purchases','DELETE')?`<button data-delete-receipt="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(9);
   renderPagination('receipt','receiptPagination',page.total);
 }
 function receiptDocumentFields(id){
   const row=receiptDocument(id)||{};
-  return inputField('date','進貨日期','date',true,row.date||today())+selectField('supplierId','供應商',state.suppliers.map(s=>[s.id,s.name]),row.supplierId)+
+  return documentNumberField(row.documentNo,id)+inputField('date','進貨日期','date',true,row.date||today())+selectField('supplierId','供應商',state.suppliers.map(s=>[s.id,s.name]),row.supplierId)+
     `<div class="batch-editor span-2"><div class="batch-editor-head"><div><b>進貨明細</b><small>整張進貨單一起儲存；每列可修改品項、數量及備註。</small></div>${canModule('purchases','CREATE')?'<button class="outline" type="button" data-add-transaction-row="receipt">＋ 新增一列</button>':''}</div><div id="transactionBatchRows" class="transaction-batch receipt-batch"></div></div>`+
     receiptCustomerPicker(row.customerIds||[])+submitField(id?'儲存整張進貨單':'建立進貨單');
 }
@@ -27,8 +27,7 @@ function initializeReceiptDocument(id){
   form._receiptDocument={id:id||uid(),existing:lines.map(row=>({id:row.id,row_version:row.rowVersion}))};
   for(const row of lines){addTransactionBatchRow('receipt',{...row,categoryId:byId(state.inventory,row.itemId)?.categoryId||''});
     const element=form.querySelector('#transactionBatchRows').lastElementChild;element.dataset.receiptId=row.id;
-    // Existing line deletion remains an explicit whole-document action, never an implicit save side effect.
-    element.querySelector('[data-remove-batch-row]').hidden=true;
+    element.querySelector('[data-remove-batch-row]').hidden=!canModule('purchases','DELETE');
   }
   if(!lines.length)addTransactionBatchRow('receipt');
 }
@@ -41,6 +40,52 @@ async function saveReceiptDocument(form,id,data){
   },id?'整張進貨單已修改':'進貨單已建立');
 }
 function previewReceiptDocument(payload){
+  const previous=receiptDocumentRows(payload.document_id),number=previous[0]?.documentNo||previewDocumentNumber('receipt',payload.supplier_id,payload.receipt_date);
+  state.receipts=state.receipts.filter(row=>(row.documentId||row.id)!==payload.document_id||payload.rows.some(line=>line.id===row.id));
   payload.rows.forEach((row,index)=>{let existing=byId(state.receipts,row.id);if(!existing){existing={id:uid(),rowVersion:0};state.receipts.unshift(existing);}
-    Object.assign(existing,{documentId:payload.document_id,lineNo:index+1,date:payload.receipt_date,supplierId:payload.supplier_id,itemId:row.inventory_item_id,quantity:row.quantity,note:row.note||'',customerIds:payload.customer_ids,customerDepartments:payload.customer_departments,rowVersion:existing.rowVersion+1});});
+    Object.assign(existing,{documentId:payload.document_id,documentNo:number,lineNo:index+1,date:payload.receipt_date,supplierId:payload.supplier_id,itemId:row.inventory_item_id,quantity:row.quantity,note:row.note||'',customerIds:payload.customer_ids,customerDepartments:payload.customer_departments,rowVersion:existing.rowVersion+1});});
+}
+
+function documentNumberField(number,id){return `<label class="span-2">單號<output>${esc(number)||(id?'舊單（未編號）':'儲存後依實際日期產生')}</output></label>`;}
+function pickupDocumentRows(id){return state.pickups.filter(row=>(row.documentId||row.id)===id).sort((a,b)=>(a.requestRow||0)-(b.requestRow||0)||String(a.id).localeCompare(String(b.id)));}
+function pickupDocument(id){return pickupDocumentRows(id)[0];}
+function initializePickupDocument(id){
+  const form=document.querySelector('#modalForm'),lines=pickupDocumentRows(id);form._pickupDocument={id,existing:lines.map(row=>({id:row.id,row_version:row.rowVersion}))};
+  for(const row of lines){addTransactionBatchRow('pickup',{...row,categoryId:byId(state.inventory,row.itemId)?.categoryId||''});const element=form.querySelector('#transactionBatchRows').lastElementChild;element.dataset.pickupId=row.id;element.querySelector('[data-remove-batch-row]').hidden=!canModule('pickups','DELETE');}
+  if(!lines.length)addTransactionBatchRow('pickup');
+}
+function pickupDocumentPayload(form,data){
+  const rows=collectTransactionBatchRows('pickup'),elements=[...form.querySelectorAll('[data-batch-row]')];
+  return {document_id:form._pickupDocument.id,existing:form._pickupDocument.existing,pickup_date:data.date,project_id:data.projectId,customer_id:data.customerId,
+    rows:rows.map((row,index)=>({id:elements[index].dataset.pickupId||null,inventory_item_id:row.itemId,quantity:row.quantity,note:row.note}))};
+}
+function renderPickupDocuments(){
+  const config=tableState.pickup,groups=new Map();for(const line of state.pickups){const id=line.documentId||line.id;if(!groups.has(id))groups.set(id,[]);groups.get(id).push(line);}
+  const rows=[...groups].map(([id,lines])=>{const first=lines[0],project=byId(state.projects,first.projectId),customer=byId(state.customers,first.customerId),names=lines.map(line=>{const item=byId(state.inventory,line.itemId);return `${item?.code||''} ${item?.name||''} ${item?.brand||''} ${item?.model||''}`.trim();});return {id,documentNo:first.documentNo||'',date:first.date,projectId:first.projectId,project:project?.name||first.projectName||'已刪除工作內容',projectCode:project?.code||first.projectCode||'—',customer:customer?.name||'',item:names.join('、'),itemNames:names,itemCount:new Set(lines.map(line=>line.itemId)).size,quantity:lines.reduce((sum,line)=>sum+line.quantity,0),account:[...new Set(lines.map(line=>line.account))].join('、'),note:lines.map(line=>line.note).filter(Boolean).join('；')};}).filter(row=>matches([row.documentNo,row.date,row.customer,row.project,row.projectCode,row.item,row.account,row.note],config.search)&&transactionDocumentFilter('pickup',row));
+  const page=tablePage('pickup',sortRows(rows,config.sortKey||'date',config.direction||'desc'));
+  document.querySelector('#pickupTable').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes('pickupModal',row.id,canModule('pickups','UPDATE'))}><td>${esc(row.documentNo)||'舊單（未編號）'}</td><td>${esc(row.date)}</td><td>${esc(row.customer)}</td><td><strong>${esc(row.projectCode)}</strong><small>${esc(row.project)}</small></td><td>${row.itemNames.slice(0,2).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>2?`<small>另有 ${row.itemNames.length-2} 筆明細</small>`:''}</td><td>${row.itemCount} 種</td><td>${row.quantity}</td><td>${esc(row.account)}</td><td>${esc(row.note)}</td><td class="actions">${canModule('pickups','DELETE')?`<button data-delete-pickup="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(10);
+  renderPagination('pickup','pickupPagination',page.total);
+}
+function transactionDocumentFilter(kind,row){
+  const from=document.querySelector(`#${kind}DateFrom`)?.value||'',to=document.querySelector(`#${kind}DateTo`)?.value||'',scope=document.querySelector(`#${kind}ScopeFilter`)?.value||'';
+  return (!from||row.date>=from)&&(!to||row.date<=to)&&(!scope||(kind==='receipt'?receiptDocument(row.id)?.supplierId:row.projectId)===scope);
+}
+function refreshTransactionFilters(){
+  for(const [kind,options] of [['receipt',state.suppliers.map(row=>[row.id,row.name])],['pickup',state.projects.map(row=>[row.id,`${row.code}｜${row.name}`])]]){
+    const select=document.querySelector(`#${kind}ScopeFilter`);if(!select)continue;const current=select.value;
+    select.innerHTML='<option value="">全部</option>'+options.map(([id,label])=>`<option value="${esc(id)}">${esc(label)}</option>`).join('');select.value=current;
+  }
+}
+document.addEventListener('change',event=>{const kind=event.target.dataset.transactionFilter;if(kind){tableState[kind].page=1;renderTransactions();}});
+async function deleteTransactionDocument(kind,id){
+  const rows=kind==='receipt'?receiptDocumentRows(id):pickupDocumentRows(id),label=kind==='receipt'?'進貨':'取貨';
+  if(rows.length&&confirm(`確定刪除整張${label}單（${rows.length} 筆明細）？庫存也會重新計算。`))await mutate(kind==='receipt'?'delete_stock_receipt_document':'delete_pickup_document',{document_id:id,existing:rows.map(row=>({id:row.id,row_version:row.rowVersion}))},`${label}單已刪除`);
+}
+const previewDocumentCounters=new Map();
+function previewDocumentNumber(kind,scope,date){const key=[kind,scope,date].join('|'),next=(previewDocumentCounters.get(key)||0)+1;previewDocumentCounters.set(key,next);return date.replaceAll('-','')+(next>1?`-${next}`:'');}
+function previewPickupDocument(payload){
+  const previous=pickupDocumentRows(payload.document_id),first=previous[0];
+  state.pickups=state.pickups.filter(row=>(row.documentId||row.id)!==payload.document_id||payload.rows.some(line=>line.id===row.id));
+  payload.rows.forEach(row=>{let existing=byId(state.pickups,row.id);if(!existing){existing={...first,id:uid(),requestId:'',requestRow:null,workAssignmentId:'',rowVersion:0};state.pickups.push(existing);}
+    Object.assign(existing,{workLogId:existing.projectId===payload.project_id?existing.workLogId:'',date:payload.pickup_date,projectId:payload.project_id,customerId:payload.customer_id,itemId:row.inventory_item_id,quantity:row.quantity,note:row.note||'',rowVersion:existing.rowVersion+1});});
 }

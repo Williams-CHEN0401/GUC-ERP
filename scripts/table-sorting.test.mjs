@@ -45,7 +45,7 @@ test('date/status keys match displayed values, and source sorting precedes pagin
   assert.match(html,/data-table-sort="repair" data-key="statusText"/);
   assert.match(html,/data-table-sort="worklog" data-key="workerLabels"/);
   assert.match(html,/data-table-sort="worklog" data-key="pickupSummary"/);
-  assert.match(app,/tablePage\("pickup",sortRows\(pickupRows/);
+  assert.match(read("receipt-documents.js"),/tablePage\('pickup',sortRows\(rows/);
   assert.match(read("receipt-documents.js"),/tablePage\('receipt',sortRows\(rows/);
   assert.match(app,/tablePage\("worklog",sortRows\(rows/);
   assert.match(app,/control.sortKey = key; control.page = 1; rerenderTable\(name\)/);
