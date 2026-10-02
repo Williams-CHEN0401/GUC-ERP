@@ -25,7 +25,7 @@ test('both batch types show a safely escaped optional last note, before delete',
 });
 test('row collector preserves each note, trims blank, rejects overlong and duplicate pickups',()=>{
  const c=ui(),data=[{item:'i',note:' A '},{item:'j',note:' B '}];
- c.document={querySelectorAll:()=>data.map(row=>({querySelector:key=>({value:key==='[data-batch-category]'?'c':key==='[data-batch-item]'?row.item:key==='[name="batchQuantity"]'?'2':row.note})}))};
+ c.document={querySelector:()=>({_transactionLimit:20}),querySelectorAll:()=>data.map(row=>({querySelector:key=>({value:key==='[data-batch-category]'?'c':key==='[data-batch-item]'?row.item:key==='[name="batchQuantity"]'?'2':row.note})}))};
  assert.deepEqual(Array.from(c.collectTransactionBatchRows('pickup'),x=>x.note),['A','B']);
  data[1].note='  ';assert.equal(c.collectTransactionBatchRows('pickup')[1].note,'');
  data[1].note='長'.repeat(501);assert.throws(()=>c.collectTransactionBatchRows('pickup'),/500/);
@@ -38,8 +38,11 @@ test('both pickup submit paths send notes, hydrate and edit retain them, Gateway
  }
  assert.match(app,/quantity:Number\(r.quantity\),note:r.note\|\|""/);
  const modal=app.split(/\r?\n/).find(x=>x.startsWith('  if(type==="pickupModal"){title='));
- assert.ok(modal.includes('name="note"'));assert.ok(modal.includes('esc(r.note||"")'));assert.ok(modal.includes('maxlength="500"'));
- assert.match(gateway,/pickup_records\?select=id,pickup_date,project_id,inventory_item_id,quantity,note,/);
+ assert.ok(modal.includes('transactionBatchRows'));assert.ok(app.includes('initializePickupDocument(id)'));
+ const documents=readFileSync(new URL('../receipt-documents.js',import.meta.url),'utf8');
+ assert.match(documents,/addTransactionBatchRow\('pickup',\{\.\.\.row,/);
+ assert.match(documents,/quantity:row.quantity,note:row.note/);
+ assert.match(gateway,/pickup_records\?select=id,pickup_document_id,pickup_document_no,pickup_date,project_id,inventory_item_id,quantity,note,/);
  assert.match(gateway,/hasNote\?"update_pickup_record_v2":"update_pickup_record"/);
 });
 test('note-aware edit keeps the original locks, inventory/link logic and versioned single update',()=>{

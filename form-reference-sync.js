@@ -123,7 +123,7 @@ function refreshFormReferenceChoices(snapshot={}){
     replaceReferenceOptions(fields.departmentId,customerDepartmentRows(customerId,{includeId:fields.departmentId?.value}).map(row=>[row.id,row.name]),{placeholder:customerDepartmentRows(customerId).length?'請選擇科室':'此客戶尚未設定科室',disabled:!customerId||!state.customerDepartmentsReady});
     const host=form.querySelector('[data-customer-selector]');
     if(host&&fields.departmentId)fields.departmentId.required=host.dataset.required==='true'&&!(host.dataset.legacyCustomer===customerId&&host.dataset.legacyDepartment===fields.departmentId.value)&&customerDepartmentRows(customerId).length>0;
-    const original=byId(state.pickups,modal.dataset.id)?.projectId;
+    const original=(byId(state.pickups,modal.dataset.id)||state.pickups.find(row=>row.documentId===modal.dataset.id))?.projectId;
     replaceReferenceOptions(fields.projectId,sortRows(state.projects.filter(row=>row.customerId===customerId&&projectMatchesDepartment(row,modalDepartmentFilter())&&(type==='attachmentModal'||row.status!=='completed'||row.id===original)),'code','asc').map(row=>[row.id,`${row.code}｜${row.name}`]),{placeholder:'請選擇工作內容',disabled:!customerId});
     replaceReferenceOptions(fields.contractServiceTypeId,customerMaintenanceServices(customerId).map(row=>[row.id,row.name]),{placeholder:'請選擇承攬內容',disabled:!customerId});
   }
