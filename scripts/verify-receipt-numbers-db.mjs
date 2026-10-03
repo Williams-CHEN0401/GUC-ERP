@@ -4,7 +4,7 @@ import {receiptNumberServer,seedMergeGroup} from './receipt-number-fixture.mjs';
 import {receiptMergeSql} from './receipt-document-repair.mjs';
 import {callAsService,extraIds} from './department-cross-system-fixture.mjs';
 import {ids} from './worklog-save-fixture.mjs';
-const f=await receiptNumberServer(),{db}=f;let passes=0;
+const f=await receiptNumberServer({legacyCrlf:process.argv.includes('--legacy-crlf')}),{db}=f;let passes=0;
 const pass=name=>console.log('PASS '+(++passes)+' '+name);
 const rows=async doc=>(await db.query('select * from stock_receipts where receipt_document_id=$1 order by receipt_line_no,id',[doc])).rows;
 const save=async({doc=randomUUID(),number=null,existing=[],input,date='2026-10-02',supplier=extraIds.supplier,actor=ids.actor}={})=>callAsService(db,'save_stock_receipt_document_v2',[doc,!existing.length,JSON.stringify(existing.map(r=>({id:r.id,row_version:r.row_version}))),date,supplier,JSON.stringify(input||[ {inventory_item_id:f.items[0],quantity:1,note:'test'} ]),[ids.customer],JSON.stringify([{customer_id:ids.customer,department_id:ids.department}]),actor,number]);

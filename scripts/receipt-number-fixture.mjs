@@ -5,8 +5,13 @@ import {receiptMergeSql} from './receipt-document-repair.mjs';
 import {randomUUID} from 'node:crypto';
 import vm from 'node:vm';
 export const numberMigration='20261002102916_receipt_document_editable_numbers.sql';
-export async function receiptNumberServer(){
- const f=await transactionDocumentServer();await f.db.exec(await sql(numberMigration));
+export async function receiptNumberServer({legacyCrlf=false}={}){
+ const f=await transactionDocumentServer();
+ if(legacyCrlf){
+  const definitions=(await f.db.query("select pg_get_functiondef(oid) definition from pg_proc where pronamespace='public'::regnamespace and proname in('ensure_stock_document_v1','stamp_stock_document_v1')")).rows;
+  for(const {definition} of definitions)await f.db.exec(definition.replaceAll('\r\n','\n').replaceAll('\n','\r\n'));
+ }
+ await f.db.exec(await sql(numberMigration));
  f.additionalRpcs.push('save_stock_receipt_document_v2');
  // Match the production RPC boundary, which creates Error in the Gateway realm.
  const rpc=f.gatewayContext.rpc,GatewayError=vm.runInContext('Error',f.gatewayContext);

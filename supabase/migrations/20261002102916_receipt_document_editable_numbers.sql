@@ -17,7 +17,7 @@ create unique index receipt_document_number_uidx on public.stock_transaction_doc
 do $$
 declare s text;needle text;
 begin
-  select pg_get_functiondef('public.ensure_stock_document_v1(text,uuid,date,uuid,uuid)'::regprocedure) into s;
+  select replace(pg_get_functiondef('public.ensure_stock_document_v1(text,uuid,date,uuid,uuid)'::regprocedure),chr(13),'') into s;
   needle:='perform pg_advisory_xact_lock(hashtextextended(''stock-number:''||p_kind||'':''||p_scope::text||'':''||p_date::text,0));';
   if position(needle in s)=0 then raise exception '單號產生器版本不符。';end if;
   s:=replace(s,needle,'if p_kind=''receipt'' then perform pg_advisory_xact_lock(hashtextextended(''receipt-number-scope:''||p_scope::text,0));end if;'||chr(10)||needle);
@@ -31,7 +31,7 @@ begin
       end loop;
     end if;$patch$);
   execute s;
-  select pg_get_functiondef('public.stamp_stock_document_v1()'::regprocedure) into s;
+  select replace(pg_get_functiondef('public.stamp_stock_document_v1()'::regprocedure),chr(13),'') into s;
   needle:='new.receipt_document_id:=old.receipt_document_id;new.receipt_document_no:=old.receipt_document_no;return new;';
   if position(needle in s)=0 then raise exception '進貨單號戳記版本不符。';end if;
   s:=replace(s,needle,$patch$
