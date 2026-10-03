@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {receiptNumberServer,seedMergeGroup} from './receipt-number-fixture.mjs';
+import {receiptMergeSql} from './receipt-document-repair.mjs';
+import {callAsService,extraIds} from './department-cross-system-fixture.mjs';
+import {ids} from './worklog-save-fixture.mjs';
+const f=await receiptNumberServer(),{db}=f;let passes=0;
+const pass=name=>console.log('PASS '+(++passes)+' '+name);
+const rows=async doc=>(await db.query('select * from stock_receipts where receipt_document_id=$1 order by receipt_line_no,id',[doc])).rows;
+const save=async({doc=randomUUID(),number=null,existing=[],input,date='2026-10-02',supplier=extraIds.supplier,actor=ids.actor}={})=>callAsService(db,'save_stock_receipt_document_v2',[doc,!existing.length,JSON.stringify(existing.map(r=>({id:r.id,row_version:r.row_version}))),date,supplier,JSON.stringify(input||[ {inventory_item_id:f.items[0],quantity:1,note:'test'} ]),[ids.customer],JSON.stringify([{customer_id:ids.customer,department_id:ids.department}]),actor,number]);
+const edits=rs=>rs.map(r=>({id:r.id,inventory_item_id:r.inventory_item_id,quantity:r.quantity,note:r.note}));
+try{
+ const group=await seedMergeGroup(f),original=(await db.query('select id,inventory_item_id,quantity,note from stock_receipts order by id')).rows,links=(await db.query('select * from stock_receipt_customers order by stock_receipt_id,customer_id')).rows;
+ await db.exec(receiptMergeSql([group]));const doc=group.metadata[0].document,merged=await rows(doc);
+ assert.equal(merged.length,3);assert.ok(merged.every(r=>r.receipt_document_no==='20260929'));assert.deepEqual(merged.map(r=>r.receipt_line_no),[1,2,3]);
+ assert.deepEqual((await db.query('select id,inventory_item_id,quantity,note from stock_receipts order by id')).rows,original);assert.deepEqual((await db.query('select * from stock_receipt_customers order by stock_receipt_id,customer_id')).rows,links);pass('整併三張成一張，ID／品項／數量／備註／客戶科室不變');
+ await assert.rejects(db.exec(receiptMergeSql([group])),/已異動|不符/);await db.exec('rollback');pass('過時整併計畫及重送拒絕');
+ const next=await save({date:'2026-09-29'});assert.equal(next.document_no,'20260929-4');assert.equal((await rows(next.document_id)).length,1);pass('後續同廠商同日獨立成單，保留已發流水不重用');
+ await save({doc,existing:merged,input:edits(merged),date:'2026-09-29',number:'CUSTOM-001'});let now=await rows(doc);assert.ok(now.every(r=>r.receipt_document_no==='CUSTOM-001'));assert.deepEqual(now.map(r=>r.id),merged.map(r=>r.id));pass('合併單整單編輯及手動改號、所有明細一致');
+ await assert.rejects(save({doc,existing:merged,input:edits(merged),number:'stale'}),/已被更新/);pass('改號使舊版本失效，避免覆蓋');
+ await save({doc,existing:now,input:edits(now),date:'2026-10-08',number:'  '});now=await rows(doc);assert.ok(now.every(r=>r.receipt_document_no==='CUSTOM-001'));pass('改日期或單號留白保留原號');
+ await assert.rejects(save({number:'custom-001'}),/已使用/);await assert.rejects(save({number:'20260929-2'}),/已使用/);pass('不分大小寫重號、合併前保留單號均拒絕');
+ const count=(await db.query('select count(*) n from stock_receipts')).rows[0].n;await assert.rejects(save({number:'x'.repeat(65)}),/64/);await assert.rejects(save({number:'ABC\nDEF'}),/控制/);assert.equal((await db.query('select count(*) n from stock_receipts')).rows[0].n,count);pass('長度與控制字元驗證，不留下半張單');
+ const manual=await save({number:'20261101',date:'2026-10-02'}),auto=await save({date:'2026-11-01'});assert.equal(auto.document_no,'20261101-2');assert.equal(manual.document_no,'20261101');pass('自動編號避開手動保留的跨日期單號');
+ const other=await save({number:'CUSTOM-001',supplier:f.supplierB});assert.equal(other.document_no,'CUSTOM-001');pass('不同編號廠商維持獨立號碼範圍');
+ const before=await rows(doc);await assert.rejects(save({doc,existing:before,input:edits(before).map(r=>({...r,quantity:99})),number:'20260929-4'}),/已使用/);assert.deepEqual(await rows(doc),before);pass('重號時數量等整單修改一併回復');
+ await assert.rejects(save({number:'DENIED',actor:ids.viewer}),/權限/);await db.exec('set role authenticated');await assert.rejects(db.query('select public.save_stock_receipt_document_v2(null,true,null,null,null,null,null,null,null,null)'),/permission denied/);await db.exec('reset role');pass('維持既有 RBAC、service-only RPC');
+ await db.query("update stock_receipts set receipt_document_id=$1,receipt_document_no='TAMPER' where id=$2",[randomUUID(),before[0].id]);assert.equal((await rows(doc))[0].receipt_document_no,'CUSTOM-001');pass('既有戳記仍拒絕任意明細身分與單號覆寫');
+ const stale=await seedMergeGroup(f,'2026-09-28');await db.query('update stock_receipts set quantity=quantity+1 where id=$1',[stale.metadata[1].id]);await assert.rejects(db.exec(receiptMergeSql([stale])),/已異動/);await db.exec('rollback');assert.equal((await rows(stale.metadata[0].document)).length,1);pass('整併前異動資料即原子停止，不部分整併');
+ const conflict=await seedMergeGroup(f,'2026-09-27');await db.query('update stock_receipt_customers set department_id=null where stock_receipt_id=$1',[conflict.metadata[1].id]);await assert.rejects(db.exec(receiptMergeSql([conflict])),/客戶科室/);await db.exec('rollback');pass('不同客戶科室不擅自合併覆蓋');
+ const extra=await seedMergeGroup(f,'2026-09-26');await save({date:'2026-09-26'});await assert.rejects(db.exec(receiptMergeSql([extra])),/已異動/);await db.exec('rollback');pass('盘點後新增同組資料，不默默納入整併');
+ const post=async(payload)=>{const response=await f.gatewayHandler(new Request('http://127.0.0.1/inventory-gateway',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'create_stock_receipt_document',payload})}));return{status:response.status,...await response.json()};};
+ const payload={document_id:randomUUID(),document_no:'UI-001',existing:[],receipt_date:'2026-10-02',supplier_id:extraIds.supplier,rows:[{inventory_item_id:ids.item,quantity:2,note:'API'}],customer_ids:[],customer_departments:[]};
+ const good=await post(payload);assert.equal(good.status,201,JSON.stringify(good));assert.equal((await rows(payload.document_id))[0].receipt_document_no,'UI-001');
+ const duplicate=await post({...payload,document_id:randomUUID()});assert.equal(duplicate.status,400);assert.match(duplicate.error,/進貨單號已使用/);
+ for(const number of [123,{},'x'.repeat(65),'bad\nnumber'])assert.notEqual((await post({...payload,document_id:randomUUID(),document_no:number})).status,201);pass('實際 Gateway 可保存手動單號並拒絕無效輸入');
+ console.log(`完成 ${passes} 項進貨單資料庫／Gateway 驗證。`);
+}finally{await db.close();}
