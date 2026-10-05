@@ -66,7 +66,7 @@
             <div class="page-actions"><div><h2>客戶預約事項</h2></div><button class="primary" data-open="appointmentModal">＋ 新增預約事項</button></div>
             <div class="filterbar">
               <label class="search"><input id="appointmentSearch" type="search" placeholder="搜尋客戶、內容、聯絡人或備註"></label>
-              <label>預約類型<select id="appointmentFilterType"><option value="">所有類型</option><option value="repair">客戶報修</option><option value="site_visit">預約場刊</option><option value="quotation">索取報價</option></select></label>
+              <label>預約類型<select id="appointmentFilterType"><option value="">所有類型</option><option value="repair">客戶報修</option><option value="site_visit">預約場刊</option><option value="quotation">索取報價</option><option value="construction">預約施工</option></select></label>
               <label>狀態<select id="appointmentFilterStatus"><option value="">所有狀態</option><option value="pending">待處理</option><option value="in_progress">處理中</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label>
               <label>責任人<select id="appointmentFilterAssignee"><option value="">所有責任人</option></select></label>
               <label>客戶分類<select id="appointmentFilterCategory"><option value="">所有客戶分類</option></select></label>
@@ -150,7 +150,8 @@
           </section>
 
           <section class="page" id="settings" data-page="settings">
-            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="logs">系統日誌</button></div>
+            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="permissions">權限管理</button><button data-tab="logs">系統日誌</button></div>
+            <div class="tab-pane" data-pane="permissions"><div id="permissionSettings"></div><div id="privateAccessSettings"></div></div>
             <div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／工作內容與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
             <div class="tab-pane" data-pane="users">
               <div class="page-actions"><div><h2>使用者管理</h2><p>可新增、查詢、修改及刪除使用者；僅管理員可執行異動。</p></div><button class="primary" data-open="accountModal">＋ 新增使用者</button></div>
@@ -228,6 +229,7 @@
       <div class="assignment-completion-actions" id="assignmentCompletionActions"></div>
     </dialog>
     <script src="/customer-appointments.js" defer></script>
+    <script src="/private-access.js" defer></script>
     <script src="/receipt-documents.js" defer></script>
     <script src="/app.js" defer></script>
     <script src="/assignment-ui.js" defer></script>

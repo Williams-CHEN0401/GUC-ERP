@@ -36,6 +36,13 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
  context.currentUser=async request=>requestUser(request);
  if(assignments||formSync)context.db=async(path,init={})=>{if(init.method&&init.method!=='GET')throw Error('Isolated REST writes denied');return new Response(JSON.stringify(await restRead(db,path)),{headers:{'Content-Type':'application/json'}});};
  context.rpc=async(name,args)=>{
+  // Historical assignment-only fixture predates the privacy schema. Execute
+  // its real project-scope RPC after validating the new trusted actor contract.
+  // Privacy fixtures register the actual wrapper via additionalRpcs instead.
+  if(assignments&&name==='private_work_log_scope_v1'&&!additionalRpcs.includes(name)){
+   if(args.p_private_actor!==args.p_user_id)throw Error('Actor mismatch');
+   name='work_log_scope_v1';args={p_user_id:args.p_user_id};
+  }
   if(![...additionalRpcs,'upsert_work_log_sections_v1','upsert_customer_project_work_log_department_v1','upsert_erp_project_department_v1','upsert_repair_item_department_v1','manage_customer_department_v1','create_stock_receipts_department_v1','update_stock_receipt_department_v1',...(formSync?['create_product_category_v1','create_inventory_items_batch_v1','close_work_content_from_log_v1']:[]),...(independent?['update_pickup_record','update_pickup_record_v2','create_pickup_records_batch_v2','delete_project_record']:[]),...(contractCatalog?['manage_contract_service_type_v1','update_customer_with_contracts_v1']:[]),...(assignments?['create_work_assignment_v1','create_work_assignment_with_project_v1','complete_work_assignment_v1','acknowledge_work_assignment_v1','work_log_scope_v1']:[])].includes(name))throw Error('Test denies unrelated RPC: '+name);
   const payload=Object.fromEntries(Object.entries(args).map(([k,v])=>[k.slice(2),v]));
   const keys=Object.keys(args);if(keys.some(key=>!/^p_[a-z_]+$/.test(key)))throw Error('Invalid test argument');

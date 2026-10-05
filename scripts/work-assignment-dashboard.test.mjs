@@ -49,8 +49,9 @@ test("dashboard keeps every previous Taipei-day log and excludes completed work 
   assert.match(app, /dashboardWorklogDate/);
 });
 
-test("removed backup and role-permission entries are absent without removing RBAC enforcement", () => {
-  assert.doesNotMatch(html, /data-page="backup"|permissionSettings|角色／工作內容權限/);
+test("backup stays absent; TASK1004 restores role management without removing RBAC", () => {
+  assert.doesNotMatch(html, /data-page="backup"/);
+  assert.match(html, /id="permissionSettings"/);
   assert.doesNotMatch(app, /exportBackup/);
   assert.match(app, /applyPermissionUI\(\)/);
   assert.match(gateway, /requireOperation\(/);

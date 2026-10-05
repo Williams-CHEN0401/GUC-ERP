@@ -5,7 +5,7 @@ type Role = string;
 type AppUser = { id: string; auth_user_id: string; username: string; display_name: string; role: Role; is_active: boolean; row_version: number; role_name?:string; project_scoped?:boolean; permissions?:Permission[] };
 const url = Deno.env.get("SUPABASE_URL") ?? "";
 const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(privateResponse(body)), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const uuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text(value)) ? text(value) : null;
 const date = (value: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(text(value)) ? text(value) : null;
@@ -166,7 +166,7 @@ async function timedFetch(resource: string, init: RequestInit = {}, label = "資
     const metrics=requestMetrics.getStore();if(metrics){metrics.requests++;metrics.transportMs+=performance.now()-started;}
   }
 }
-async function db(path: string, init: RequestInit = {}) { const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); const context=auditContext.getStore(); if(context)headers.set("x-guc-audit-context",JSON.stringify(context).replace(/[\u007f-\uffff]/g,char=>"\\u"+char.charCodeAt(0).toString(16).padStart(4,"0"))); return timedFetch(`${url}/rest/v1/${path}`, { ...init, headers }, "資料庫"); }
+async function db(path: string, init: RequestInit = {}) { ({path,init}=privateReadRequest(path,init)); const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); const context=auditContext.getStore(); if(context)headers.set("x-guc-audit-context",JSON.stringify(context).replace(/[\u007f-\uffff]/g,char=>"\\u"+char.charCodeAt(0).toString(16).padStart(4,"0"))); return timedFetch(`${url}/rest/v1/${path}`, { ...init, headers }, "資料庫"); }
 async function authApi(path: string, init: RequestInit = {}) { const headers = new Headers(init.headers); headers.set("apikey", key); headers.set("Authorization", `Bearer ${key}`); headers.set("Content-Type", "application/json"); return timedFetch(`${url}${path}`, { ...init, headers }, "身分驗證服務"); }
 async function get(path: string) { const response = await db(path); if (!response.ok) throw new Error("讀取資料失敗。"); return response.json(); }
 async function getAll(path: string, pageSize = 1000) {
@@ -293,7 +293,7 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
@@ -311,10 +311,11 @@ function requirePermission(user:AppUser,module:string,action:PermissionAction="V
 }
 const OPERATION_MODULES:Record<string,string[]>={
  users:["create_account","update_account","delete_account"],
- settings:["save_app_role","save_user_project_access"],
+ settings:["delete_app_role","save_app_role","save_user_project_access"],
  customers:["create_contract_service_type","update_contract_service_type","delete_contract_service_type","create_customer_department","update_customer_department","deactivate_customer_department","create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
  suppliers:["create_supplier","update_supplier","delete_supplier"],
- projects:["upsert_customer_appointment","create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
+ appointments:["upsert_customer_appointment"],
+ projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups","update_pickup_document","delete_pickup_document"],
  purchases:["delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
@@ -351,19 +352,19 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
  if(siteRequest)requirePermission(user,"site");
  if(entity){
-  const module=entity.startsWith("monitoring_")?"monitoring":entity.startsWith("phone_")?"phone":entity.startsWith("equipment_history")||entity==="maintenance_workers"?"history":({audit_logs:"audit",customer_service_management:"customers",inventory:"inventory",customers:"customers",projects:"projects",suppliers:"suppliers",repairs:"repairs",pickups:"pickups",receipts:"purchases"} as Record<string,string>)[entity];
+  const module=entity.startsWith("monitoring_")?"monitoring":entity.startsWith("phone_")?"phone":entity.startsWith("equipment_history")||entity==="maintenance_workers"?"history":({shared_work_log:"worklogs",audit_logs:"audit",customer_service_management:"customers",inventory:"inventory",customers:"customers",projects:"projects",suppliers:"suppliers",repairs:"repairs",pickups:"pickups",receipts:"purchases"} as Record<string,string>)[entity];
   if(!module)throw new Error("您的帳號沒有執行此操作的權限。");
   requirePermission(user,module);
   if(["monitoring","phone","history"].includes(module))requirePermission(user,"site");
   return;
  }
- if(scope==="session")return;
+ if(scope==="session"||scope==="settings"&&privateContext.getStore()?.can_configure)return;
  if(scope==="nas_upload_context"){
   requireOperation(user,"create_contract_site_attachment_batch",{},["admin","operator"]);
   if(user.project_scoped)throw new Error("您的帳號沒有執行此操作的權限。");
   return;
  }
- const modules:Record<string,string[]>={appointments:["projects"],dashboard:["dashboard"],transactions:["purchases","pickups"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
+ const modules:Record<string,string[]>={appointments:["appointments"],dashboard:["dashboard"],transactions:["purchases","pickups"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
  if(!modules[scope]?.some(module=>hasPermission(user,module)))throw new Error("您的帳號沒有執行此操作的權限。");
 }
 async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
@@ -382,7 +383,7 @@ async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
  }
 }
 async function restrictedSnapshot(user:AppUser,scopeName:string,optionsOnly=false):Promise<Row|null> {
- if(scopeName==="worklogs"&&user.project_scoped){const data=await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row;return {scope:scopeName,...data,customer_departments:await customerDepartmentRows(data.customers),customer_categories:await getAll(datasets.customer_categories.path),current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString()};}
+ if(scopeName==="worklogs"&&user.project_scoped){const data=await privateReadRpc("work_log_scope_v1",{p_user_id:user.id},user) as Row;return {scope:scopeName,...data,customer_departments:await customerDepartmentRows(data.customers),customer_categories:await getAll(datasets.customer_categories.path),current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString()};}
  if(!user.permissions||user.role==="admin")return null;
  if(scopeName==="transactions"&&!hasPermission(user,"purchases")){
   requirePermission(user,"pickups");
@@ -397,7 +398,7 @@ async function restrictedSnapshot(user:AppUser,scopeName:string,optionsOnly=fals
  return null;
 }
 
-const publicUser = (user: AppUser | null) => user ? { id:user.id, username: user.username, display_name: user.display_name, role: user.role, role_name:user.role_name, project_scoped:user.project_scoped===true, permissions:user.permissions } : null;
+const publicUser = (user: AppUser | null) => user ? { id:user.id, username: user.username, display_name: user.display_name, role: user.role, role_name:user.role_name, project_scoped:user.project_scoped===true, permissions:user.permissions, private_access:privatePublicState() } : null;
 async function currentUser(request: Request): Promise<AppUser | null> {
   const token = request.headers.get("authorization") ?? "";
   if (!token.startsWith("Bearer ")) return null;
@@ -407,7 +408,10 @@ async function currentUser(request: Request): Promise<AppUser | null> {
   const authUserId = uuid(identity.id);
   if (!authUserId) return null;
   const users = await get(`app_users?auth_user_id=eq.${authUserId}&is_active=eq.true&select=id,auth_user_id,username,display_name,role,is_active,row_version`) as AppUser[];
-  return users.length === 1 ? hydratePermissions(users[0]) : null;
+  if(users.length!==1)return null;
+  const user=await hydratePermissions(users[0]);
+  await initializePrivateAccess(user);
+  return user;
 }
 function requireRole(user: AppUser | null, allowed: Role[]) {
   if (!user) throw new Error("請先以有效帳號登入。");
@@ -434,7 +438,7 @@ const datasets: Record<string, DatasetDefinition> = {
   repair_items: { path: "repair_items?select=id,repair_no,source_maintenance_event_id,received_on,customer_id,department_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,source,updated_by,created_at,updated_at,row_version&order=received_on.desc,created_at.desc,id.desc", paged: true },
   customer_departments: { path: "customer_departments?select=id,customer_id,name,is_active,row_version,created_at,updated_at&order=customer_id.asc,name.asc,id.asc", paged: true },
   customer_categories: { path: "customer_categories?select=id,code,name,row_version&order=sort_order.asc,created_at.asc,id.asc", paged: true },
-  customers: { path: "customers?select=id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc,id.asc", paged: true },
+  customers: { path: "customers?select=is_private,id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc,id.asc", paged: true },
   contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,row_version,created_at,updated_at&order=sort_order.asc,name.asc", paged: true },
   customer_contract_services: { path: "customer_contract_services?is_active=eq.true&select=customer_id,service_type_id,created_at&order=created_at.asc" },
   customer_contacts: { path: "customer_contacts?select=id,customer_id,name,title,phone,email,is_primary,note,created_at,updated_at,row_version&order=is_primary.desc,name.asc" },
@@ -530,10 +534,12 @@ async function scopedSnapshot(user: AppUser, scopeName: string, optionsOnly = fa
   if(scopeName==="crm"&&user.permissions&&user.role!=="admin")names=[...new Set([...(hasPermission(user,"customers")?["customers","contract_service_types","customer_contract_services"]:[]),...(hasPermission(user,"projects")?["customers","projects","project_workers","site_workers"]:[]),...(hasPermission(user,"suppliers")?["suppliers"]:[])])];
   if (!names) throw new Error("不支援的資料載入範圍。");
   if(!scopeName.startsWith("site")&&names.includes("customers"))names=[...new Set([...names,"customer_categories","customer_departments"])];
-  const scopedData=user.project_scoped?(hasPermission(user,"worklogs")?await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row:{}):null;
+  const scopedData=user.project_scoped?(hasPermission(user,"worklogs")?await privateReadRpc("work_log_scope_v1",{p_user_id:user.id},user) as Row:{}):null;
   const protectedDatasets=["customers","projects","project_workers","sites","site_work_logs","site_work_log_workers","site_workers","site_assets","maintenance_events","maintenance_event_equipment","maintenance_event_workers"];
   if(optionsOnly)names=names.filter(name=>FORM_REFERENCE_DATASETS.has(name));
   const requests = names.map(async name => {
+    if(name==="pickups"&&["worklogs","inventory"].includes(scopeName)&&!hasPermission(user,"pickups"))return [name,[]] as const;
+    if(name==="receipts"&&scopeName==="inventory"&&!hasPermission(user,"purchases"))return [name,[]] as const;
     if(scopedData&&name==="customer_departments")return [name,await customerDepartmentRows(scopedData.customers)] as const;
     if(scopedData&&protectedDatasets.includes(name))return [name,scopedData[name]||[]] as const;
     const definition = datasets[name];
@@ -676,13 +682,13 @@ async function monitoringDeviceDetail(params: URLSearchParams) {
   if (records.length !== 1) throw new Error("找不到監控設備。");
   return { record: (await attachMonitoringDeviceDisplayData(records))[0] };
 }
-async function equipmentHistory(params: URLSearchParams) {
+async function equipmentHistory(params: URLSearchParams, user: AppUser) {
   const sourceTable = text(params.get("source_table"));
   const sourceId = uuid(params.get("source_id"));
   if (!["site_devices","phone_systems","phone_extensions","phone_terminal_points"].includes(sourceTable) || !sourceId) {
     throw new Error("設備履歷來源資料不正確。");
   }
-  return rpc("get_equipment_history_v1", { p_source_table: sourceTable, p_source_id: sourceId });
+  return privateReadRpc("get_equipment_history_v1", { p_source_table: sourceTable, p_source_id: sourceId }, user);
 }
 async function phoneTerminalVersions(params:URLSearchParams) {
  const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("service_id")),versionId=uuid(params.get("id"));
@@ -701,7 +707,7 @@ async function monitoringDeviceOptions(user: AppUser, params=new URLSearchParams
   const [types, sites, filters, links] = await Promise.all([
     get("monitoring_device_types?is_active=eq.true&select=code,name,sort_order&order=sort_order.asc") as Promise<Row[]>,
     serviceId ? get(`sites?contract_service_type_id=eq.${serviceId}&status=neq.closed&select=id,site_code,site_name&order=site_code.asc`) as Promise<Row[]> : Promise.resolve([]),
-    customerId ? rpc("monitoring_customer_filters_v1",{p_customer_id:customerId}) : Promise.resolve({types:[],brands:[],models:[],cabinets:[],network_cables:[]}),
+    customerId ? privateReadRpc("monitoring_customer_filters_v1",{p_customer_id:customerId},user) : Promise.resolve({types:[],brands:[],models:[],cabinets:[],network_cables:[]}),
     serviceId ? get(`customer_contract_services?is_active=eq.true&service_type_id=eq.${serviceId}&select=customer_id`) as Promise<Row[]> : Promise.resolve([]),
   ]);
   const customerIds = [...new Set(links.map(row => uuid(row.customer_id)).filter((value): value is string => !!value))];
@@ -888,6 +894,7 @@ function maintenanceEventsInput(value: unknown) {
 
 async function change(operation: string, payload: Row, user: AppUser | null) {
   await enforceWorkLogScope(user!,operation,payload);
+  if(operation==="delete_app_role"){requireRole(user,["admin"]);return rpc("delete_app_role_v1",{p_actor_user_id:user!.id,p_code:role(payload.code),p_row_version:payload.row_version??null});}
   if(operation==="save_app_role"){requireRole(user,["admin"]);return rpc("save_app_role_v1",{p_actor_user_id:user!.id,p_code:role(payload.code),p_name:limited(payload.name,80),p_project_scoped:payload.project_scoped===true,p_row_version:payload.row_version??null,p_permissions:payload.permissions});}
   if(operation==="save_user_project_access"){requireRole(user,["admin"]);return rpc("save_user_project_access_v1",{p_actor_user_id:user!.id,p_user_id:uuid(payload.user_id),p_row_version:Number(payload.row_version),p_grants:payload.grants});}
   if(operation==="create_phone_terminal_version") {requireOperation(user,operation,payload,["admin","operator"]);return rpc("create_phone_terminal_version_v1",{p_customer_id:uuid(payload.customer_id),p_service_id:uuid(payload.service_id),p_name:limited(payload.name,120),p_effective_date:date(payload.effective_date),p_note:nullable(payload.note,2000),p_actor_user_id:user!.id});}
@@ -1004,12 +1011,14 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "delete_erp_project") { requireOperation(user,operation,payload,["admin","operator"]); const id=uuid(payload.id),rowVersion=Number(payload.row_version); if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("專案資料或版本不正確。"); return rpc("delete_project_record",{p_id:id,p_row_version:rowVersion,p_actor:actor}); }
   if (operation === "upsert_customer_appointment") {
     requireOperation(user,operation,payload,["admin"]);
-    if(user!.role!=="admin")throw new Error("只有管理員可以管理客戶預約事項。");
+
     const id=text(payload.id)?uuid(payload.id):null,rowVersion=id?Number(payload.row_version):null;
     const customerId=uuid(payload.customer_id),assigneeId=uuid(payload.assignee_user_id),when=date(payload.appointment_date);
     const instructions=limited(payload.instructions,2000),contact=nullable(payload.contact_name,120),phone=nullable(payload.contact_phone,50),notes=nullable(payload.notes,2000);
-    if((payload.id&&!id)||(id&&(!Number.isInteger(rowVersion)||Number(rowVersion)<1))||!customerId||!assigneeId||!when||!instructions||contact===null||phone===null||notes===null||!["repair","site_visit","quotation"].includes(text(payload.appointment_type))||!["pending","in_progress","completed","cancelled"].includes(text(payload.status)))throw new Error("請完整填寫有效的預約資料。");
-    return rpc("upsert_customer_appointment_v1",{p_id:id,p_row_version:rowVersion,p_customer_id:customerId,p_department_id:departmentIdInput(payload.department_id),p_appointment_type:payload.appointment_type,p_appointment_date:when,p_contact_name:contact,p_contact_phone:phone,p_instructions:instructions,p_assignee_user_id:assigneeId,p_status:payload.status,p_notes:notes,p_actor_user_id:user!.id,p_actor:actor});
+    if((payload.id&&!id)||(id&&(!Number.isInteger(rowVersion)||Number(rowVersion)<1))||!customerId||!assigneeId||!when||!instructions||contact===null||phone===null||notes===null||!["repair","site_visit","quotation","construction"].includes(text(payload.appointment_type))||!["pending","in_progress","completed","cancelled"].includes(text(payload.status)))throw new Error("請完整填寫有效的預約資料。");
+    const reminderDays=Object.hasOwn(payload,"reminder_days")?Number(payload.reminder_days):null;
+    if(reminderDays!==null&&(!Number.isInteger(reminderDays)||reminderDays<0||reminderDays>365))throw new Error("提醒天數須為 0 至 365 的整數。");
+    return rpc("upsert_customer_appointment_v2",{p_reminder_days:reminderDays,p_id:id,p_row_version:rowVersion,p_customer_id:customerId,p_department_id:departmentIdInput(payload.department_id),p_appointment_type:payload.appointment_type,p_appointment_date:when,p_contact_name:contact,p_contact_phone:phone,p_instructions:instructions,p_assignee_user_id:assigneeId,p_status:payload.status,p_notes:notes,p_actor_user_id:user!.id,p_actor:actor});
   }
   if (operation === "create_work_assignment") {
     requireOperation(user,operation,payload,["admin"]);
@@ -1431,6 +1440,88 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   throw new Error("不支援的操作。");
 }
 type AuditContext = { actor: string; actorId: string; requestId: string; sourceIp: string; userAgent: string; system: string };
+async function privateReadRpc(name: string, args: Row, user: AppUser) {
+ return rpc(`private_${name}`, {...args,p_private_actor:user.id});
+}
+type PrivateScope={actorId?:string;visibility_version?:number;configured?:boolean;direct?:boolean;filters?:Record<string,Record<string,string[]|boolean>>;blocked_ids?:string[];protected_user_ids?:string[];mutation_project_ids?:string[];restricted_logs?:Row[];requests?:Row[];configuration?:Row|null;configuration_users?:Row[];can_configure?:boolean;sharedResult?:boolean};
+const privateContext=new AsyncLocalStorage<PrivateScope>();
+async function initializePrivateAccess(user:AppUser){
+ const result=await rpc("erp_private_scope_v1",{p_user_id:user.id}) as PrivateScope;
+ if(typeof result?.configured!=="boolean"||!result.filters||!Array.isArray(result.blocked_ids))throw new Error("私人資料權限檢查失敗，請聯絡管理員。");
+ Object.assign(privateContext.getStore()!,result,{actorId:user.id});
+}
+
+async function privateOperation(operation:string,payload:Row,user:AppUser){
+ if(operation==="configure_erp_private_access")return rpc("configure_erp_private_access_v1",{p_actor_user_id:user.id,p_owner_user_id:uuid(payload.owner_user_id),p_viewer_user_ids:payload.viewer_user_ids,p_row_version:payload.row_version??null});
+ if(operation==="set_customer_private"){requireRole(user,["admin"]);return rpc("set_customer_private_v1",{p_actor_user_id:user.id,p_customer_id:uuid(payload.customer_id),p_row_version:payload.row_version,p_is_private:payload.is_private});}
+ if(operation==="request_work_log_access"){requirePermission(user,"worklogs");return rpc("request_work_log_access_v1",{p_actor_user_id:user.id,p_work_log_id:uuid(payload.work_log_id)});}
+ if(operation==="review_work_log_access")return rpc("review_work_log_access_v1",{p_actor_user_id:user.id,p_request_id:uuid(payload.request_id),p_row_version:payload.row_version,p_approved:payload.approved});
+ return rpc("acknowledge_work_log_access_v1",{p_actor_user_id:user.id,p_request_id:uuid(payload.request_id)});
+}
+function privatePublicState(){
+ const scope=privateContext.getStore();
+ return scope?{visibility_version:scope.visibility_version,configured:scope.configured===true,direct:scope.direct===true,configuration:scope.configuration||null,configuration_users:scope.configuration_users||[],can_configure:scope.can_configure===true,restricted_logs:scope.restricted_logs||[],requests:scope.requests||[]}:null;
+}
+function privateReadPath(path:string){
+ const scope=privateContext.getStore();if(!scope?.configured||scope.direct)return path;
+ const [table,query=""]=path.split("?"),filters=scope.filters?.[table];
+ if(!filters)return path;
+ if(filters._deny_all)return table+"?select=id&limit=0";
+ const params=new URLSearchParams(query),predicates:string[]=[];
+ for(const [column,ids]of Object.entries(filters)){
+  if(Array.isArray(ids)&&ids.length)predicates.push('or('+column+'.is.null,'+column+'.not.in.('+ids.join(',')+'))');
+ }
+ if(predicates.length){
+  const existing=params.get("and");if(existing)predicates.unshift(existing.slice(1,-1));
+  params.set("and","("+predicates.join(",")+")");
+ }
+ return table+"?"+params.toString();
+}
+function privateReadRequest(path:string,init:RequestInit={}){
+ if(init.method&&init.method!=="GET")return{path,init};
+ const filtered=privateReadPath(path);
+ if(filtered.length<=6000||filtered===path)return{path:filtered,init};
+ const scope=privateContext.getStore(),separator=path.indexOf("?"),table=separator<0?path:path.slice(0,separator);
+ if(!scope?.actorId||!uuid(scope.actorId)||!/^[a-z_]+$/.test(table)||!scope.filters?.[table])throw new Error("私人資料查詢範圍不正確。");
+ return{path:`rpc/private_select_${table}_v1${separator<0?"":path.slice(separator)}`,init:{...init,method:"POST",body:JSON.stringify({p_private_actor:scope.actorId})}};
+}
+function privateContainsId(value:unknown,blocked:Set<string>):boolean{
+ if(typeof value==="string")return (value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)||[]).some(id=>blocked.has(id.toLowerCase()));
+ if(Array.isArray(value))return value.some(v=>privateContainsId(v,blocked));
+ return !!value&&typeof value==="object"&&Object.values(value).some(v=>privateContainsId(v,blocked));
+}
+function assertPrivatePayload(payload:unknown){
+ const scope=privateContext.getStore();
+ if(scope?.configured&&!scope.direct&&privateContainsId(payload,new Set(scope.blocked_ids)))throw new Error("沒有此私人資料的操作權限。");
+}
+async function assertPrivateMutation(operation:string,payload:Row){
+ assertPrivatePayload(payload);
+ const scope=privateContext.getStore();if(!scope?.configured||scope.direct)return;
+ // A password reset or identity change could otherwise impersonate an allowed viewer.
+ if(["update_account","delete_account"].includes(operation)&&scope.protected_user_ids?.includes(String(payload.id)))throw new Error("沒有管理此私人資料授權帳號的權限。");
+ if(["update_erp_project","delete_erp_project"].includes(operation)&&scope.mutation_project_ids?.includes(String(payload.id)))throw new Error("此工作內容包含私人日誌，沒有連動修改的權限。");
+ if(operation==="upsert_customer_project_work_log"){
+  const projectId=uuid(payload.project_id);
+  if(projectId&&scope.mutation_project_ids?.includes(projectId)){
+   const projects=await get(`projects?id=eq.${projectId}&select=name,customer_id,department_id`) as Row[];
+   const project=projects[0];
+   if(!project||payload.project_name!==project.name||payload.customer_id!==project.customer_id||Object.hasOwn(payload,"department_id")&&(payload.department_id||null)!==(project.department_id||null))throw new Error("此工作內容包含私人日誌，沒有連動修改名稱或歸屬的權限。");
+  }
+ }
+}
+function privateResponse(body:unknown):unknown{
+ const scope=privateContext.getStore();
+ if(!scope?.configured||scope.direct||scope.sharedResult)return body;
+ const blocked=new Set(scope.blocked_ids);
+ function visit(value:unknown):unknown{
+  if(Array.isArray(value))return value.map(visit).filter(v=>v!==undefined);
+  if(!value||typeof value!=="object")return value;
+  const row=value as Row;
+  if(Object.entries(row).some(([key,v])=>(key==="id"||key.endsWith("_id"))&&typeof v==="string"&&blocked.has(v)))return undefined;
+  return Object.fromEntries(Object.entries(row).map(([key,v])=>[key,key==="private_access"?v:visit(v)]));
+ }
+ return visit(body);
+}
 const auditContext = new AsyncLocalStorage<AuditContext>();
 const requestMetrics = new AsyncLocalStorage<{started:number;requests:number;transportMs:number}>();
 function auditHeaders(request: Request, user?: AppUser): AuditContext {
@@ -1498,23 +1589,25 @@ async function auditDisplayNames(records: Row[]) {
   }
 }
 async function appointmentSnapshot(user:AppUser) {
-  requirePermission(user,"projects");
-  const rows=await getAll("work_assignments?select=*&assignment_type=eq.appointment"+(user.role==="admin"?"":`&assignee_user_id=eq.${user.id}`)+"&order=created_at.desc,id.desc") as Row[];
+  requirePermission(user,"appointments");
+  const rows=await getAll("work_assignments?select=*&assignment_type=eq.appointment"+"&order=appointment_date.asc,id.asc") as Row[];
   const customerIds=[...new Set(rows.map(row=>uuid(row.customer_id)).filter(Boolean))];
-  const customers=user.role==="admin"?await getAll(datasets.customers.path):customerIds.length?await getAll(`customers?select=id,customer_code,name,customer_category&id=in.(${customerIds})`):[];
-  const users=user.role==="admin"?await getAll(datasets.site_workers.path):[{id:user.id,display_name:user.display_name,is_active:true}];
+  const customers=hasPermission(user,"appointments","CREATE")||hasPermission(user,"appointments","UPDATE")?await getAll(datasets.customers.path):customerIds.length?await getAll(`customers?select=id,customer_code,name,customer_category&id=in.(${customerIds})`):[];
+  const assigneeIds=[...new Set(rows.map(row=>uuid(row.assignee_user_id)).filter(Boolean))];
+  const users=hasPermission(user,"appointments","CREATE")||hasPermission(user,"appointments","UPDATE")?await getAll(datasets.site_workers.path):assigneeIds.length?await getAll(`app_users?select=id,display_name,is_active&id=in.(${assigneeIds})&order=display_name.asc,id.asc`):[];
   return {scope:"appointments",current_user:publicUser(user),customer_appointments:rows,customers,customer_departments:await customerDepartmentRows(customers),customer_categories:await getAll(datasets.customer_categories.path),site_workers:users,errors:[],refreshed_at:new Date().toISOString()};
 }
 async function dashboardSnapshot(user: AppUser) {
   const started=performance.now();
   const previousBusinessDate=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(Date.now()-86400000));
-  const scoped=user.project_scoped?await rpc("work_log_scope_v1",{p_user_id:user.id}) as Row:null;
+  const scoped=user.project_scoped?await privateReadRpc("work_log_scope_v1",{p_user_id:user.id},user) as Row:null;
+  const assignmentTypes=[...(hasPermission(user,"worklogs")||hasPermission(user,"projects")?["general"]:[]),...(hasPermission(user,"pickups")?["pickup"]:[]),...(hasPermission(user,"appointments")?["appointment"]:[])];
   const [projects,repairs,logs,pendingAssignments,completedAssignments]=await Promise.all([
-    scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,15):get("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
-    get("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
-    scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):get(`site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
-    get(`work_assignments?select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=in.(pending,in_progress)&order=created_at.asc,id.asc&limit=100`),
-    get(`work_assignments?select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`)
+    !hasPermission(user,"projects")?[]:scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,15):get("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
+    !hasPermission(user,"repairs")?[]:get("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
+    !hasPermission(user,"worklogs")?[]:scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):get(`site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
+    !assignmentTypes.length?[]:get(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=in.(pending,in_progress)&order=created_at.asc,id.asc&limit=100`),
+    !assignmentTypes.length?[]:get(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`)
   ]) as Row[][];
   const unique=(rows:Row[],field:string)=>[...new Set(rows.map(row=>uuid(row[field])).filter(Boolean))];
   const assignments=[...pendingAssignments,...completedAssignments],projectIds=unique([...logs,...assignments],"project_id"),itemIds=unique([...repairs,...assignments],"inventory_item_id"),logIds=unique(logs,"id"),assignmentUserIds=[...new Set([...unique(assignments,"assignee_user_id"),...unique(assignments,"created_by_user_id")])];
@@ -1530,7 +1623,7 @@ async function dashboardSnapshot(user: AppUser) {
     workerIds.length?get(`app_users?select=id,display_name&id=in.(${workerIds})`):[]
   ]) as Row[][];
   const lookup=(rows:Row[],id:unknown,field:string)=>rows.find(row=>row.id===id)?.[field]||"—";
-  const assignmentProjection=(row:Row)=>{const project=relatedProjects.find(project=>project.id===row.project_id);return {...row,project_code:project?.project_code||"—",project:row.assignment_type==="appointment"?({repair:"客戶報修",site_visit:"預約場刊",quotation:"索取報價"}[String(row.appointment_type)]||"客戶預約事項"):project?.name||"已刪除工作內容",customer:lookup(customers,row.customer_id||project?.customer_id,"name"),assignee:lookup(assignmentUsers,row.assignee_user_id,"display_name"),creator:lookup(assignmentUsers,row.created_by_user_id,"display_name"),item:lookup(items,row.inventory_item_id,"item_name")};};
+  const assignmentProjection=(row:Row)=>{const project=relatedProjects.find(project=>project.id===row.project_id);return {...row,project_code:project?.project_code||"—",project:row.assignment_type==="appointment"?({repair:"客戶報修",site_visit:"預約場刊",quotation:"索取報價",construction:"預約施工"}[String(row.appointment_type)]||"客戶預約事項"):project?.name||"已刪除工作內容",customer:lookup(customers,row.customer_id||project?.customer_id,"name"),assignee:lookup(assignmentUsers,row.assignee_user_id,"display_name"),creator:lookup(assignmentUsers,row.created_by_user_id,"display_name"),item:lookup(items,row.inventory_item_id,"item_name")};};
   return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:pendingAssignments.map(assignmentProjection),completed:completedAssignments.map(assignmentProjection)}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
 }
 async function monitoringIpConflicts(payload: Row) {
@@ -1549,6 +1642,10 @@ async function monitoringIpConflicts(payload: Row) {
 async function nasUploadContext(params:URLSearchParams,user:AppUser) {
   const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("contract_service_type_id")),projectId=uuid(params.get("project_id"));
   if(!customerId||!serviceId||!projectId)throw new Error("缺少有效的客戶、承攬內容或專案編號。");
+  const access=privateContext.getStore();
+  // NAS folders are shared at project level. Do not expose hidden paths or allow
+  // an outsider to overwrite another private log's file in the same folder.
+  if(access?.configured&&!access.direct&&access.mutation_project_ids?.includes(projectId))throw new Error("此工作內容包含私人日誌，沒有共用附件目錄的操作權限。");
   // Only the four selected rows are needed; do not load the full sites/worklogs/equipment snapshot.
   const [customers,services,links,projects]=await Promise.all([
     get(`customers?select=id,name&id=eq.${customerId}&limit=1`),
@@ -1576,6 +1673,8 @@ async function handleRequest(request: Request) {
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
       authorizeRead(user,params,request.headers.get("x-guc-system")==="site");
+      if(params.get("entity")!=="shared_work_log")params.forEach(value=>assertPrivatePayload(value));
+      if(params.get("entity")==="shared_work_log"){requirePermission(user,"worklogs");const result=await rpc("read_shared_work_log_v1",{p_actor_user_id:user.id,p_work_log_id:uuid(params.get("id"))});privateContext.getStore()!.sharedResult=true;return json({record:result,current_user:publicUser(user)});}
       const entity = text(params.get("entity"));
       if(entity === "phone_terminal_versions")return json(await phoneTerminalVersions(params));
       if(entity === "audit_logs")return json(await auditRecords(params,user));
@@ -1588,10 +1687,10 @@ async function handleRequest(request: Request) {
        }
        if (entity === "equipment_history_search") {
          const customer=uuid(params.get("customer_id")),service=uuid(params.get("service_id"));if(!customer||!service)throw new Error("請選擇客戶與承攬內容。");
-         return json({...await rpc("search_equipment_history_v1",{p_customer_id:customer,p_service_id:service,p_search:text(params.get("search")).slice(0,160),p_type:text(params.get("type")).slice(0,60),p_page:Math.max(1,Number(params.get("page"))||1)}) as Row,preview_readonly:isPreviewGateway});
+         return json({...await privateReadRpc("search_equipment_history_v1",{p_customer_id:customer,p_service_id:service,p_search:text(params.get("search")).slice(0,160),p_type:text(params.get("type")).slice(0,60),p_page:Math.max(1,Number(params.get("page"))||1)},user) as Row,preview_readonly:isPreviewGateway});
        }
        if (entity === "maintenance_workers") return json({records:await get("app_users?is_active=eq.true&select=id,display_name&order=display_name.asc")});
-       if (entity === "equipment_history") return json({...(await equipmentHistory(params) as Row),current_user:publicUser(user),preview_readonly:isPreviewGateway});
+       if (entity === "equipment_history") return json({...(await equipmentHistory(params,user) as Row),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_options") return json({...(await monitoringDeviceOptions(user,params)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_dashboard") return json({...(await monitoringDeviceDashboard(user)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_imports") return json({...(await monitoringDeviceImports(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
@@ -1600,13 +1699,17 @@ async function handleRequest(request: Request) {
       if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
       if (scopeName === "site_customer") return json(await siteCustomerSnapshot(params,user,isPreviewGateway));
       if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
-      return json(await scopedSnapshot(user, scopeName, params.get("options_only")==="1"));
+      const snapshot=await scopedSnapshot(user, scopeName, params.get("options_only")==="1") as Row;
+      const privateLedger=privateContext.getStore()?.configured&&!privateContext.getStore()?.direct;
+      const restrictedLedger=["worklogs","inventory"].includes(scopeName)&&(!hasPermission(user,"pickups")||!hasPermission(user,"purchases"));
+      if((privateLedger||restrictedLedger)&&Array.isArray(snapshot.items))snapshot.stock_totals=await rpc("erp_stock_totals_v1",{p_actor_user_id:user.id});
+      return json(snapshot);
     }
     if(request.method !== "POST") return json({error:"僅支援 GET 與 POST。"},405);
     const body=await request.json() as {operation?:unknown;payload?:unknown};
     const operation = text(body.operation), payload = body.payload&&typeof body.payload==="object"&&!Array.isArray(body.payload)?body.payload as Row:{};
     if (operation === "login") { const logged = await login(payload); if(request.headers.get("x-guc-system")==="site")requirePermission(logged.user,"site"); if(!isPreviewGateway){Object.assign(auditContext.getStore()!,auditHeaders(request,logged.user));await insert("audit_logs",{entity_type:"session",entity_id:logged.user.id,action:"LOGIN",actor:logged.user.username,source:"web"});} return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
-    if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);requirePermission(user,"site");requirePermission(user,"monitoring");return json(await monitoringIpConflicts(payload));}
+    if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);requirePermission(user,"site");requirePermission(user,"monitoring");assertPrivatePayload(payload);return json(await monitoringIpConflicts(payload));}
     if (isPreviewGateway) return json({error:"Preview 環境僅允許登入與讀取；所有寫入均已封鎖。",code:"PREVIEW_READ_ONLY"},403);
     if (operation === "bootstrap_admin") {
       const existing = await get("app_users?select=id&limit=1") as Row[];
@@ -1619,6 +1722,11 @@ async function handleRequest(request: Request) {
     Object.assign(auditContext.getStore()!,auditHeaders(request,user));
     if(operation === "logout"){await insert("audit_logs",{entity_type:"session",entity_id:user.id,action:"LOGOUT",actor:user.username,source:"web"});return json({ok:true});}
     if(request.headers.get("x-guc-system")==="site")requirePermission(user,"site");
+    if(["request_work_log_access","review_work_log_access","acknowledge_work_log_access","configure_erp_private_access","set_customer_private"].includes(operation)){
+      const result=await privateOperation(operation,payload,user);return json({ok:true,private_access:{result},current_user:publicUser(user)},201);
+    }
+    await assertPrivateMutation(operation,payload);
+    if(operation==="restore_database_backup"&&privateContext.getStore()?.configured&&!privateContext.getStore()?.direct)throw new Error("私人資料啟用時，沒有資料復原權限。");
     const result = await change(operation,payload,user);
     if (operation === "reveal_phone_system_credential") {
       const credential = Array.isArray(result) ? result[0] : null;
@@ -1637,7 +1745,7 @@ async function handleRequest(request: Request) {
   }
 }
 Deno.serve(request => auditContext.run(auditHeaders(request), () => requestMetrics.run({started:performance.now(),requests:0,transportMs:0},async()=>{
-  const response=await handleRequest(request),metrics=requestMetrics.getStore()!;
+  const response=await privateContext.run({},()=>handleRequest(request)),metrics=requestMetrics.getStore()!;
   response.headers.set("Server-Timing",`gateway;dur=${(performance.now()-metrics.started).toFixed(2)}, upstream;dur=${metrics.transportMs.toFixed(2)};desc="auth and database transport sum", upstream_requests;desc="${metrics.requests}"`);
   return response;
 })));
