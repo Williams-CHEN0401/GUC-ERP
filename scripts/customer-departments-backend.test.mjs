@@ -12,7 +12,7 @@ function harness(actions=['view','create','update','delete'],module='customers',
  vm.runInContext(source,context);
  context.currentUser=async()=>({id,username:'fixture',role:'custom',is_active:true,project_scoped:scoped,permissions:[{module,can_view:actions.includes('view'),can_create:actions.includes('create'),can_update:actions.includes('update'),can_delete:actions.includes('delete')}]});
  context.get=context.getAll=async path=>{calls.push(path);return path.startsWith('customers?')?[{id}]:[];};
- context.rpc=async(name,args)=>{calls.push({name,args});return name==='work_log_scope_v1'?{customers:[{id}],projects:[{id,customer_id:id,department_id:department}]}:{};};
+ context.rpc=async(name,args)=>{calls.push({name,args});return name==='private_work_log_scope_v1'?{customers:[{id}],projects:[{id,customer_id:id,department_id:department}]}:{};};
  return {calls,context,read:scope=>handler(new Request('https://example.test/inventory-gateway?scope='+scope)),write:(operation,payload)=>handler(new Request('https://example.test/inventory-gateway',{method:'POST',body:JSON.stringify({operation,payload})}))};
 }
 for(const [op,action] of [['create','create'],['update','update'],['deactivate','delete']]){

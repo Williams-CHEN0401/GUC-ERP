@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["index.ts", "deno-runtime.d.ts"]
+  "include": ["index.ts", "deno-runtime.d.ts", "../inventory-gateway-preview-optimization/index.ts"]
 }

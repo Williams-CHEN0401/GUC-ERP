@@ -544,6 +544,10 @@ export default {
       const description = firstText(form.get("description")).slice(0, 1000);
       const assetType = firstText(form.get("attachment_type")) === "document" ? "document" : "photo";
       if (!customerId || !contractServiceTypeId || !projectId) throw new HttpError(400, "缺少客戶、承攬內容或專案資料；附件未上傳。", "UPLOAD_CONTEXT_REQUIRED");
+      // Signed upload tickets accelerate file transfer, but never preserve a revoked ACL.
+      // Check before any NAS write, including intermediate chunks and ticket reuse.
+      if(user.private_access?.configured&&!user.private_access.direct)
+        await resolveUploadContext(customerId,contractServiceTypeId,projectId,authorization,workLogId);
 
       if (["begin_file", "upload_chunk", "complete_file", "cancel_file"].includes(mode)) {
         return await handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, requestId, authMs, formMs });

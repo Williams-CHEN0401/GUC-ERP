@@ -171,3 +171,13 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .pickup-item-results{display:grid;gap:8px;max-height:260px;overflow-y:auto;margin-top:12px;min-width:0}
 .pickup-item-results>button{display:grid;gap:4px;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0;width:100%}
 .pickup-item-results span,.pickup-item-search>p{font-size:13px;color:var(--muted)}
+/* Appointment reminders use the existing table and badge palette. */
+.appointment-overdue { background: #fff0ef; }
+.appointment-overdue td:first-child { color: #a82323; font-weight: 700; }
+.appointment-overdue .badge { display: block; width: fit-content; margin-top: .35rem; }
+.private-viewer-list { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); }
+.private-viewer-list label { display: flex; align-items: center; gap: .5rem; }
+.private-viewer-list input[type=checkbox] { width: auto; flex: 0 0 auto; }
+.private-access-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; padding: .75rem 0; border-bottom: 1px solid #ddd; }
+.private-access-row small { display: block; }
+.private-log-content { white-space: pre-wrap; overflow-wrap: anywhere; }

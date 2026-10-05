@@ -25,7 +25,7 @@ test('option-only refresh uses existing scope permissions and excludes history q
  for(const name of ['site_work_logs','pickups','site_assets','maintenance_events','audit_logs'])assert.ok(!Object.hasOwn(data,name),name);
  assert.ok(!allowed.calls.some(path=>typeof path==='string'&&/^(site_work_logs|pickup_records|site_assets|maintenance_events|audit_logs)\?/.test(path)));
  const scoped=harness([permission('worklogs','view')],true);
- scoped.context.rpc=async(name,args)=>{assert.equal(name,'work_log_scope_v1');assert.equal(args.p_user_id,id(1));return{projects:[{id:id(2)}],project_access:[{project_id:id(2)}],customers:[],site_work_logs:[{id:id(99)}]};};
+ scoped.context.rpc=async(name,args)=>{assert.equal(name,'private_work_log_scope_v1');assert.equal(args.p_private_actor,id(1));assert.equal(args.p_user_id,id(1));return{projects:[{id:id(2)}],project_access:[{project_id:id(2)}],customers:[],site_work_logs:[{id:id(99)}]};};
  const scopedData=await(await scoped.read('scope=worklogs&options_only=1')).json();assert.deepEqual(scopedData.projects,[{id:id(2)}]);assert.deepEqual(scopedData.project_access,[{project_id:id(2)}]);assert.ok(!Object.hasOwn(scopedData,'site_work_logs'));
  const pickupOnly=harness([permission('pickups','view','create')]);
  const pickupChoices=await(await pickupOnly.read('scope=transactions&options_only=1')).json();
@@ -71,7 +71,7 @@ test('loaded worker permissions reject every unrelated scope and direct entity U
  const h=harness([permission('worklogs','view','create','update','delete')],true);
  for(const query of ['scope=crm','scope=settings','scope=transactions','scope=dashboard','scope=site_navigation','entity=projects&customer_id='+id(3)])assert.equal((await h.read(query)).status,403,query);
  assert.equal(h.calls.length,0);
- h.context.rpc=async(name,args)=>{assert.equal(name,'work_log_scope_v1');assert.equal(args.p_user_id,id(1));return{projects:[{id:id(2)}],site_work_logs:[]};};
+ h.context.rpc=async(name,args)=>{assert.equal(name,'private_work_log_scope_v1');assert.equal(args.p_private_actor,id(1));assert.equal(args.p_user_id,id(1));return{projects:[{id:id(2)}],site_work_logs:[]};};
  const response=await h.read('scope=worklogs');assert.equal(response.status,200);assert.equal((await response.json()).projects[0].id,id(2));
 });
 test('readonly accounting can load purchases and no other transactions, cannot write',async()=>{

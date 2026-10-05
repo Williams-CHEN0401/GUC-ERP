@@ -1,9 +1,15 @@
 // Uses the existing assignment ID/status, customer master, permissions and table UI.
-const APPOINTMENT_TYPES = [['repair','客戶報修'],['site_visit','預約場刊'],['quotation','索取報價']];
+const APPOINTMENT_TYPES = [['repair','客戶報修'],['site_visit','預約場刊'],['quotation','索取報價'],['construction','預約施工']];
 const APPOINTMENT_STATUSES = [['pending','待處理'],['in_progress','處理中'],['completed','已完成'],['cancelled','已取消']];
+function appointmentToday(now=new Date()){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);}
+function appointmentOverdue(row,currentDate=appointmentToday()){
+  if(!['pending','in_progress'].includes(row.status)||!row.appointment_date)return false;
+  const days=Number(row.reminder_days??3),due=Date.parse(row.appointment_date+'T00:00:00Z')+days*86400000;
+  return Number.isInteger(days)&&days>=0&&Date.parse(currentDate+'T00:00:00Z')>=due;
+}
 function appointmentTypeLabel(value){return APPOINTMENT_TYPES.find(([code])=>code===value)?.[1]||value;}
 function previewAppointment(payload){
-  if(!canAdmin())throw new Error('只有管理員可管理客戶預約事項。');
+  if(!canModule('appointments',payload.id?'UPDATE':'CREATE'))throw new Error('您的帳號沒有執行此操作的權限。');
   let row=byId(state.appointments||[],payload.id);
   if(payload.id&&(!row||row.row_version!==payload.row_version))throw new Error('預約事項已被更新，請重新整理。');
   if(!row){row={id:uid(),created_at:new Date().toISOString(),created_by_user_id:state.currentUser.id,row_version:0};(state.appointments||=[]).push(row);}
@@ -48,21 +54,22 @@ function renderAppointments(){
   const from=document.querySelector('#appointmentFilterFrom').value,to=document.querySelector('#appointmentFilterTo').value,c=tableState.appointment;
   const rows=(state.appointments||[]).map(row=>({...row,customer:byId(state.customers,row.customer_id)?.name||'—',department:customerDepartmentLabel(row.department_id),assignee:byId(state.siteWorkers,row.assignee_user_id)?.displayName||'—',typeLabel:appointmentTypeLabel(row.appointment_type),statusLabel:APPOINTMENT_STATUSES.find(([code])=>code===row.status)?.[1]||row.status})).filter(row=>
     (!type||row.appointment_type===type)&&(!status||row.status===status)&&(!assignee||row.assignee_user_id===assignee)&&(!from||row.appointment_date>=from)&&(!to||row.appointment_date<=to)&&customerFilterMatches('appointmentFilter',row.customer_id,row.department_id)&&matches([row.customer,row.department,row.instructions,row.contact_name,row.contact_phone,row.notes,row.typeLabel,row.statusLabel,row.assignee],c.search));
-  const page=tablePage('appointment',sortRows(rows,c.sortKey||'created_at',c.direction));
-  document.querySelector('#appointmentTable').innerHTML=page.rows.map(row=>`<tr data-appointment-row="${esc(row.id)}"${editableRowAttributes('appointmentModal',row.id,canAdmin())}><td>${esc(row.appointment_date)}</td><td>${esc(row.customer)}</td><td>${esc(row.department)}</td><td>${esc(row.typeLabel)}</td><td>${esc(row.instructions)}</td><td>${esc(row.assignee)}</td><td>${esc(row.statusLabel)}</td><td>${esc(formatDateTime(row.created_at))}</td><td class="actions">${!canAdmin()?`<button type="button" data-appointment-open="${esc(row.id)}">檢視</button>`:''}${canAdmin()&&row.status!=='cancelled'?`<button type="button" data-appointment-cancel="${esc(row.id)}">取消／停用</button>`:''}</td></tr>`).join('')||emptyRow(9);
+  const page=tablePage('appointment',sortRows(rows,c.sortKey||'appointment_date',c.direction));
+  document.querySelector('#appointmentTable').innerHTML=page.rows.map(row=>`<tr class="${appointmentOverdue(row)?'appointment-overdue':''}" data-appointment-row="${esc(row.id)}"${editableRowAttributes('appointmentModal',row.id,canModule('appointments','UPDATE'))}><td>${esc(row.appointment_date)}${appointmentOverdue(row)?'<span class="badge danger">未完成提醒</span>':''}</td><td>${esc(row.customer)}</td><td>${esc(row.department)}</td><td>${esc(row.typeLabel)}</td><td>${esc(row.instructions)}</td><td>${esc(row.assignee)}</td><td>${esc(row.statusLabel)}</td><td>${esc(formatDateTime(row.created_at))}</td><td class="actions">${!canModule('appointments','UPDATE')?`<button type="button" data-appointment-open="${esc(row.id)}">檢視</button>`:''}${canModule('appointments','UPDATE')&&row.status!=='cancelled'?`<button type="button" data-appointment-cancel="${esc(row.id)}">取消／停用</button>`:''}</td></tr>`).join('')||emptyRow(9);
   renderPagination('appointment','appointmentPagination',page.total);
-  document.querySelector('[data-open="appointmentModal"]').hidden=!canAdmin();
+  document.querySelector('[data-open="appointmentModal"]').hidden=!canModule('appointments','CREATE');
 }
 function appointmentFields(id){
+  const editable=canModule('appointments',id?'UPDATE':'CREATE');
   const row=byId(state.appointments||[],id),customer=byId(state.customers,row?.customer_id);
   if(id&&!row)throw new Error('預約事項已不存在，請重新整理。');
   const users=(state.siteWorkers||[]).filter(u=>u.active!==false||u.id===row?.assignee_user_id);
-  const fields=`<input name="appointmentVersion" type="hidden" value="${row?.row_version||''}">${customerSelectorFields(row?.customer_id||'',customer?.category||'',row?.department_id||'',{legacy:!!row,required:false})}${inputField('contactName','聯絡人','text',false,row?.contact_name||'')}${inputField('contactPhone','聯絡電話','text',false,row?.contact_phone||'')}${selectField('appointmentType','預約類型',APPOINTMENT_TYPES,row?.appointment_type||'repair')}${inputField('appointmentDate','預約日期','date',true,row?.appointment_date||today())}${selectField('assigneeUserId','責任人',[['','請選擇責任人'],...users.map(u=>[u.id,u.displayName])],row?.assignee_user_id||'')}${selectField('appointmentStatus','狀態',APPOINTMENT_STATUSES,row?.status||'pending')}${inputField('instructions','預約／報修內容','textarea',true,row?.instructions||'','span-2')}${inputField('appointmentNotes','備註','textarea',false,row?.notes||'','span-2')}${row?`<p>建立日期：${esc(formatDateTime(row.created_at))}</p>`:''}${canAdmin()?submitField(id?'儲存修改':'建立預約'):''}`;
-  return {title:id?(canAdmin()?'修改客戶預約事項':'檢視客戶預約事項'):'新增客戶預約事項',fields:canAdmin()?fields:`<fieldset class="span-2 form-grid" disabled>${fields}</fieldset>`};
+  const fields=`<input name="appointmentVersion" type="hidden" value="${row?.row_version||''}">${customerSelectorFields(row?.customer_id||'',customer?.category||'',row?.department_id||'',{legacy:!!row,required:false})}${inputField('contactName','聯絡人','text',false,row?.contact_name||'')}${inputField('contactPhone','聯絡電話','text',false,row?.contact_phone||'')}${selectField('appointmentType','預約類型',APPOINTMENT_TYPES,row?.appointment_type||'repair')}${inputField('appointmentDate','預約日期','date',true,row?.appointment_date||appointmentToday())}${inputField('reminderDays','幾天後未完成提醒','number',true,row?.reminder_days??3).replace('type="number"','type="number" min="0" max="365" step="1"')}${selectField('assigneeUserId','責任人',[['','請選擇責任人'],...users.map(u=>[u.id,u.displayName])],row?.assignee_user_id||'')}${selectField('appointmentStatus','狀態',APPOINTMENT_STATUSES,row?.status||'pending')}${inputField('instructions','預約／報修內容','textarea',true,row?.instructions||'','span-2')}${inputField('appointmentNotes','備註','textarea',false,row?.notes||'','span-2')}${row?`<p>建立日期：${esc(formatDateTime(row.created_at))}</p>`:''}${editable?submitField(id?'儲存修改':'建立預約'):''}`;
+  return {title:id?(canModule('appointments','UPDATE')?'修改客戶預約事項':'檢視客戶預約事項'):'新增客戶預約事項',fields:editable?fields:`<fieldset class="span-2 form-grid" disabled>${fields}</fieldset>`};
 }
 async function saveAppointment(id,data){
-  if(!canAdmin())throw new Error('只有管理員可管理客戶預約事項。');
-  await mutate('upsert_customer_appointment',{id:id||null,row_version:id?Number(data.appointmentVersion):null,customer_id:data.customerId,department_id:modalDepartmentValue(),appointment_type:data.appointmentType,appointment_date:data.appointmentDate,contact_name:data.contactName,contact_phone:data.contactPhone,instructions:data.instructions,assignee_user_id:data.assigneeUserId,status:data.appointmentStatus,notes:data.appointmentNotes},id?'預約事項已修改':'預約事項已建立',{reloadScope:'appointments'});
+  if(!canModule('appointments',id?'UPDATE':'CREATE'))throw new Error('您的帳號沒有執行此操作的權限。');
+  await mutate('upsert_customer_appointment',{id:id||null,row_version:id?Number(data.appointmentVersion):null,customer_id:data.customerId,department_id:modalDepartmentValue(),appointment_type:data.appointmentType,appointment_date:data.appointmentDate,reminder_days:Number(data.reminderDays),contact_name:data.contactName,contact_phone:data.contactPhone,instructions:data.instructions,assignee_user_id:data.assigneeUserId,status:data.appointmentStatus,notes:data.appointmentNotes},id?'預約事項已修改':'預約事項已建立',{reloadScope:'appointments'});
 }
 document.addEventListener('change',event=>{
   const id=event.target.id;
@@ -72,7 +79,7 @@ document.addEventListener('change',event=>{
 document.addEventListener('input',event=>{if(event.target.id==='appointmentSearch')setSearch('appointment',event.target.value,renderAppointments);});
 document.addEventListener('click',async event=>{
   const open=event.target.closest('[data-appointment-open]');if(open)openModal('appointmentModal',open.dataset.appointmentOpen);
-  const cancel=event.target.closest('[data-appointment-cancel]');if(!cancel||cancel.disabled||!canAdmin())return;
+  const cancel=event.target.closest('[data-appointment-cancel]');if(!cancel||cancel.disabled||!canModule('appointments','UPDATE'))return;
   const row=byId(state.appointments||[],cancel.dataset.appointmentCancel);
   if(!row||!confirm('確定取消／停用此預約事項？資料保留，首頁不再列入待辦。'))return;
   cancel.disabled=true;

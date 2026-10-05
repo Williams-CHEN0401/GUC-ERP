@@ -37,7 +37,18 @@ export async function restRead(db,path){
  const select=(params.get('select')||'*').split(',').map(x=>x==='*'?'*':identifier(x)).join(',');
  const where=[];
  for(const [key,value] of params){
-  if(['select','order','limit','offset'].includes(key))continue;
+   if(['select','order','limit','offset'].includes(key))continue;
+   if(key==='or'){
+    if(!value.startsWith('(')||!value.endsWith(')'))throw Error('Unsupported fixture disjunction');
+    const terms=value.slice(1,-1).split(',').map(term=>{const match=/^([a-z_]+)\.ilike\.([^(),]*)$/.exec(term);if(!match)throw Error('Unsupported fixture search');return identifier(match[1])+'::text ilike '+bind(match[2].replaceAll('*','%'));});
+    where.push('('+terms.join(' or ')+')');continue;
+   }
+  if(key==='and'){
+   const terms=[...value.matchAll(/or\(([a-z_]+)\.is\.null,\1\.not\.in\.\(([0-9a-fA-F,-]+)\)\)/g)];
+   if(!terms.length||'('+terms.map(t=>t[0]).join(',')+')'!==value)throw Error('Unsupported fixture conjunction');
+   for(const [,field,ids]of terms)where.push('('+identifier(field)+' is null or '+identifier(field)+' not in ('+ids.split(',').map(bind).join(',')+'))');
+   continue;
+  }
   const column=identifier(key);
   if(value==='is.null')where.push(column+' is null');
   else if(value.startsWith('eq.'))where.push(column+' = '+bind(['is_active','can_view','is_assignee'].includes(key)&&['true','false'].includes(value.slice(3))?value.slice(3)==='true':value.slice(3)));
