@@ -1,5 +1,5 @@
 const PERMISSION_LABELS = {appointments:'客戶預約事項',dashboard:'首頁',worklogs:'工作日誌',purchases:'進貨管理',pickups:'取貨管理',inventory:'商品與庫存',customers:'客戶管理',projects:'工作內容管理',suppliers:'供應商',repairs:'維修品管理',reports:'工作內容統計報表',backup:'資料備份／復原',settings:'系統設定',users:'使用者管理',audit:'系統日誌',site:'案場系統入口',phone:'電話設備',monitoring:'監控設備',equipment:'其他案場設備',history:'維修／設定紀錄',credentials:'設備帳密',monitoring_import:'監控 Excel 匯入'};
-const PAGE_PERMISSIONS={appointments:['appointments'],dashboard:['dashboard'],transactions:['purchases','pickups'],repairs:['repairs'],inventory:['inventory'],crm:['customers','projects','suppliers'],worklogs:['worklogs'],materials:['reports'],backup:['backup'],settings:['settings','users','audit']};
+const PAGE_PERMISSIONS={appointments:['appointments'],dashboard:['dashboard'],transactions:['purchases','pickups'],repairs:['repairs'],inventory:['inventory'],crm:['customers','suppliers'],projects:['projects'],worklogs:['worklogs'],materials:['reports'],backup:['backup'],settings:['settings','users','audit']};
 const MODAL_PERMISSIONS={appointmentModal:'appointments',customerModal:'customers',contractServiceModal:'customers',customerCategoryModal:'customers',customerDepartmentModal:'customers',supplierModal:'suppliers',accountModal:'users',categoryModal:'inventory',itemModal:'inventory',projectModal:'projects',pickupModal:'pickups',receiptModal:'purchases',repairModal:'repairs',workLogModal:'worklogs',workLogPickupModal:'pickups',attachmentModal:'equipment'};
 function canModule(module,action='VIEW'){
  const user=state.currentUser;if(!user)return false;if(user.role==='admin')return true;
@@ -16,7 +16,8 @@ function canWorkLog(action,id){
  return grants.some(g=>(!log||g.project_id===log.projectId)&&g.can_view&&(action==='VIEW'||g[`can_${action.toLowerCase()}_work_log`]));
 }
 function applyPermissionUI(){
- document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.hidden=!canPage(el.dataset.page));
+ document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.hidden=el.hasAttribute('data-work-group')?!WORK_MANAGEMENT_PAGES.some(canPage):!canPage(el.dataset.page));
+ preparePageLinks();
  document.querySelectorAll('[data-goto]').forEach(el=>el.hidden=!canPage(el.dataset.goto));
  document.querySelectorAll('[data-system-choice="sites"]').forEach(el=>el.hidden=!canModule('site'));
  document.querySelectorAll('[data-open]').forEach(el=>{const module=MODAL_PERMISSIONS[el.dataset.open];if(module)el.hidden=module==='worklogs'?!canWorkLog('CREATE'):!canModule(module,'CREATE');});
@@ -29,7 +30,7 @@ function applyPermissionUI(){
  if(typeof renderPrivateAccessUI==='function')renderPrivateAccessUI();
  const scoped=state.currentUser?.project_scoped;
  if(scoped)document.querySelectorAll('[data-work-log-pickup],[data-work-log-attachment]').forEach(el=>el.hidden=true);
- for(const [scope,tabs] of Object.entries({transactions:{pickups:'pickups',receipts:'purchases'},crm:{customers:'customers',projects:'projects',suppliers:'suppliers'}})){
+ for(const [scope,tabs] of Object.entries({transactions:{pickups:'pickups',receipts:'purchases'},crm:{customers:'customers',suppliers:'suppliers'}})){
   const section=document.querySelector(`.page[data-page="${scope}"]`);if(!section)continue;
   for(const [tab,module]of Object.entries(tabs)){section.querySelectorAll(`[data-tab="${tab}"]`).forEach(el=>el.hidden=!canModule(module));section.querySelectorAll(`[data-pane="${tab}"]`).forEach(el=>el.hidden=!canModule(module));}
   const active=section.querySelector('.section-tabs [data-tab].active');if(active?.hidden)section.querySelector('.section-tabs [data-tab]:not([hidden])')?.click();

@@ -25,7 +25,8 @@ function maintenanceEventTypeOptions(event={}){const legacy=event.id&&LEGACY_MAI
 const REPAIR_STATUSES = [["received", "已收件"], ["sent_to_supplier", "已送供應商"], ["supplier_returned", "供應商已返件"], ["returned_to_customer", "已返還客戶"], ["cancelled", "已取消"]];
 const DEFAULT_CONTRACT_SERVICES = ["電話系統","監控系統","辦公室佈線","音響","柵欄機","緊急求救系統","門禁系統"];
 const MAX_BATCH_ROWS = 20;
-const PAGE_SCOPES = { appointments:"appointments", dashboard:"dashboard", transactions:"transactions", repairs:"repairs", inventory:"inventory", crm:"crm", worklogs:"worklogs", materials:"materials", settings:"settings" };
+const PAGE_SCOPES = { appointments:"appointments", dashboard:"dashboard", transactions:"transactions", repairs:"repairs", inventory:"inventory", crm:"crm", projects:"crm", worklogs:"worklogs", materials:"materials", settings:"settings" };
+const WORK_MANAGEMENT_PAGES = ["worklogs", "projects", "materials"];
 const API_TIMEOUT_MS = 30_000;
 const NAS_TARGET_ROOT = "/GUC-ERP";
 const MAX_ATTACHMENT_FILES = 10;
@@ -62,7 +63,8 @@ const pageMeta = {
   appointments: ["客戶預約事項", "客戶報修、預約場刊、索取報價與預約施工"],
   dashboard: ["首頁 Dashboard", "掌握工作內容、庫存與進出貨現況"], transactions: ["進出貨管理", "取貨、進貨與帳號追蹤"],
   repairs: ["維修品管理", "連動客戶、商品與供應商，追蹤送修進度"],
-  inventory: ["商品與庫存", "即時庫存、品項維護與盤點校正"], crm: ["客戶與工作內容", "客戶、工作內容與供應商主檔"],
+  inventory: ["商品與庫存", "即時庫存、品項維護與盤點校正"], crm: ["客戶與供應商", "客戶與供應商主檔"],
+  projects: ["工作內容", "工作內容管理與工程施工分類"],
   worklogs: ["工作日誌", "跨客戶與工作內容管理工程、維修及保養紀錄"], materials: ["工作內容統計報表", "整合工作內容用料、施工人員與工作日誌"],
   settings: ["系統設定", "使用者與系統日誌"]
 };
@@ -286,9 +288,21 @@ function renderSiteModules(){const context=selectedSiteContext();document.queryS
 
 function renderAll(){renderAppointments();refreshCustomerCategorySelects();renderCustomerCategories();renderContractServiceCatalog();renderCustomerDepartments();renderDashboard();renderInventory();renderProductCategories();renderTransactions();renderRepairs();renderMasterData();renderUsers();renderSystemLogs();renderWorkLogs();renderProjectReport();renderPermissionSettings();applyPermissionUI();}
 function currentPage(){return document.querySelector(".page.active")?.dataset.page||"dashboard";}
-function requestedPageFromUrl(){const page=new URLSearchParams(location.search).get("page")||"";return Object.prototype.hasOwnProperty.call(PAGE_SCOPES,page)?page:"";}
-function pageUrl(name){const target=new URL(location.href);target.searchParams.set("page",name);target.hash="";return `${target.pathname}${target.search}`;}
-function preparePageLinks(){document.querySelectorAll(".nav-item[data-page]").forEach((link)=>{link.href=pageUrl(link.dataset.page);});}
+function requestedPageFromUrl(){const params=new URLSearchParams(location.search),page=params.get("page")||"";if(page==="crm"&&params.get("tab")==="projects")return "projects";return Object.prototype.hasOwnProperty.call(PAGE_SCOPES,page)?page:"";}
+function pageUrl(name){const target=new URL(location.href);target.searchParams.set("page",name);if(target.searchParams.get("tab")==="projects")target.searchParams.delete("tab");target.hash="";return `${target.pathname}${target.search}`;}
+function workManagementPage(){const page=currentPage();return WORK_MANAGEMENT_PAGES.includes(page)&&canPage(page)?page:WORK_MANAGEMENT_PAGES.find(canPage)||"worklogs";}
+function syncWorkManagementNavigation(name=currentPage()){
+  const tabs=document.querySelector("#workManagementTabs");
+  if(!tabs)return;
+  tabs.hidden=!WORK_MANAGEMENT_PAGES.includes(name);
+  tabs.querySelectorAll("[data-work-tab]").forEach((link)=>{
+    const active=link.dataset.page===name;
+    link.hidden=!canPage(link.dataset.page);
+    link.classList.toggle("active",active);
+    if(active)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");
+  });
+}
+function preparePageLinks(){document.querySelectorAll(".nav-item[data-page], [data-work-tab]").forEach((link)=>{link.href=pageUrl(link.hasAttribute("data-work-group")?workManagementPage():link.dataset.page);});syncWorkManagementNavigation();}
 function clearPageUrl(){const target=new URL(location.href);target.searchParams.delete("page");target.hash="";history.replaceState(null,"",`${target.pathname}${target.search}`);preparePageLinks();}
 function setLoadState(message){document.querySelector("#syncState").innerHTML=`<i></i>${esc(message)}`;}
 async function loadScope(scope,{force=false,silent=false}={}){
@@ -327,7 +341,7 @@ async function checkNasConnection(){
     renderSiteModules();
   }
 }
-async function switchPage(name){if(!Object.prototype.hasOwnProperty.call(PAGE_SCOPES,name))return;if(state.currentUser&&!canPage(name))name=firstAllowedPage();document.querySelectorAll(".page").forEach((p)=>p.classList.toggle("active",p.dataset.page===name));document.querySelectorAll(".nav-item").forEach((i)=>{const active=i.dataset.page===name;i.classList.toggle("active",active);if(active)i.setAttribute("aria-current","page");else i.removeAttribute("aria-current");});history.replaceState(null,"",pageUrl(name));preparePageLinks();document.title=`GUC ERP｜${pageMeta[name][0]}`;document.querySelector("#pageTitle").textContent=pageMeta[name][0];document.querySelector("#pageSubtitle").textContent=pageMeta[name][1];document.querySelector("#sidebar").classList.remove("open");window.scrollTo({top:0,behavior:"smooth"});if(accessToken){await loadPageData(name,{force:name==="dashboard"});if(name==="materials")applyWorkContentReportLink();if(name==="settings"&&canModule("audit"))await loadAuditPage();if(["sites","worklogs"].includes(name)&&canModule("equipment","CREATE"))await checkNasConnection();}}
+async function switchPage(name){if(!Object.prototype.hasOwnProperty.call(PAGE_SCOPES,name))return;if(state.currentUser&&!canPage(name))name=WORK_MANAGEMENT_PAGES.includes(name)&&WORK_MANAGEMENT_PAGES.some(canPage)?workManagementPage():firstAllowedPage();document.querySelectorAll(".page").forEach((p)=>p.classList.toggle("active",p.dataset.page===name));document.querySelectorAll(".nav-item").forEach((i)=>{const active=i.hasAttribute("data-work-group")?WORK_MANAGEMENT_PAGES.includes(name):i.dataset.page===name;i.classList.toggle("active",active);if(active)i.setAttribute("aria-current","page");else i.removeAttribute("aria-current");});history.replaceState(null,"",pageUrl(name));preparePageLinks();document.title=`GUC ERP｜${pageMeta[name][0]}`;document.querySelector("#pageTitle").textContent=WORK_MANAGEMENT_PAGES.includes(name)?"工作管理":pageMeta[name][0];document.querySelector("#pageSubtitle").textContent=pageMeta[name][1];document.querySelector("#sidebar").classList.remove("open");window.scrollTo({top:0,behavior:"smooth"});if(accessToken){await loadPageData(name,{force:name==="dashboard"});if(name==="materials")applyWorkContentReportLink();if(name==="settings"&&canModule("audit"))await loadAuditPage();if(["sites","worklogs"].includes(name)&&canModule("equipment","CREATE"))await checkNasConnection();}}
 function setupTabs(){document.querySelectorAll(".section-tabs").forEach((tabs)=>tabs.addEventListener("click",(event)=>{const button=event.target.closest("button[data-tab]");if(!button)return;const page=tabs.closest(".page");tabs.querySelectorAll("button").forEach((b)=>b.classList.toggle("active",b===button));page.querySelectorAll(":scope > .tab-pane").forEach((pane)=>pane.classList.toggle("active",pane.dataset.pane===button.dataset.tab));}));}
 
 function inputField(name,label,type="text",required=false,value="",className=""){if(type==="textarea")return`<label class="${className}">${esc(label)}<textarea name="${name}" ${required?"required":""}>${esc(value)}</textarea></label>`;return`<label class="${className}">${esc(label)}<input name="${name}" type="${type}" value="${esc(value)}" ${required?"required":""}></label>`;}
@@ -992,7 +1006,7 @@ function setSearch(name,value,render){tableState[name].search=value.trim().toLoc
 function rerenderTable(name){if(["pickup","receipt"].includes(name))renderTransactions();else if(name==="repair")renderRepairs();else if(name==="inventory")renderInventory();else if(name==="user")renderUsers();else if(name==="log")renderSystemLogs();else if(name==="worklog")renderWorkLogs();else if(name==="appointment")renderAppointments();else renderMasterData();}
 
 document.addEventListener("click",async(event)=>{
-  const nav=event.target.closest("[data-page].nav-item");if(nav&&event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();await switchPage(nav.dataset.page);}
+  const nav=event.target.closest("[data-page].nav-item, [data-work-tab]");if(nav&&event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();await switchPage(nav.hasAttribute("data-work-group")?workManagementPage():nav.dataset.page);}
   const go=event.target.closest("[data-goto]");if(go)await switchPage(go.dataset.goto);
   const open=event.target.closest("[data-open]");if(open){if(open.dataset.open==="projectModal")await openProjectModal();else if(open.dataset.open==="receiptModal")await openReceiptModal();else if(open.dataset.open==="workLogModal")await openWorkLogModal();else if(open.dataset.open==="workAssignmentModal")await openWorkAssignmentModal();else openModal(open.dataset.open);}
   if(event.target.closest("[data-close]"))closeModal();
