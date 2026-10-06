@@ -19,7 +19,7 @@ function receiptDocumentFields(id){
   const row=receiptDocument(id)||{};
   return receiptDocumentNumberField(row.documentNo,id)+inputField('date','進貨日期','date',true,row.date||today())+selectField('supplierId','供應商',state.suppliers.map(s=>[s.id,s.name]),row.supplierId)+
     `<div class="batch-editor span-2"><div class="batch-editor-head"><div><b>進貨明細</b><small>整張進貨單一起儲存；每列可修改品項、數量及備註。</small></div>${canModule('purchases','CREATE')?'<button class="outline" type="button" data-add-transaction-row="receipt">＋ 新增一列</button>':''}</div><div id="transactionBatchRows" class="transaction-batch receipt-batch"></div></div>`+
-    receiptCustomerPicker(row.customerIds||[])+submitField(id?'儲存整張進貨單':'建立進貨單');
+    transactionItemSearchFields('receipt')+receiptCustomerPicker(row.customerIds||[])+submitField(id?'儲存整張進貨單':'建立進貨單');
 }
 function initializeReceiptDocument(id){
   const form=document.querySelector('#modalForm'),lines=receiptDocumentRows(id);
