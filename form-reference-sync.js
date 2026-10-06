@@ -115,7 +115,7 @@ function refreshFormReferenceChoices(snapshot={}){
   replaceReferenceOptions(fields.customerCategory,customerCategoryChoices(),{placeholder:'請選擇分類'});
   if(type==='customerModal')replaceReferenceOptions(fields.category,customerCategoryChoices(),{placeholder:'請選擇分類'});
   if(type==='itemModal')replaceReferenceOptions(fields.category,categories);
-  if(fields.customerId){
+  if(fields.customerId&&!form.dataset.constructionPlanId){
     const category=fields.customerCategory?.value,customerId=fields.customerId.value;
     replaceReferenceOptions(fields.customerId,sortRows(state.customers.filter(row=>row.category===category),'code','asc').map(row=>[row.id,`${row.code}｜${row.name}`]),{placeholder:category?'請選擇客戶':'請先選擇客戶分類',disabled:!category});
     const search=valueText((fields.customerSelectorSearch?.value||'').trim());
@@ -151,6 +151,7 @@ function refreshFormReferenceChoices(snapshot={}){
     replaceReferenceOptions(form.querySelector('#workLogProjectChoice'),projects.map(row=>[row.id,`${row.code}｜${row.name}`]),{placeholder:'手動輸入新名稱／選擇既有工作內容'});
     form.querySelectorAll('[name="eventServiceId"]').forEach(select=>replaceReferenceOptions(select,customerMaintenanceServices(workLogFormCustomerId()).map(row=>[row.id,row.name]),{placeholder:'請選擇承攬內容'}));
     refreshMaintenanceInventoryChoices();renderEquipmentDrawer();
+    if(form.dataset.constructionPlanId&&typeof initializeConstructionLog==='function')initializeConstructionLog();
   }
   if(type==='receiptModal')refreshReceiptReferenceChoices();
   if(type==='accountModal')replaceReferenceOptions(fields.role,(state.appRoles||[]).map(row=>[row.code,row.name]),{placeholder:'請選擇角色'});

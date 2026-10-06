@@ -1,0 +1,106 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {constructionPlanServer,planUsers} from './construction-plan-fixture.mjs';
+import {ids,sample} from './worklog-save-fixture.mjs';
+import {callAsService} from './department-cross-system-fixture.mjs';
+const f=await constructionPlanServer(),{db}=f;
+const results=[];const pass=label=>{results.push(label);console.log('PASS '+label);};
+const request=async(user,operation,payload)=>{
+ const r=await f.gatewayHandler(new Request('http://localhost/inventory-gateway',{method:'POST',headers:{authorization:'Bearer isolated-plan-'+user},body:JSON.stringify({operation,payload})}));return {status:r.status,...await r.json()};
+};
+const read=async(user,scope='construction_plans',project='')=>{
+ const r=await f.gatewayHandler(new Request('http://localhost/inventory-gateway?scope='+scope+(project?'&project_id='+project:''),{headers:{authorization:'Bearer isolated-plan-'+user}}));return {status:r.status,...await r.json()};
+};
+const good=r=>{assert.equal(r.status,201,JSON.stringify(r));return r.result;};
+const denied=r=>assert.ok(r.status>=400,JSON.stringify(r));
+const planPayload=(project=f.planProjects.small)=>({id:randomUUID(),project_id:project,row_version:null,construction_date:'2026-10-10',content:'一樓配管',status:'pending',notes:'隔離測試',assignee_user_ids:[planUsers.A,planUsers.B]});
+const logPayload=async(plan,user='A',log=null)=>{
+ const p=(await db.query('select * from projects where id=$1',[plan.project_id])).rows[0];
+ return {request_id:randomUUID(),construction_plan_id:plan.id,id:log?.id||null,row_version:log?.row_version||null,project_id:p.id,customer_id:p.customer_id,department_id:p.department_id,project_name:p.name,log_date:'2026-10-10',work_type:'工程施工',time_period:'上午',status:'completed',summary:plan.content,completed_content:plan.content,pending_content:'',worker_user_ids:[planUsers[user]],maintenance_events:[]};
+};
+try{
+ let plan=good(await request('owner','save_construction_plan',planPayload()));
+ good(await request('owner','save_construction_plan',{...planPayload(f.planProjects.tender),construction_date:'2026-10-09'}));
+ denied(await request('owner','save_construction_plan',planPayload(f.planProjects.repair)));
+ pass('01-03 eligibility: small purchase and tender accepted; repair rejected');
+ assert.equal(plan.assignee_user_ids.length,2);assert.equal(plan.created_by_user_id,planUsers.owner);
+ assert.equal((await db.query('select count(*)::int n from work_assignments where project_id=$1',[plan.project_id])).rows[0].n,0);
+ pass('04-05 owner creates plan with multiple real user IDs; no duplicate work_assignments');
+ denied(await request('A','save_construction_plan',{...plan,content:'forged'}));
+ denied(await request('viewer','save_construction_plan',{...plan,content:'forged'}));
+ await assert.rejects(callAsService(db,'save_construction_plan_v1',[planUsers.A,JSON.stringify({...plan,content:'SQL bypass'}),false]),/負責人|權限/);
+ pass('06 non-owner, viewer and direct RPC edits denied');
+ let dashboard=await read('A','dashboard');assert.equal(dashboard.status,200,JSON.stringify(dashboard));
+ assert.equal(dashboard.dashboard.assignments.pending.filter(t=>t.construction_plan_id===plan.id).length,1);
+ let scope=await read('A');assert.equal(scope.status,200,JSON.stringify(scope));assert.ok(scope.construction_plans.some(p=>p.id===plan.id));
+ pass('07,19 assignee sees plan and one existing Dashboard assignment entry');
+ const aPayload=await logPayload(plan),aSave=good(await request('A','upsert_customer_project_work_log',aPayload));
+ let a=aSave.work_log;
+ assert.equal(a.project_id,plan.project_id);assert.equal(a.construction_plan_id,plan.id);assert.equal(a.log_date,'2026-10-10');assert.equal(a.access_creator_user_id,planUsers.A);
+ assert.equal(good(await request('A','upsert_customer_project_work_log',aPayload)).work_log.id,a.id);
+ pass('08-11 create own existing worklog, project/plan/date/immutable author correct; retry idempotent');
+ const aEdited=good(await request('A','upsert_customer_project_work_log',{...await logPayload(plan,'A',a),summary:'實際配管完成',completed_content:'實際配管完成'}));a=aEdited.work_log;
+ assert.equal(a.summary,'實際配管完成');
+ denied(await request('A','upsert_customer_project_work_log',{...await logPayload(plan,'A',a),row_version:1}));
+ pass('12 own log update succeeds; stale version rejected');
+ const b=good(await request('B','upsert_customer_project_work_log',await logPayload(plan,'B'))).work_log;
+ denied(await request('A','upsert_customer_project_work_log',await logPayload(plan,'A',b)));
+ denied(await request('A','delete_standalone_work_log',{id:b.id,row_version:b.row_version}));
+ denied(await request('A','upsert_customer_project_work_log',{...await logPayload(plan,'A',b),construction_plan_id:null}));
+ denied(await request('C','upsert_customer_project_work_log',await logPayload(plan,'C')));
+ pass('14-15 other author edit/delete/unlink and non-assignee creation denied');
+ scope=await read('owner','construction_plans',plan.project_id);assert.equal(scope.site_work_logs.length,2);
+ // Reading one's assigned project does not require project UPDATE permission.
+ await db.query("update role_permissions set can_update=false where role_code='plan_owner' and module='projects'");
+ assert.equal((await read('owner','construction_plans',plan.project_id)).site_work_logs.length,2);
+ denied(await request('owner','save_construction_plan',{...plan,content:'read-only owner'}));
+ await db.query("update role_permissions set can_update=true where role_code='plan_owner' and module='projects'");
+ assert.equal((await read('viewer','construction_plans',plan.project_id)).site_work_logs.length,2);
+ denied(await request('viewer','upsert_customer_project_work_log',await logPayload(plan,'A',a)));
+ scope=await read('A','worklogs');assert.equal(scope.status,200,JSON.stringify(scope));assert.ok(scope.site_work_logs.some(l=>l.id===a.id));assert.ok(!scope.site_work_logs.some(l=>l.id===b.id));
+ assert.equal((await db.query('select status from construction_plans where id=$1',[plan.id])).rows[0].status,'pending');
+ pass('16,18 owner sees both authors; worker scope isolated; completed log does not complete plan');
+ plan=good(await request('owner','save_construction_plan',{...plan,assignee_user_ids:[planUsers.A,planUsers.C]}));
+ denied(await request('B','upsert_customer_project_work_log',await logPayload(plan,'B')));
+ good(await request('C','upsert_customer_project_work_log',await logPayload(plan,'C')));
+ assert.equal((await db.query('select count(*)::int n from site_work_logs where id=$1',[b.id])).rows[0].n,1);
+ assert.ok((await read('B')).site_work_logs.some(l=>l.id===b.id));
+ good(await request('B','upsert_customer_project_work_log',await logPayload(plan,'B',b)));
+ pass('17 reassignment revokes creation, grants new worker, preserves removed worker history and own editing');
+ good(await request('A','delete_standalone_work_log',{id:a.id,row_version:a.row_version,reason:'隔離測試封存'}));
+ assert.ok((await db.query('select deleted_at from site_work_logs where id=$1',[a.id])).rows[0].deleted_at);
+ pass('13 own log deletion uses existing archive mechanism');
+ denied(await request('owner','delete_construction_plan',{id:plan.id,row_version:plan.row_version}));
+ let empty=good(await request('owner','save_construction_plan',{...planPayload(),construction_date:'2026-10-08'}));
+ const sorted=(await read('owner','construction_plans',plan.project_id)).construction_plans.map(p=>p.construction_date);assert.deepEqual(sorted,[...sorted].sort());
+ good(await request('owner','delete_construction_plan',{id:empty.id,row_version:empty.row_version}));
+ plan=good(await request('owner','save_construction_plan',{...plan,status:'completed'}));
+ assert.ok(!(await read('A','dashboard')).dashboard.assignments.pending.some(t=>t.construction_plan_id===plan.id));
+ pass('plan date ASC, delete empty plan, preserve linked history and owner manual completion');
+ const normal={...sample(),request_id:randomUUID(),project_name:'一般維修回歸',summary:'一般維修內容',completed_content:null,pending_content:null,maintenance_events:[]};
+ let normalLog=good(await request('admin','upsert_customer_project_work_log',normal)).work_log;
+ assert.equal(normalLog.construction_plan_id,null);
+ const normalProject=(await db.query('select * from projects where id=$1',[normalLog.project_id])).rows[0];
+ normalLog=good(await request('admin','upsert_customer_project_work_log',{...normal,request_id:randomUUID(),id:normalLog.id,row_version:normalLog.row_version,project_id:normalProject.id,project_name:normalProject.name,summary:'一般維修更新'})).work_log;
+ good(await request('admin','delete_standalone_work_log',{id:normalLog.id,row_version:normalLog.row_version,reason:'回歸測試'}));
+ pass('20 regular worklog CRUD remains nullable and works through original save path');
+ for(const workType of ['工程施工','維護保養','送貨','文書作業','場勘']){
+  const unsectioned=['送貨','文書作業'].includes(workType);
+  const payload={...normal,request_id:randomUUID(),project_name:'一般回歸 '+workType,work_type:workType,summary:unsectioned?'':'一般內容',completed_content:unsectioned?null:'一般內容',pending_content:unsectioned?null:''};
+  let log=good(await request('admin','upsert_customer_project_work_log',payload)).work_log;
+  assert.equal(log.construction_plan_id,null);
+  const project=(await db.query('select * from projects where id=$1',[log.project_id])).rows[0];
+  log=good(await request('admin','upsert_customer_project_work_log',{...payload,request_id:randomUUID(),id:log.id,row_version:log.row_version,project_id:project.id,project_name:project.name,time_period:'下午'})).work_log;
+  assert.equal(log.time_period,'下午');
+  good(await request('admin','delete_standalone_work_log',{id:log.id,row_version:log.row_version,reason:'隔離回歸'}));
+ }
+ pass('all six ordinary work types create/update/archive against new migration, nullable relation retained');
+ await db.exec('set role authenticated');
+ try{await assert.rejects(db.query('select construction_scope_v1($1,null)',[planUsers.owner]),/permission denied/);await assert.rejects(db.query('select * from construction_plans'),/permission denied/);}finally{await db.exec('reset role');}
+ await callAsService(db,'configure_erp_private_access_v1',[ids.actor,ids.actor,[planUsers.owner],null]);
+ await callAsService(db,'set_customer_private_v1',[ids.actor,ids.customer,(await db.query('select row_version from customers where id=$1',[ids.customer])).rows[0].row_version,true]);
+ const privateScope=await read('A');assert.equal(privateScope.status,200,JSON.stringify(privateScope));assert.equal(privateScope.construction_plans.length,0);
+ denied(await request('A','upsert_customer_project_work_log',await logPayload(plan)));
+ pass('client roles cannot call actor RPC/read tables; private customer restriction overrides assignment');
+ console.log('TOTAL '+results.length+' verification groups passed');
+}catch(error){console.error('Recent isolated RPC diagnostics',f.failures.slice(-4));throw error;}finally{await db.close();}

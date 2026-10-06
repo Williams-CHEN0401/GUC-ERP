@@ -11,6 +11,12 @@ function canManagePrivateIdentity(id){const access=state.currentUser?.private_ac
 function firstAllowedPage(){return Object.keys(PAGE_PERMISSIONS).find(canPage)||'dashboard';}
 function canWorkLog(action,id){
  if(!canModule('worklogs',action))return false;
+ const plannedLog=byId(state.siteData.logs,id);
+ if(plannedLog?.construction_plan_id){
+  if(action==='VIEW')return true; // All rows have passed the server-side read boundary.
+  return canAdmin()||plannedLog.access_creator_user_id===state.currentUser?.id;
+ }
+ if(!id&&typeof activeConstructionLogPlanId!=='undefined'&&activeConstructionLogPlanId)return constructionPlanById(activeConstructionLogPlanId)?.can_create_log===true;
  if(!state.currentUser?.project_scoped)return true;
  const log=byId(state.siteData.logs,id),grants=state.projectAccess||[];
  return grants.some(g=>(!log||g.project_id===log.projectId)&&g.can_view&&(action==='VIEW'||g[`can_${action.toLowerCase()}_work_log`]));

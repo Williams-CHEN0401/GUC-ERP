@@ -36,6 +36,9 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
  context.currentUser=async request=>requestUser(request);
  if(assignments||formSync)context.db=async(path,init={})=>{if(init.method&&init.method!=='GET')throw Error('Isolated REST writes denied');return new Response(JSON.stringify(await restRead(db,path)),{headers:{'Content-Type':'application/json'}});};
  context.rpc=async(name,args)=>{
+  // Pre-privacy historical fixtures have no construction plans. The current
+  // ERP access fixture registers and runs the real construction RPC instead.
+  if(name==='construction_scope_v1'&&!additionalRpcs.includes(name))return {construction_plans:[],projects:[],customers:[],site_work_logs:[],site_work_log_workers:[],project_workers:[],site_workers:[]};
   // Historical assignment-only fixture predates the privacy schema. Execute
   // its real project-scope RPC after validating the new trusted actor contract.
   // Privacy fixtures register the actual wrapper via additionalRpcs instead.

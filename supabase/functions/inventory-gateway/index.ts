@@ -351,6 +351,7 @@ function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyA
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
  if(siteRequest)requirePermission(user,"site");
+ if(scope==="construction_plans"&&!entity){if(!hasPermission(user,"projects")&&!hasPermission(user,"worklogs"))throw new Error("沒有施工規劃查看權限。");return;}
  if(entity){
   const module=entity.startsWith("monitoring_")?"monitoring":entity.startsWith("phone_")?"phone":entity.startsWith("equipment_history")||entity==="maintenance_workers"?"history":({shared_work_log:"worklogs",audit_logs:"audit",customer_service_management:"customers",inventory:"inventory",customers:"customers",projects:"projects",suppliers:"suppliers",repairs:"repairs",pickups:"pickups",receipts:"purchases"} as Record<string,string>)[entity];
   if(!module)throw new Error("您的帳號沒有執行此操作的權限。");
@@ -369,6 +370,10 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
 }
 async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
  const needed=operationPermission(operation,payload);
+ if(operation==="upsert_customer_project_work_log"&&payload.construction_plan_id){
+  requirePermission(user,"worklogs",needed!.action);
+  await rpc("assert_construction_log_access_v1",{p_user_id:user.id,p_plan_id:uuid(payload.construction_plan_id),p_log_id:uuid(payload.id),p_action:needed!.action});return;
+ }
  if(needed?.module!=="worklogs"||!user.project_scoped)return;
  let projectId=uuid(payload.project_id);
  if(!projectId&&uuid(payload.site_id)){
@@ -893,6 +898,19 @@ function maintenanceEventsInput(value: unknown) {
 }
 
 async function change(operation: string, payload: Row, user: AppUser | null) {
+  if(operation==="save_construction_plan"||operation==="delete_construction_plan"){
+    requirePermission(user!,"projects","UPDATE");
+    if(!uuid(payload.id))throw new Error("施工規劃編號不正確。");
+    return rpc("save_construction_plan_v1",{p_actor_user_id:user!.id,p_payload:payload,p_delete:operation==="delete_construction_plan"});
+  }
+  if(operation==="upsert_customer_project_work_log"){
+    if(payload.construction_plan_id&&!uuid(payload.construction_plan_id))throw new Error("施工規劃編號不正確。");
+    if(uuid(payload.id)){
+      const records=await get(`site_work_logs?id=eq.${uuid(payload.id)}&select=*`) as Row[];
+      const plan=records[0]?.construction_plan_id;
+      if(plan){if(Object.hasOwn(payload,"construction_plan_id")&&payload.construction_plan_id!==plan)throw new Error("不能變更施工日誌的施工規劃關聯。");payload={...payload,construction_plan_id:plan};}
+    }
+  }
   await enforceWorkLogScope(user!,operation,payload);
   if(operation==="delete_app_role"){requireRole(user,["admin"]);return rpc("delete_app_role_v1",{p_actor_user_id:user!.id,p_code:role(payload.code),p_row_version:payload.row_version??null});}
   if(operation==="save_app_role"){requireRole(user,["admin"]);return rpc("save_app_role_v1",{p_actor_user_id:user!.id,p_code:role(payload.code),p_name:limited(payload.name,80),p_project_scoped:payload.project_scoped===true,p_row_version:payload.row_version??null,p_permissions:payload.permissions});}
@@ -1249,10 +1267,13 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
         const completed=payload.completed_content,pending=payload.pending_content;
         if(!(completed===null&&pending===null)&&!(typeof completed==="string"&&typeof pending==="string"&&completed.length<=2000&&pending.length<=2000))throw new Error("已完成／未完成內容格式不正確。");
         if(typeof completed==="string"&&typeof pending==="string"&&[completed.trim(),pending.trim()].filter(Boolean).join("\n")!==(summary||""))throw new Error("工作內容與已完成／未完成內容不一致。");
+        if(payload.construction_plan_id)return rpc("save_construction_work_log_v1",{p_actor_user_id:user!.id,p_plan_id:uuid(payload.construction_plan_id),p_payload:{...payload,maintenance_events:parameters.p_maintenance_events}});
         return rpc("upsert_work_log_sections_v1",{...parameters,p_completed_content:completed,p_pending_content:pending});
       }
+      if(payload.construction_plan_id)throw new Error("施工日誌需使用完整的工作日誌儲存流程。");
       return rpc("upsert_customer_project_work_log_department_v1",parameters);
     }
+    if(payload.construction_plan_id)throw new Error("施工日誌需使用完整的工作日誌儲存流程。");
     if(legacyRequest)return rpc("upsert_customer_project_work_log_v2",{p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_actor:actor});
     if(time_period===null||!["in_progress","completed"].includes(status))throw new Error("請完整填寫工作日誌時段與狀態。");
     if(Object.prototype.hasOwnProperty.call(payload,"maintenance_events")){
@@ -1537,7 +1558,7 @@ function redactAuditValue(value: unknown, depth=0): unknown {
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
-const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_details","maintenance_details","project_costs","work_assignment"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
+const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_plans","construction_details","maintenance_details","project_costs","work_assignment"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
 async function auditRecords(params: URLSearchParams, user: AppUser) {
   if(user.permissions)requirePermission(user,"audit");else requireRole(user,["admin"]);
   const page=Math.max(1,Math.min(10000,Number(params.get("page"))||1)),size=Math.max(1,Math.min(100,Number(params.get("page_size"))||25));
@@ -1597,6 +1618,25 @@ async function appointmentSnapshot(user:AppUser) {
   const users=hasPermission(user,"appointments","CREATE")||hasPermission(user,"appointments","UPDATE")?await getAll(datasets.site_workers.path):assigneeIds.length?await getAll(`app_users?select=id,display_name,is_active&id=in.(${assigneeIds})&order=display_name.asc,id.asc`):[];
   return {scope:"appointments",current_user:publicUser(user),customer_appointments:rows,customers,customer_departments:await customerDepartmentRows(customers),customer_categories:await getAll(datasets.customer_categories.path),site_workers:users,errors:[],refreshed_at:new Date().toISOString()};
 }
+async function constructionSnapshot(user:AppUser,projectId:string|null=null) {
+ const data=await rpc("construction_scope_v1",{p_actor_user_id:user.id,p_project_id:projectId}) as Row;
+ return {...data,scope:"construction_plans",current_user:publicUser(user),customer_departments:await customerDepartmentRows(data.customers),customer_categories:await getAll(datasets.customer_categories.path),errors:[]};
+}
+function mergeConstructionSnapshot(snapshot:Row,extra:Row,referencesOnly=false) {
+ const originalLogs=(snapshot.site_work_logs||[]) as Row[],visibleLogs=(extra.site_work_logs||[]) as Row[];
+ const excluded=new Set(originalLogs.filter(row=>row.construction_plan_id&&!visibleLogs.some(log=>log.id===row.id)).map(row=>row.id));
+ for(const key of ["projects","customers","customer_departments","site_workers","project_workers",...(referencesOnly?[]:["site_work_log_workers","site_work_logs"])]){
+  let existing=(snapshot[key]||[]) as Row[];
+  if(key==="site_work_logs")existing=existing.filter(row=>!row.construction_plan_id);
+  if(key==="site_work_log_workers")existing=existing.filter(row=>!excluded.has(row.work_log_id));
+  const keyOf=(row:Row)=>String(row.id||`${row.project_id||row.work_log_id}:${row.user_id}`);
+  snapshot[key]=[...new Map([...existing,...((extra[key]||[]) as Row[])].map(row=>[keyOf(row),row])).values()];
+ }
+ // Child records cannot reveal a plan log hidden by ownership/private rules.
+ for(const key of ["site_assets","maintenance_events"])if(Array.isArray(snapshot[key]))snapshot[key]=(snapshot[key] as Row[]).filter(row=>!excluded.has(row.work_log_id));
+ snapshot.construction_plans=extra.construction_plans||[];
+ return snapshot;
+}
 async function dashboardSnapshot(user: AppUser) {
   const started=performance.now();
   const previousBusinessDate=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(Date.now()-86400000));
@@ -1624,7 +1664,12 @@ async function dashboardSnapshot(user: AppUser) {
   ]) as Row[][];
   const lookup=(rows:Row[],id:unknown,field:string)=>rows.find(row=>row.id===id)?.[field]||"—";
   const assignmentProjection=(row:Row)=>{const project=relatedProjects.find(project=>project.id===row.project_id);return {...row,project_code:project?.project_code||"—",project:row.assignment_type==="appointment"?({repair:"客戶報修",site_visit:"預約場刊",quotation:"索取報價",construction:"預約施工"}[String(row.appointment_type)]||"客戶預約事項"):project?.name||"已刪除工作內容",customer:lookup(customers,row.customer_id||project?.customer_id,"name"),assignee:lookup(assignmentUsers,row.assignee_user_id,"display_name"),creator:lookup(assignmentUsers,row.created_by_user_id,"display_name"),item:lookup(items,row.inventory_item_id,"item_name")};};
-  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:pendingAssignments.map(assignmentProjection),completed:completedAssignments.map(assignmentProjection)}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
+  const construction=hasPermission(user,"worklogs")?await rpc("construction_scope_v1",{p_actor_user_id:user.id,p_project_id:null}) as Row:{};
+  const constructionTasks=((construction.construction_plans||[]) as Row[]).filter(p=>["pending","in_progress"].includes(String(p.status))&&(p.assignee_user_ids as string[]).includes(user.id)).map(p=>{
+    const project=((construction.projects||[]) as Row[]).find(row=>row.id===p.project_id);
+    return {...p,id:`construction:${p.id}`,construction_plan_id:p.id,assignment_type:"construction",project_code:project?.project_code||"—",project:project?.name||"—",customer:lookup((construction.customers||[]) as Row[],project?.customer_id,"name"),instructions:p.content};
+  });
+  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:[...pendingAssignments.map(assignmentProjection),...constructionTasks],completed:completedAssignments.map(assignmentProjection)}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
 }
 async function monitoringIpConflicts(payload: Row) {
   const customerId=uuid(payload.customer_id),ips=Array.isArray(payload.ips)?[...new Set(payload.ips.map(v=>ipAddress(v)).filter(Boolean))]:[];
@@ -1696,10 +1741,15 @@ async function handleRequest(request: Request) {
       if (entity === "monitoring_device_imports") return json({...(await monitoringDeviceImports(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (params.has("entity")) return json(await queryRecords(params,user));
       const scopeName = text(params.get("scope")) || "dashboard";
+      if(scopeName==="construction_plans"){
+        const projectId=params.get("project_id");if(projectId&&!uuid(projectId))throw new Error("工作內容編號不正確。");
+        return json(await constructionSnapshot(user,projectId?uuid(projectId):null));
+      }
       if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
       if (scopeName === "site_customer") return json(await siteCustomerSnapshot(params,user,isPreviewGateway));
       if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
       const snapshot=await scopedSnapshot(user, scopeName, params.get("options_only")==="1") as Row;
+      if(scopeName==="worklogs")mergeConstructionSnapshot(snapshot,await constructionSnapshot(user),params.get("options_only")==="1");
       const privateLedger=privateContext.getStore()?.configured&&!privateContext.getStore()?.direct;
       const restrictedLedger=["worklogs","inventory"].includes(scopeName)&&(!hasPermission(user,"pickups")||!hasPermission(user,"purchases"));
       if((privateLedger||restrictedLedger)&&Array.isArray(snapshot.items))snapshot.stock_totals=await rpc("erp_stock_totals_v1",{p_actor_user_id:user.id});
