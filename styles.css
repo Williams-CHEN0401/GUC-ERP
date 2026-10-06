@@ -181,3 +181,13 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .private-access-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; padding: .75rem 0; border-bottom: 1px solid #ddd; }
 .private-access-row small { display: block; }
 .private-log-content { white-space: pre-wrap; overflow-wrap: anywhere; }
+.construction-plan-section { min-width: 0; }
+.construction-plan-section .panel-head { display:flex; gap:1rem; flex-wrap:wrap; justify-content:space-between; align-items:center; }
+.construction-plan-list { display:grid; gap:1rem; margin-top:1rem; }
+.construction-plan-card { border:1px solid var(--line); border-radius:12px; padding:1rem; background:var(--surface,#fff); min-width:0; }
+.construction-plan-card header,.construction-plan-actions { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; }
+.construction-plan-card header { justify-content:space-between; }
+.construction-content { white-space:pre-wrap; overflow-wrap:anywhere; }
+.construction-log-list { margin-top:1rem; border-top:1px solid var(--line); padding-top:.75rem; }
+.construction-log-list summary { cursor:pointer; font-weight:700; }
+.construction-log-list article { padding:.75rem 0; border-bottom:1px solid var(--line); }

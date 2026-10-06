@@ -10,7 +10,9 @@ const id=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const user={id:id(1),username:'tester',display_name:'測試員',role:'admin',is_active:true};
 function harness(){let handler;const calls=[];const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:fn=>handler=fn},URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});vm.runInContext(compiled,context);context.currentUser=async()=>user;context.get=async path=>{calls.push(path);return[];};return{context,calls,handler};}
 test('dashboard limits summary cards but returns every previous-day log and current-user assignments',async()=>{
+ // Additional projection is verified separately; this fixture contains no plans.
  const h=harness();h.context.get=async path=>{h.calls.push(path);if(path.startsWith('site_work_logs?'))return[{id:id(2),project_id:id(3),log_date:'2026-09-06'}];if(path.startsWith('projects?select=id,project_code,name'))return[{id:id(3),customer_id:id(4),name:'工作內容'}];if(path.startsWith('customers?'))return[{id:id(4),name:'測試客戶'}];if(path.startsWith('site_work_log_workers?'))return[{work_log_id:id(2),user_id:id(1)}];if(path.startsWith('app_users?'))return[{id:id(1),display_name:'施工人員'}];return[];};
+ h.context.rpc=async(name,args)=>{assert.equal(name,'construction_scope_v1');assert.equal(args.p_actor_user_id,user.id);return {construction_plans:[]};};
  const result=await h.context.dashboardSnapshot(user);assert.equal(result.dashboard.worklogs[0].customer,'測試客戶');assert.equal(result.dashboard.worklogs[0].workers,'施工人員');
  for(const path of h.calls.slice(0,2))assert.equal(new URLSearchParams(path.split('?')[1]).get('limit'),'15');
  const logQuery=new URLSearchParams(h.calls.find(p=>p.startsWith('site_work_logs?')).split('?')[1]);assert.equal(logQuery.get('order'),'created_at.asc,id.asc');assert.equal(logQuery.get('limit'),null);assert.ok(logQuery.get('log_date')?.startsWith('eq.'));

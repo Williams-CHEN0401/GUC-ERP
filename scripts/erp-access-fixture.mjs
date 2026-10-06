@@ -47,6 +47,12 @@ export async function accessAppointmentsServer(){
  await db.exec(await sql(accessMigration));
  await db.exec(await sql(privateMigration));
  await db.exec(await sql('20261005005222_cross_system_private_access.sql'));
+ // Exercise current Gateway reads against the actual construction extension.
+ await db.exec('alter table site_work_logs add column if not exists deleted_by uuid,add column if not exists delete_reason text');
+ await db.exec(definition(await sql('20260908060047_role_permissions_project_scope.sql'),'soft_delete_site_work_log_v1'));
+ await db.exec('revoke all on function soft_delete_site_work_log_v1(uuid,integer,text,uuid,text) from public,anon,authenticated;grant execute on function soft_delete_site_work_log_v1(uuid,integer,text,uuid,text) to service_role');
+ await db.exec(await sql('20261006102619_construction_planning_worklogs.sql'));
+ additionalRpcs.push('construction_scope_v1','save_construction_plan_v1','save_construction_work_log_v1','assert_construction_log_access_v1','assert_work_log_access_v1','soft_delete_site_work_log_v1');
  additionalRpcs.push('upsert_customer_appointment_v2','save_app_role_v1','delete_app_role_v1');
  additionalRpcs.push('erp_private_scope_v1','configure_erp_private_access_v1','set_customer_private_v1','request_work_log_access_v1','review_work_log_access_v1','read_shared_work_log_v1','acknowledge_work_log_access_v1');
  additionalRpcs.push('erp_stock_totals_v1','erp_work_content_types_v1');
@@ -55,7 +61,7 @@ export async function accessAppointmentsServer(){
  const originalUser=context.currentUser;
  context.currentUser=async request=>{const identity=await originalUser(request),user=(await db.query('select * from app_users where id=$1',[identity.id])).rows[0];if(!user?.is_active)return null;user.project_scoped=(await db.query('select project_scoped from app_roles where code=$1',[user.role])).rows[0]?.project_scoped||false;user.permissions=(await db.query('select * from role_permissions where role_code=$1',[user.role])).rows;await context.initializePrivateAccess(user);return user;};
  const originalRpc=context.rpc;
- context.rpc=(name,args)=>originalRpc(name,Object.fromEntries(Object.entries(args).map(([key,value])=>[key,['p_permissions','p_grants'].includes(key)&&Array.isArray(value)?JSON.stringify(value):value])));
+ context.rpc=(name,args)=>originalRpc(name,Object.fromEntries(Object.entries(args).map(([key,value])=>[key,key==='p_payload'||['p_permissions','p_grants'].includes(key)&&Array.isArray(value)?JSON.stringify(value):value])));
  context.db=async(path,init={})=>{
   if(init.method==='POST'&&path==='audit_logs'){
    const record=JSON.parse(init.body),keys=Object.keys(record);if(keys.some(key=>!/^[a-z_]+$/.test(key)))throw Error('Invalid audit field');
