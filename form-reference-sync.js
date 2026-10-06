@@ -7,7 +7,7 @@ function formReferenceScopes(){
   const modal=document.querySelector('#simpleModal.open');
   const scopes={customerModal:['crm'],customerCategoryModal:['crm'],customerDepartmentModal:['crm'],contractServiceModal:['crm'],projectModal:['crm'],supplierModal:['crm'],categoryModal:['inventory'],itemModal:['inventory'],pickupModal:['transactions'],receiptModal:['transactions'],repairModal:['repairs'],workLogModal:['worklogs'],workLogPickupModal:['transactions'],workAssignmentModal:['crm','inventory'],accountModal:['settings'],attachmentModal:['worklogs']};
   if(modal)return scopes[modal.dataset.type]||[];
-  const page=currentPage();return ['inventory','transactions','repairs','crm','worklogs','materials','settings'].includes(page)?[PAGE_SCOPES[page]]:[];
+  const page=currentPage();return ['inventory','transactions','repairs','crm','projects','worklogs','materials','settings'].includes(page)?[PAGE_SCOPES[page]]:[];
 }
 function formReferencesBusy(){return !!document.querySelector('#modalForm.busy,form[aria-busy="true"],#assignmentCompletionDialog[open]');}
 function referenceSyncMessage(message){
