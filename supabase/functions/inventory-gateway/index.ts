@@ -1036,7 +1036,11 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if((payload.id&&!id)||(id&&(!Number.isInteger(rowVersion)||Number(rowVersion)<1))||!customerId||!assigneeId||!when||!instructions||contact===null||phone===null||notes===null||!["repair","site_visit","quotation","construction"].includes(text(payload.appointment_type))||!["pending","in_progress","completed","cancelled"].includes(text(payload.status)))throw new Error("請完整填寫有效的預約資料。");
     const reminderDays=Object.hasOwn(payload,"reminder_days")?Number(payload.reminder_days):null;
     if(reminderDays!==null&&(!Number.isInteger(reminderDays)||reminderDays<0||reminderDays>365))throw new Error("提醒天數須為 0 至 365 的整數。");
-    return rpc("upsert_customer_appointment_v2",{p_reminder_days:reminderDays,p_id:id,p_row_version:rowVersion,p_customer_id:customerId,p_department_id:departmentIdInput(payload.department_id),p_appointment_type:payload.appointment_type,p_appointment_date:when,p_contact_name:contact,p_contact_phone:phone,p_instructions:instructions,p_assignee_user_id:assigneeId,p_status:payload.status,p_notes:notes,p_actor_user_id:user!.id,p_actor:actor});
+    // Null/omitted dates from older clients preserve the original assignment date.
+    const assignedDate=payload.assigned_date==null?null:date(payload.assigned_date);
+    if(payload.assigned_date!=null&&(!assignedDate||assignedDate<'0001-01-01'||!Number.isFinite(Date.parse(assignedDate+'T00:00:00Z'))||new Date(assignedDate+'T00:00:00Z').toISOString().slice(0,10)!==assignedDate))throw new Error("請填寫有效的指派日期。");
+    const args={p_reminder_days:reminderDays,p_id:id,p_row_version:rowVersion,p_customer_id:customerId,p_department_id:departmentIdInput(payload.department_id),p_appointment_type:payload.appointment_type,p_appointment_date:when,p_contact_name:contact,p_contact_phone:phone,p_instructions:instructions,p_assignee_user_id:assigneeId,p_status:payload.status,p_notes:notes,p_actor_user_id:user!.id,p_actor:actor};
+    return assignedDate?rpc("upsert_customer_appointment_v3",{...args,p_assigned_date:assignedDate}):rpc("upsert_customer_appointment_v2",args);
   }
   if (operation === "create_work_assignment") {
     requireOperation(user,operation,payload,["admin"]);
