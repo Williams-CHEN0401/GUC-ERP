@@ -36,16 +36,30 @@ async function saveReceiptDocument(form,id,data){
   await mutate(id?'update_stock_receipt_document':'create_stock_receipt_document',{
     document_id:snapshot.id,existing:snapshot.existing,document_no:data.documentNo?.trim()||null,receipt_date:data.date,supplier_id:data.supplierId,
     customer_ids:[...new FormData(form).getAll('receiptCustomerId')],customer_departments:collectReceiptCustomerDepartments(),
-    rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,note:row.note}))
+    rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,note:row.note,...receiptPricePayload(elements[index])}))
   },id?'整張進貨單已修改':'進貨單已建立');
 }
+function receiptPriceField(row){
+  if(!canModule('purchase_prices','VIEW'))return '';
+  const price=row.unitPrice??'',present=price!=='';
+  const editable=canModule('purchase_prices',present?'UPDATE':'CREATE');
+  return `<label>單價（元）<input name="batchUnitPrice" type="number" min="0" max="999999999999.99" step="0.01" value="${esc(price)}" data-original-price="${esc(price)}" ${editable?'':'readonly'} placeholder="未設定">${present&&canModule('purchase_prices','DELETE')?'<button class="outline" type="button" data-clear-receipt-price>清除價格</button>':''}</label>`;
+}
+function receiptPricePayload(element){
+  const input=element.querySelector('[name="batchUnitPrice"]');if(!input||input.value===input.dataset.originalPrice)return {};
+  const price=input.value===''?null:Number(input.value),old=input.dataset.originalPrice;
+  if(price!==null&&(!Number.isFinite(price)||price<0||price>=1e12||!/^\d+(\.\d{1,2})?$/.test(input.value)))throw new Error('單價須為非負數，最多兩位小數。');
+  if(!canModule('purchase_prices',price===null?'DELETE':old===''?'CREATE':'UPDATE'))throw new Error('沒有進貨價格操作權限。');
+  return {unit_price:price};
+}
+document.addEventListener('click',event=>{const button=event.target.closest('[data-clear-receipt-price]');if(button&&canModule('purchase_prices','DELETE'))button.closest('label').querySelector('input').value='';});
 function previewReceiptDocument(payload){
   const previous=receiptDocumentRows(payload.document_id),scope=previous[0]?.numberingSupplierId||previous[0]?.supplierId||payload.supplier_id;
   const number=payload.document_no?.trim()||previous[0]?.documentNo||previewDocumentNumber('receipt',scope,payload.receipt_date);
   if(state.receipts.some(row=>(row.documentId||row.id)!==payload.document_id&&(row.numberingSupplierId||row.supplierId)===scope&&row.documentNo?.toLocaleLowerCase()===number.toLocaleLowerCase()))throw new Error('進貨單號已使用，請輸入同一編號廠商下不重複的單號。');
   state.receipts=state.receipts.filter(row=>(row.documentId||row.id)!==payload.document_id||payload.rows.some(line=>line.id===row.id));
   payload.rows.forEach((row,index)=>{let existing=byId(state.receipts,row.id);if(!existing){existing={id:uid(),rowVersion:0};state.receipts.unshift(existing);}
-    Object.assign(existing,{documentId:payload.document_id,documentNo:number,numberingSupplierId:scope,lineNo:index+1,date:payload.receipt_date,supplierId:payload.supplier_id,itemId:row.inventory_item_id,quantity:row.quantity,note:row.note||'',customerIds:payload.customer_ids,customerDepartments:payload.customer_departments,rowVersion:existing.rowVersion+1});});
+    Object.assign(existing,{documentId:payload.document_id,documentNo:number,numberingSupplierId:scope,lineNo:index+1,date:payload.receipt_date,supplierId:payload.supplier_id,itemId:row.inventory_item_id,...(Object.hasOwn(row,"unit_price")?{unitPrice:row.unit_price??""}:{}),quantity:row.quantity,note:row.note||'',customerIds:payload.customer_ids,customerDepartments:payload.customer_departments,rowVersion:existing.rowVersion+1});});
 }
 
 function receiptDocumentNumberField(number,id){return `<label class="span-2">進貨單號<input name="documentNo" maxlength="64" value="${esc(number||'')}" placeholder="留白時自動產生"><small>${id?'可手動修改；留白則保留原單號。修改日期／廠商不會自動重編。':'留白時依進貨日期及廠商自動編號，也可自行輸入。'} 單號須在原編號廠商範圍內不重複。</small></label>`;}
@@ -94,5 +108,5 @@ function previewPickupDocument(payload){
   const previous=pickupDocumentRows(payload.document_id),first=previous[0];
   state.pickups=state.pickups.filter(row=>(row.documentId||row.id)!==payload.document_id||payload.rows.some(line=>line.id===row.id));
   payload.rows.forEach(row=>{let existing=byId(state.pickups,row.id);if(!existing){existing={...first,id:uid(),requestId:'',requestRow:null,workAssignmentId:'',rowVersion:0};state.pickups.push(existing);}
-    Object.assign(existing,{workLogId:existing.projectId===payload.project_id?existing.workLogId:'',date:payload.pickup_date,projectId:payload.project_id,customerId:payload.customer_id,itemId:row.inventory_item_id,quantity:row.quantity,note:row.note||'',rowVersion:existing.rowVersion+1});});
+    Object.assign(existing,{workLogId:existing.projectId===payload.project_id?existing.workLogId:'',date:payload.pickup_date,projectId:payload.project_id,customerId:payload.customer_id,itemId:row.inventory_item_id,...(Object.hasOwn(row,"unit_price")?{unitPrice:row.unit_price??""}:{}),quantity:row.quantity,note:row.note||'',rowVersion:existing.rowVersion+1});});
 }
