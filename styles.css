@@ -191,3 +191,15 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .construction-log-list { margin-top:1rem; border-top:1px solid var(--line); padding-top:.75rem; }
 .construction-log-list summary { cursor:pointer; font-weight:700; }
 .construction-log-list article { padding:.75rem 0; border-bottom:1px solid var(--line); }
+:root { --construction-alert: #a32929; }
+.construction-progress { margin:12px 0; display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.construction-progress p { flex-basis:100%; margin:0; }
+.construction-progress progress { flex:1; min-width:80px; max-width:100%; accent-color:var(--primary,#486044); }
+.construction-progress.overrun { color:var(--construction-alert); }
+.construction-progress.overrun progress { accent-color:var(--construction-alert); }
+.construction-progress.at-plan { color:#176b50; }
+.report-vertical-bars { display:flex; align-items:flex-end; gap:16px; overflow-x:auto; min-height:230px; padding:16px; border-bottom:1px solid #ccd2c6; }
+.report-vertical-bars figure { min-width:64px; flex:1; text-align:center; margin:0; }
+.report-vertical-bars .bar-track { height:170px; display:flex; align-items:flex-end; justify-content:center; }
+.report-vertical-bars .bar { width:70%; background:#486044; min-height:2px; max-height:100%; border-radius:5px 5px 0 0; }
+.report-vertical-bars figcaption { margin-top:8px; overflow-wrap:anywhere; }

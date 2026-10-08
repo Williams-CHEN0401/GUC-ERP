@@ -1,12 +1,15 @@
 // Loopback-only synthetic users + actual Gateway/RPC; never loads production secrets.
 import {accessAppointmentsServer} from './erp-access-fixture.mjs';
-import {ids} from './worklog-save-fixture.mjs';
+import {ids,sql} from './worklog-save-fixture.mjs';
 import {callAsService} from './department-cross-system-fixture.mjs';
 import {randomUUID} from 'node:crypto';
 export const planMigration='20261006102619_construction_planning_worklogs.sql';
 export const planUsers={admin:ids.actor,owner:'10000000-0000-4000-8000-000000000041',A:'10000000-0000-4000-8000-000000000042',B:'10000000-0000-4000-8000-000000000043',C:'10000000-0000-4000-8000-000000000044',viewer:ids.viewer};
 export async function constructionPlanServer(){
  const f=await accessAppointmentsServer(),{db}=f;
+ await db.exec(await sql('20261008000659_receipt_prices_accounting_reports.sql'));
+ await db.exec(await sql('20261008000701_construction_progress.sql'));
+ f.additionalRpcs.push('save_stock_receipt_document_v3','work_content_report_v1','save_accounting_material_price_v1');
  const rpc=(name,args)=>callAsService(db,name,args);
  const perms=(modules,actions)=>modules.map(module=>({module,can_view:true,can_create:actions,can_update:actions,can_delete:actions}));
  await rpc('save_app_role_v1',[ids.actor,'plan_owner','施工負責人（隔離）',false,null,JSON.stringify(perms(['projects','worklogs','dashboard'],true))]);
@@ -40,7 +43,7 @@ export async function constructionPlanServer(){
 if(process.argv[1]?.endsWith('construction-plan-fixture.mjs')){
  const f=await constructionPlanServer();
  if(process.argv.includes('--demo')){
-  const plan=await callAsService(f.db,'save_construction_plan_v1',[planUsers.owner,JSON.stringify({id:randomUUID(),project_id:f.planProjects.small,construction_date:'2026-10-10',content:'一樓配管與標示',status:'pending',notes:'隔離測試範例，可自由修改；不寫入正式資料',assignee_user_ids:[planUsers.A,planUsers.B]}),false]);
+  const plan=await callAsService(f.db,'save_construction_plan_v1',[planUsers.owner,JSON.stringify({id:randomUUID(),project_id:f.planProjects.small,construction_date:'2026-10-10',content:'一樓配管與標示',status:'pending',planned_days:7,notes:'隔離測試範例，可自由修改；不寫入正式資料',assignee_user_ids:[planUsers.A,planUsers.B]}),false]);
   const project=(await f.db.query('select * from projects where id=$1',[plan.project_id])).rows[0];
   await callAsService(f.db,'save_construction_work_log_v1',[planUsers.A,plan.id,JSON.stringify({request_id:randomUUID(),id:null,row_version:null,project_id:project.id,customer_id:project.customer_id,department_id:project.department_id,project_name:project.name,log_date:'2026-10-10',work_type:'工程施工',time_period:'08:30–12:00',status:'in_progress',summary:'完成一樓配管與標示\n待第二階段穿線',completed_content:'完成一樓配管與標示',pending_content:'待第二階段穿線',worker_user_ids:[planUsers.A],maintenance_events:[]})]);
  }

@@ -2,6 +2,32 @@
 // Permissions here control affordances only; Gateway + RPC enforce every write.
 let activeConstructionLogPlanId="",constructionViewProjectId="";
 const CONSTRUCTION_PLAN_STATUSES=[["pending","未開始"],["in_progress","施工中"],["completed","已完成"],["cancelled","取消"]];
+function constructionProgress(plan){
+ const days=Number(plan.completed_days||0),planned=Number(plan.planned_days||0),percent=Number(plan.progress_percent||0),over=Number(plan.overrun_days||0);
+ return `<div class="construction-progress ${over?"overrun":planned&&days>=planned?"at-plan":""}"><p>預計 ${planned||"未設定"} 天｜已完成 ${days} 天${planned?"｜剩餘 "+Number(plan.remaining_days||0)+" 天":""}</p>${planned?`<progress max="100" value="${Math.min(Math.max(percent,0),100)}" aria-label="施工進度">${percent}%</progress><strong>${percent}%</strong>`:""}${over?`<p role="status">已超出預計施工天數 ${over} 天</p>`:""}</div>`;
+}
+async function refreshConstructionPane(){
+ const host=document.querySelector("#constructionPlanningList");if(!host)return;
+ host.innerHTML="<p>載入施工規劃中…</p>";
+ try{
+  const data=await apiRequest({method:"GET",scope:"construction_plans"});
+  mergeConstructionContext(data);
+  const projects=state.projects.filter(constructionEligible);
+  host.innerHTML=projects.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3>${constructionPlanButton(project)}${(data.construction_plans||[]).filter(p=>p.project_id===project.id).map(p=>`<div class="construction-plan-card"><strong>${esc(p.content)}</strong><p>${esc(p.construction_date)} · ${esc(CONSTRUCTION_PLAN_STATUSES.find(([v])=>v===p.status)?.[1]||p.status)}</p>${constructionProgress(p)}</div>`).join("")||"<p>尚無施工規劃</p>"}</article>`).join("")||"<p>目前沒有可查看的小額採購或標案施工工作。</p>";
+ }catch(error){host.innerHTML=`<p role="alert">${esc(error.message)}</p>`;}
+}
+function renderConstructionDashboard(){
+ let host=document.querySelector("#constructionProgressDashboard");if(!host){host=document.createElement("article");host.id="constructionProgressDashboard";host.className="panel";document.querySelector("#dashboard")?.append(host);}
+ const plans=state.dashboard?.construction_progress||[];host.hidden=!plans.length;
+ host.innerHTML='<h2>負責的施工規劃進度</h2>'+plans.map(p=>`<article class="construction-plan-card"><h3>${esc(p.project)}－${esc(p.content)}</h3>${constructionProgress(p)}<button type="button" class="outline" data-construction-project="${esc(p.project_id)}">查看施工規劃</button></article>`).join("");
+}
+async function refreshConstructionProgressViews(){
+ loadedScopes.delete("dashboard");
+ try{
+  if(currentPage()==="dashboard")await loadScope("dashboard",{force:true,silent:true});
+  if(document.querySelector("#constructionPlanningPane")?.hidden===false)await refreshConstructionPane();
+ }catch{showToast("資料已儲存，施工進度讀取失敗，請按重新整理重試。");}
+}
 function constructionEligible(project){return project?.rawType==="construction"&&["small_purchase","tender"].includes(project.constructionCategory);}
 function canManageConstruction(project){return canModule("projects","VIEW")&&canModule("projects","UPDATE")&&(canAdmin()||(state.projectWorkers||[]).some(w=>w.projectId===project?.id&&w.userId===state.currentUser?.id));}
 function constructionPlanButton(project){return constructionEligible(project)?`<button type="button" class="outline" data-construction-project="${esc(project.id)}">施工規劃</button>`:"";}
@@ -31,22 +57,22 @@ function constructionPlanListFields(){
  const customer=byId(state.customers,project?.customerId);
  return `<section class="span-2 construction-plan-section"><div class="panel-head"><div><h3>${esc(project?.code)}｜${esc(project?.name)}</h3><p>${esc(customer?.name)} · 負責人：${esc(project?.owner||"未設定")}</p></div>${canManageConstruction(project)&&constructionEligible(project)?'<button type="button" class="primary" data-new-construction-plan>新增施工規劃</button>':""}</div><div class="construction-plan-list">${plans.map(plan=>{
   const logs=state.siteData.logs.filter(log=>log.construction_plan_id===plan.id&&!log.deleted_at).sort((a,b)=>a.log_date.localeCompare(b.log_date));
-  return `<article class="construction-plan-card"><header><strong>${esc(plan.construction_date)}</strong><span class="pill">${esc(CONSTRUCTION_PLAN_STATUSES.find(([value])=>value===plan.status)?.[1]||plan.status)}</span></header><p class="construction-content">${esc(plan.content)}</p><p>施工人員：${esc((plan.assignee_user_ids||[]).map(id=>byId(state.siteWorkers,id)?.displayName||"停用使用者").join("、"))}</p>${plan.notes?`<p class="construction-content">備註：${esc(plan.notes)}</p>`:""}<div class="construction-plan-actions">${plan.can_manage?`<button type="button" class="outline" data-edit-construction-plan="${esc(plan.id)}">修改規劃</button><button type="button" class="outline danger" data-delete-construction-plan="${esc(plan.id)}">刪除規劃</button>`:""}${plan.can_create_log?`<button type="button" class="primary" data-construction-log="${esc(plan.id)}">填寫工作日誌</button>`:""}</div><details class="construction-log-list"><summary>相關工作日誌（${logs.length}）</summary>${logs.map(log=>`<article><div><strong>${esc(log.log_date)} · ${esc(byId(state.siteWorkers,log.access_creator_user_id)?.displayName||"原建立人")}</strong><p class="construction-content">${esc(log.summary||"—")}</p></div><div class="construction-plan-actions"><button type="button" class="outline" data-construction-open-log="${esc(log.id)}">${canWorkLog("UPDATE",log.id)?"修改日誌":"查看日誌"}</button>${canWorkLog("DELETE",log.id)?`<button type="button" class="outline danger" data-construction-delete-log="${esc(log.id)}">刪除日誌</button>`:""}</div></article>`).join("")||'<p>尚無可查看的工作日誌。</p>'}</details></article>`;
+  return `<article class="construction-plan-card"><header><strong>${esc(plan.construction_date)}</strong><span class="pill">${esc(CONSTRUCTION_PLAN_STATUSES.find(([value])=>value===plan.status)?.[1]||plan.status)}</span></header><p class="construction-content">${esc(plan.content)}</p>${constructionProgress(plan)}<p>施工人員：${esc((plan.assignee_user_ids||[]).map(id=>byId(state.siteWorkers,id)?.displayName||"停用使用者").join("、"))}</p>${plan.notes?`<p class="construction-content">備註：${esc(plan.notes)}</p>`:""}<div class="construction-plan-actions">${plan.can_manage?`<button type="button" class="outline" data-edit-construction-plan="${esc(plan.id)}">修改規劃</button><button type="button" class="outline danger" data-delete-construction-plan="${esc(plan.id)}">刪除規劃</button>`:""}${plan.can_create_log?`<button type="button" class="primary" data-construction-log="${esc(plan.id)}">填寫工作日誌</button>`:""}</div><details class="construction-log-list"><summary>相關工作日誌（${logs.length}）</summary>${logs.map(log=>`<article><div><strong>${esc(log.log_date)} · ${esc(byId(state.siteWorkers,log.access_creator_user_id)?.displayName||"原建立人")}</strong><p class="construction-content">${esc(log.summary||"—")}</p></div><div class="construction-plan-actions"><button type="button" class="outline" data-construction-open-log="${esc(log.id)}">${canWorkLog("UPDATE",log.id)?"修改日誌":"查看日誌"}</button>${canWorkLog("DELETE",log.id)?`<button type="button" class="outline danger" data-construction-delete-log="${esc(log.id)}">刪除日誌</button>`:""}</div></article>`).join("")||'<p>尚無可查看的工作日誌。</p>'}</details></article>`;
  }).join("")||'<p class="dashboard-empty">尚未建立施工規劃。</p>'}</div></section>`;
 }
 function constructionPlanEditFields(id){
  const plan=constructionPlanById(id)||{},project=byId(state.projects,constructionViewProjectId);
  if(!canManageConstruction(project))throw new Error("沒有管理施工規劃的權限。");
- return `<p class="span-2">${esc(project?.code)}｜${esc(project?.name)}</p>`+inputField("constructionDate","施工日期","date",true,plan.construction_date||today())+selectField("planStatus","施工狀態",CONSTRUCTION_PLAN_STATUSES,plan.status||"pending")+inputField("planContent","施工內容","textarea",true,plan.content||"","span-2")+workerPickerField(plan.assignee_user_ids||[],{name:"constructionAssignees",legend:"指派施工人員",description:"可指派一人或多人；移除人員仍保留其歷史日誌。"})+inputField("planNotes","備註","textarea",false,plan.notes||"","span-2")+`<div class="form-submit"><button type="button" class="outline" data-construction-project="${esc(constructionViewProjectId)}">返回規劃</button><button class="primary" type="submit">儲存施工規劃</button></div>`;
+ return `<p class="span-2">${esc(project?.code)}｜${esc(project?.name)}</p>`+inputField("constructionDate","施工日期","date",true,plan.construction_date||today())+`<label>預計施工天數<input name="plannedDays" type="number" min="1" max="3650" step="1" value="${esc(plan.planned_days??"")}"></label>`+selectField("planStatus","施工狀態",CONSTRUCTION_PLAN_STATUSES,plan.status||"pending")+inputField("planContent","施工內容","textarea",true,plan.content||"","span-2")+workerPickerField(plan.assignee_user_ids||[],{name:"constructionAssignees",legend:"指派施工人員",description:"可指派一人或多人；移除人員仍保留其歷史日誌。"})+inputField("planNotes","備註","textarea",false,plan.notes||"","span-2")+`<div class="form-submit"><button type="button" class="outline" data-construction-project="${esc(constructionViewProjectId)}">返回規劃</button><button class="primary" type="submit">儲存施工規劃</button></div>`;
 }
 async function saveConstructionPlan(form,id){
  if(PREVIEW_MODE)throw new Error("此預覽未連接隔離儲存服務，不能儲存施工規劃。");
  const values=new FormData(form),plan=constructionPlanById(id),assignees=values.getAll("constructionAssignees");
  if(!assignees.length)throw new Error("請至少選擇一位施工人員。");
- const payload={id:plan?.id||form.dataset.planRequestId||uid(),row_version:plan?.row_version??null,project_id:constructionViewProjectId,construction_date:values.get("constructionDate"),content:String(values.get("planContent")||"").trim(),status:values.get("planStatus"),notes:String(values.get("planNotes")||"").trim(),assignee_user_ids:assignees};
+ const payload={id:plan?.id||form.dataset.planRequestId||uid(),row_version:plan?.row_version??null,project_id:constructionViewProjectId,construction_date:values.get("constructionDate"),planned_days:values.get("plannedDays")===""?null:Number(values.get("plannedDays")),content:String(values.get("planContent")||"").trim(),status:values.get("planStatus"),notes:String(values.get("planNotes")||"").trim(),assignee_user_ids:assignees};
  form.dataset.planRequestId=payload.id;
  await apiRequest({operation:"save_construction_plan",payload});
- loadedScopes.delete("dashboard");closeModal(true);await openConstructionPlans(payload.project_id);showToast("施工規劃已儲存並重新讀取");
+ await refreshConstructionProgressViews();closeModal(true);await openConstructionPlans(payload.project_id);showToast("施工規劃已儲存並重新讀取");
 }
 function initializeConstructionLog(){
  const form=document.querySelector("#modalForm"),modal=document.querySelector("#simpleModal");
@@ -64,7 +90,7 @@ function initializeConstructionLog(){
  const search=form.querySelector('[name="customerSelectorSearch"]');if(search)search.closest("label").hidden=true;
  if(!form.querySelector('[data-construction-context]')){const notice=document.createElement("p");notice.dataset.constructionContext="true";notice.className="span-2 form-sync-hint";notice.textContent=`施工規劃：${plan?.construction_date||""} ${plan?.content||""}。日誌儲存不會自動完成施工規劃。`;form.prepend(notice);}
 }
-function constructionAssignmentAction(row){return `<span>施工安排 · ${esc(row.construction_date)}</span></div><button class="outline" type="button" data-construction-project="${esc(row.project_id)}">查看施工規劃</button>`;}
+function constructionAssignmentAction(row){return `<span>施工安排 · ${esc(row.construction_date)}</span>${constructionProgress(row)}</div><div class="construction-plan-actions"><button class="primary" type="button" data-construction-log="${esc(row.construction_plan_id)}">填寫工作日誌</button><button class="outline" type="button" data-construction-project="${esc(row.project_id)}">查看施工規劃</button></div>`;}
 document.addEventListener("click",async event=>{
  const target=event.target.closest("[data-construction-project],[data-new-construction-plan],[data-edit-construction-plan],[data-delete-construction-plan],[data-construction-log],[data-construction-open-log],[data-construction-delete-log]");
  if(!target)return;
@@ -74,16 +100,18 @@ document.addEventListener("click",async event=>{
   if(target.hasAttribute("data-new-construction-plan"))openModal("constructionPlanEditModal");
   if(target.hasAttribute("data-edit-construction-plan"))openModal("constructionPlanEditModal",target.dataset.editConstructionPlan);
   if(target.hasAttribute("data-delete-construction-plan")&&confirm("刪除此施工規劃？已有工作日誌時會保留並拒絕刪除，可改為取消。")){
-   const plan=constructionPlanById(target.dataset.deleteConstructionPlan);await apiRequest({operation:"delete_construction_plan",payload:{id:plan.id,row_version:plan.row_version}});loadedScopes.delete("dashboard");await openConstructionPlans(plan.project_id);showToast("施工規劃已刪除");
+   const plan=constructionPlanById(target.dataset.deleteConstructionPlan);await apiRequest({operation:"delete_construction_plan",payload:{id:plan.id,row_version:plan.row_version}});await refreshConstructionProgressViews();await openConstructionPlans(plan.project_id);showToast("施工規劃已刪除");
   }
   if(target.hasAttribute("data-construction-log")){
    const planId=target.dataset.constructionLog;await loadScope("worklogs",{force:true,silent:true});
+   // Re-read authorized plan context after generic work-log/reference loading.
+   mergeConstructionContext(await apiRequest({method:"GET",scope:"construction_plans"}));
    const plan=constructionPlanById(planId);if(!plan?.can_create_log)throw new Error("施工指派或權限已變更，請重新查看規劃。");
    closeModal(true);await openWorkLogModal("",planId);
   }
   if(target.hasAttribute("data-construction-open-log"))await openWorkLogModal(target.dataset.constructionOpenLog);
   if(target.hasAttribute("data-construction-delete-log")&&confirm("封存此工作日誌？原施工規劃與歷史紀錄會保留。")){
-   const log=byId(state.siteData.logs,target.dataset.constructionDeleteLog);await mutate("delete_standalone_work_log",{id:log.id,row_version:log.row_version,reason:"施工人員封存"},"",{reloadScope:"worklogs"});await openConstructionPlans(log.projectId);showToast("工作日誌已封存");
+   const log=byId(state.siteData.logs,target.dataset.constructionDeleteLog);await mutate("delete_standalone_work_log",{id:log.id,row_version:log.row_version,reason:"施工人員封存"},"",{reloadScope:"worklogs"});await refreshConstructionProgressViews();await openConstructionPlans(log.projectId);showToast("工作日誌已封存");
   }
  }catch(error){showToast(error.message,"操作未完成");}finally{target.disabled=false;}
 });

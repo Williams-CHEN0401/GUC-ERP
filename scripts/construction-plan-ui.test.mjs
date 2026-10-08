@@ -7,6 +7,14 @@ function fixture(){
  const c=vm.createContext({document:{addEventListener(){}},state:{currentUser:{id:'A'},projectWorkers:[],constructionPlans:[],siteData:{logs:[]}},byId:(rows,id)=>rows.find(r=>r.id===id),canModule:()=>true,canAdmin:()=>false,esc:String,invalidatePrivateCache:()=>true,lastSnapshot:{}});
  c.hydrateSnapshot=value=>c.merged=value;vm.runInContext(source,c);return c;
 }
+test('progress shows accurate days and caps overrun bar without completing the plan',()=>{
+ const c=fixture();
+ const normal=c.constructionProgress({planned_days:7,completed_days:1,remaining_days:6,progress_percent:14.3,overrun_days:0});
+ assert.match(normal,/已完成 1 天｜剩餘 6 天/);assert.match(normal,/14.3%/);
+ const over=c.constructionProgress({planned_days:2,completed_days:3,remaining_days:0,progress_percent:150,overrun_days:1});
+ assert.match(over,/overrun/);assert.match(over,/value="100"/);assert.match(over,/150%/);assert.match(over,/超出預計施工天數 1 天/);
+ assert.doesNotMatch(c.constructionProgress({}),/<progress/);
+});
 test('construction eligibility uses stable enums, not display text',()=>{
  const c=fixture();
  for(const category of ['small_purchase','tender'])assert.equal(c.constructionEligible({rawType:'construction',constructionCategory:category}),true);

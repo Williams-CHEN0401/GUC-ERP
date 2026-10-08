@@ -9,7 +9,7 @@ const migration=readFileSync(new URL('../supabase/migrations/20260924082425_pick
 const baseline=readFileSync(new URL('../supabase/migrations/20260923003902_independent_work_log_pickup_project.sql',import.meta.url),'utf8');
 const source=name=>app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'('));
 function ui(){
- const context=vm.createContext({itemCategoryOptions:()=>'',inventoryItemOptions:()=>'',state:{inventory:[{id:'i',categoryId:'c'},{id:'j',categoryId:'c'}]},MAX_BATCH_ROWS:20});
+ const context=vm.createContext({receiptPriceField:()=>"",itemCategoryOptions:()=>'',inventoryItemOptions:()=>'',state:{inventory:[{id:'i',categoryId:'c'},{id:'j',categoryId:'c'}]},MAX_BATCH_ROWS:20});
  for(const name of ['esc','byId','valueText','transactionBatchRow','collectTransactionBatchRows'])vm.runInContext(source(name),context);
  return context;
 }
