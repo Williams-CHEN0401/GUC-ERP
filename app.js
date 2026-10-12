@@ -150,6 +150,7 @@ async function apiRequest({ operation, payload, method = "POST", scope = "", opt
     const response = await fetch(endpoint, { method, headers, body: method === "POST" ? JSON.stringify({ operation, payload }) : undefined, cache: "no-store", signal: controller.signal });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) { const error = new Error(data.error || "系統暫時無法完成操作。"); error.status = response.status; throw error; }
+    if(method==='POST'&&operation&&typeof invalidateSharedReports==='function')invalidateSharedReports();
     return data;
   } catch (error) {
     if (error.name === "AbortError") { const timeoutError = new Error("資料載入逾時，請按重新整理後再試。"); timeoutError.status = 504; throw timeoutError; }
@@ -216,7 +217,7 @@ function hydrateSnapshot(snapshot,{referencesOnly=false}={}) {
   if(invalidatePrivateCache(snapshot)===false)return false;
   // A personal appointment scope contains only referenced masters, not complete CRM lists.
   if(!snapshot.current_user?.private_access?.configured&&snapshot.scope==="appointments"&&snapshot.current_user?.role!=="admin"&&lastSnapshot){snapshot={...snapshot};for(const key of ["customers","customer_departments","site_workers"]){if(Array.isArray(snapshot[key])){const rows=new Map((lastSnapshot[key]||[]).map(row=>[row.id,row]));for(const row of snapshot[key])rows.set(row.id,{...rows.get(row.id),...row});snapshot[key]=[...rows.values()];}}}
-  if((snapshot.scope==="materials"||Array.isArray(snapshot.site_work_logs)||Array.isArray(snapshot.pickups))&&typeof sharedReportCache!=="undefined")sharedReportCache.clear();
+  if((snapshot.scope==="materials"||Array.isArray(snapshot.site_work_logs)||Array.isArray(snapshot.pickups))&&typeof sharedReportCache!=="undefined")invalidateSharedReports();
   if(snapshot.customer_appointments)state.appointments=snapshot.customer_appointments;
   if(snapshot.dashboard)state.dashboard={previous_business_date:"",projects:[],repairs:[],worklogs:[],assignments:{pending:[],completed:[]},...snapshot.dashboard,assignments:{pending:[],completed:[],...(snapshot.dashboard.assignments||{})}};
   const has = (key) => Object.prototype.hasOwnProperty.call(snapshot,key);
@@ -353,7 +354,7 @@ async function checkNasConnection(){
     renderSiteModules();
   }
 }
-async function switchPage(name){if(!Object.prototype.hasOwnProperty.call(PAGE_SCOPES,name))return;if(state.currentUser&&!canPage(name))name=WORK_MANAGEMENT_PAGES.includes(name)&&WORK_MANAGEMENT_PAGES.some(canPage)?workManagementPage():firstAllowedPage();document.querySelectorAll(".page").forEach((p)=>p.classList.toggle("active",p.dataset.page===name));document.querySelectorAll(".nav-item").forEach((i)=>{const active=i.hasAttribute("data-work-group")?WORK_MANAGEMENT_PAGES.includes(name):i.dataset.page===name;i.classList.toggle("active",active);if(active)i.setAttribute("aria-current","page");else i.removeAttribute("aria-current");});history.replaceState(null,"",pageUrl(name));preparePageLinks();document.title=`GUC ERP｜${pageMeta[name][0]}`;document.querySelector("#pageTitle").textContent=WORK_MANAGEMENT_PAGES.includes(name)?"工作管理":pageMeta[name][0];document.querySelector("#pageSubtitle").textContent=pageMeta[name][1];document.querySelector("#sidebar").classList.remove("open");window.scrollTo({top:0,behavior:"smooth"});if(accessToken){await loadPageData(name,{force:name==="dashboard"});if(name==="materials")applyWorkContentReportLink();if(name==="settings"&&canModule("audit"))await loadAuditPage();if(["sites","worklogs"].includes(name)&&canModule("equipment","CREATE"))await checkNasConnection();}}
+async function switchPage(name){if(!Object.prototype.hasOwnProperty.call(PAGE_SCOPES,name))return;if(state.currentUser&&!canPage(name))name=WORK_MANAGEMENT_PAGES.includes(name)&&WORK_MANAGEMENT_PAGES.some(canPage)?workManagementPage():firstAllowedPage();document.querySelectorAll(".page").forEach((p)=>p.classList.toggle("active",p.dataset.page===name));document.querySelectorAll(".nav-item").forEach((i)=>{const active=i.hasAttribute("data-work-group")?WORK_MANAGEMENT_PAGES.includes(name):i.dataset.page===name;i.classList.toggle("active",active);if(active)i.setAttribute("aria-current","page");else i.removeAttribute("aria-current");});history.replaceState(null,"",pageUrl(name));preparePageLinks();document.title=`GUC ERP｜${pageMeta[name][0]}`;document.querySelector("#pageTitle").textContent=WORK_MANAGEMENT_PAGES.includes(name)?"工作管理":pageMeta[name][0];document.querySelector("#pageSubtitle").textContent=pageMeta[name][1];document.querySelector("#sidebar").classList.remove("open");window.scrollTo({top:0,behavior:"smooth"});if(accessToken){await loadPageData(name,{force:name==="dashboard"});if(name==="materials")applyWorkContentReportLink();if(typeof applyConstructionReportLink==="function")await applyConstructionReportLink(name);if(name==="settings"&&canModule("audit"))await loadAuditPage();if(["sites","worklogs"].includes(name)&&canModule("equipment","CREATE"))await checkNasConnection();}}
 function setupTabs(){document.querySelectorAll(".section-tabs").forEach((tabs)=>tabs.addEventListener("click",(event)=>{const button=event.target.closest("button[data-tab]");if(!button)return;const page=tabs.closest(".page");tabs.querySelectorAll("button").forEach((b)=>b.classList.toggle("active",b===button));page.querySelectorAll(":scope > .tab-pane").forEach((pane)=>pane.classList.toggle("active",pane.dataset.pane===button.dataset.tab));}));}
 
 function inputField(name,label,type="text",required=false,value="",className=""){if(type==="textarea")return`<label class="${className}">${esc(label)}<textarea name="${name}" ${required?"required":""}>${esc(value)}</textarea></label>`;return`<label class="${className}">${esc(label)}<input name="${name}" type="${type}" value="${esc(value)}" ${required?"required":""}></label>`;}
@@ -964,9 +965,13 @@ function renderProjectReport(){
   if(!report){container.innerHTML=reportEmpty("正在載入統計報表","由共用統計服務取得資料。","▥");return;}
   if(report.error){container.innerHTML=reportEmpty("日期區間不正確",report.error,"!");return;}
   document.querySelectorAll("[data-report-tab]").forEach((button)=>{const active=button.dataset.reportTab===activeProjectReportTab;button.classList.toggle("active",active);button.setAttribute("aria-selected",String(active));});
-  const heading=`<article class="panel report-heading"><div><span class="pill">${esc(project.code||"未編號")}</span><h2>${esc(project.name)}</h2><p>${esc(project.type||"工程施工")}｜${project.status==="completed"?"已結案":"進行中"}</p></div>${projectStatusLabel(project.status)}</article>`;
-  const content=activeProjectReportTab==="materials"?renderProjectMaterials(report):activeProjectReportTab==="workers"?renderProjectWorkers(project,report):renderProjectOverview(project,report);
-  container.innerHTML=heading+content;
+  container.classList.add("guc-report");
+  const html=globalThis.GUCWorkContentReport.render({project,report,tab:activeProjectReportTab});
+  if(container.dataset.reportHtml!==html){
+   const expanded=[...container.querySelectorAll('details[open][data-report-plan]')].map(d=>d.dataset.reportPlan);
+   container.innerHTML=html;container.dataset.reportHtml=html;
+   container.querySelectorAll('details[data-report-plan]').forEach(d=>{d.open=expanded.includes(d.dataset.reportPlan);});
+  }
 }
 function download(name,content,type="application/json"){const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function refreshSnapshot(){const result=await loadPageData(currentPage(),{force:true});if(currentPage()==="settings"&&canModule("audit"))await loadAuditPage();return result;}
@@ -1029,7 +1034,7 @@ async function chooseSystem(target,button){
 }
 function logout(options={}){if(accessToken&&!PREVIEW_MODE)void apiRequest({operation:"logout",payload:{}}).catch(()=>{});auditPage.generation++;auditPage.records=[];auditPage.total=0;auditPage.page=1;storeAccessToken("");if(options?.preservePage!==true)clearPageUrl();loadedScopes.clear();scopeErrors.clear();scopeRequests.clear();lastSnapshot=null;nasConnectionState={checked:false,checking:false,available:false,message:"登入後檢查 NAS 連線"};state=emptyState();hideSystemChooser();renderAll();applyUserState();showLogin();}
 function setSearch(name,value,render){tableState[name].search=value.trim().toLocaleLowerCase("zh-Hant");tableState[name].page=1;render();}
-function rerenderTable(name){if(["pickup","receipt"].includes(name))renderTransactions();else if(name==="repair")renderRepairs();else if(name==="inventory")renderInventory();else if(name==="user")renderUsers();else if(name==="log")renderSystemLogs();else if(name==="worklog")renderWorkLogs();else if(name==="appointment")renderAppointments();else renderMasterData();}
+function rerenderTable(name){if(["pickup","receipt"].includes(name))renderTransactions();else if(name==="repair")renderRepairs();else if(name==="inventory")renderInventory();else if(name==="user")renderUsers();else if(name==="log")renderSystemLogs();else if(name==="worklog")renderWorkLogs();else if(name==="appointment")renderAppointments();else if(name==="planning")renderPlanningProjects();else renderMasterData();}
 
 document.addEventListener("click",async(event)=>{
   const nav=event.target.closest("[data-page].nav-item, [data-work-tab]");if(nav&&event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();await switchPage(nav.hasAttribute("data-work-group")?workManagementPage():nav.dataset.page);}

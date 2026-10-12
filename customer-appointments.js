@@ -39,13 +39,13 @@ function customerFilterMatches(prefix,customerId,departmentId){
   const category=document.querySelector(`#${prefix}Category`).value,customer=document.querySelector(`#${prefix}Customer`).value,department=document.querySelector(`#${prefix}Department`).value;
   return (!category||byId(state.customers,customerId)?.category===category)&&(!customer||customer===customerId)&&(!department||department===departmentId);
 }
-function syncProjectFilters(){
-  syncCustomerFilterGroup('projectFilter');
-  refreshFilterOptions('#projectFilterType',PROJECT_WORK_TYPES.map(([code,label])=>[code,label]),'所有類型');
+function syncProjectFilters(prefix='projectFilter'){
+  syncCustomerFilterGroup(prefix);
+  refreshFilterOptions(`#${prefix}Type`,PROJECT_WORK_TYPES.map(([code,label])=>[code,label]),'所有類型');
 }
-function projectFilterMatches(project){
-  const type=document.querySelector('#projectFilterType').value;
-  return (!type||project.rawType===type)&&customerFilterMatches('projectFilter',project.customerId,project.departmentId);
+function projectFilterMatches(project,prefix='projectFilter'){
+  const type=document.querySelector(`#${prefix}Type`).value;
+  return (!type||project.rawType===type)&&customerFilterMatches(prefix,project.customerId,project.departmentId);
 }
 function renderAppointments(){
   if(!document.querySelector('#appointmentTable'))return;

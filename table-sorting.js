@@ -54,7 +54,7 @@
         for (const header of content.querySelectorAll("th[data-table-sort]")) decorate(header, adapter?.getState(header.dataset.tableSort));
         for (const [id, columns] of Object.entries(localTables)) {
           const body = document.getElementById(id), table = body?.closest("table");
-          if (!table || !content.contains(table)) continue;
+          if (!table || !content.contains(table) || table.closest(".guc-report")) continue;
           const state = states.get(id);
           Array.from(table.tHead?.rows[0]?.cells || []).slice(0, columns).forEach((header, index) => {
             header.dataset.localSort = id; header.dataset.key = String(index); decorate(header, state);

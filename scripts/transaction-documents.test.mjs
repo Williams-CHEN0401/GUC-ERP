@@ -30,24 +30,29 @@ test('receipt preview automatic numbering skips manually occupied number',()=>{
  assert.equal(f.run("previewDocumentNumber('receipt','s','2026-10-02')"),'20261002-3');
  assert.equal(f.run("previewDocumentNumber('receipt','other','2026-10-02')"),'20261002');
 });
-for(const kind of ['receipt','pickup'])test(kind+' groups before pagination/search/sort and counts distinct IDs',()=>{
+for(const kind of ['receipt','pickup'])test(kind+' groups before pagination/search/sort and counts valid detail rows',()=>{
  const f=fixture(),rows=f.state[kind==='receipt'?'receipts':'pickups'];
  for(let d=1;d<=11;d++)for(let i=1;i<=3;i++)rows.push({id:d+'-'+i,documentId:'d'+d,documentNo:'20261002'+(d>1?'-'+d:''),date:'2026-10-02',supplierId:'s',projectId:'p',itemId:'i'+i,quantity:i,note:'',customerIds:[]});
  const render=kind==='receipt'?'renderReceiptDocuments()':'renderPickupDocuments()';f.run(render);
- assert.equal(f.element(kind+'Pagination').total,11);assert.equal((f.element('#'+kind+'Table').innerHTML.match(/<tr/g)||[]).length,10);assert.match(f.element('#'+kind+'Table').innerHTML,/3 種/);
- if(kind==='receipt'){assert.match(f.element('#'+kind+'Table').innerHTML,/<td>6<\/td>/);assert.match(f.element('#'+kind+'Table').innerHTML,/另有 1 筆明細/);}
+ assert.equal(f.element(kind+'Pagination').total,11);assert.equal((f.element('#'+kind+'Table').innerHTML.match(/<tr/g)||[]).length,10);assert.match(f.element('#'+kind+'Table').innerHTML,kind==='receipt'?/3 筆/:/3 種/);
+ if(kind==='receipt'){assert.doesNotMatch(f.element('#'+kind+'Table').innerHTML,/<td>6<\/td>/);assert.match(f.element('#'+kind+'Table').innerHTML,/另有 1 筆明細/);}
  else{assert.doesNotMatch(f.element('#pickupTable').innerHTML,/<td>6<\/td>|另有 1 筆明細|電腦|交換器/);}
  assert.ok(!f.element('#'+kind+'Table').innerHTML.includes('<script>'));
  f.context.tableState[kind].search='隱藏第三項';f.run(render);assert.equal(f.element(kind+'Pagination').total,11);
  f.context.tableState[kind].sortKey='documentNo';f.context.tableState[kind].direction='asc';f.context.tableState[kind].page=2;f.run(render);assert.match(f.element('#'+kind+'Table').innerHTML,/20261002-11/);
  f.element('#'+kind+'DateFrom').value='2026-10-03';f.run(render);assert.equal(f.element(kind+'Pagination').total,0);
- f.element('#'+kind+'DateFrom').value='';f.context.tableState[kind].page=1;f.context.tableState[kind].search='20261002-2';f.run(render);assert.equal(f.element(kind+'Pagination').total,1);assert.match(f.element('#'+kind+'Table').innerHTML,/3 種/);
+ f.element('#'+kind+'DateFrom').value='';f.context.tableState[kind].page=1;f.context.tableState[kind].search='20261002-2';f.run(render);assert.equal(f.element(kind+'Pagination').total,1);assert.match(f.element('#'+kind+'Table').innerHTML,kind==='receipt'?/3 筆/:/3 種/);
 });
 test('legacy rows with matching names/date remain separate without document IDs',()=>{
  const f=fixture();f.state.receipts=[1,2,3].map(n=>({id:String(n),date:'2026-09-24',supplierId:'s',itemId:'i1',quantity:1}));f.run('renderReceiptDocuments()');assert.equal(f.element('receiptPagination').total,3);
 });
-test('receipt item kinds count stable item IDs, not detail lines',()=>{
- const f=fixture();f.state.receipts=[1,2].map(n=>({id:String(n),documentId:'same',date:'2026-09-24',supplierId:'s',itemId:'i1',quantity:n,note:'note'+n}));f.run('renderReceiptDocuments()');assert.match(f.element('#receiptTable').innerHTML,/1 種/);assert.match(f.element('#receiptTable').innerHTML,/<td>3<\/td>/);
+test('receipt counts duplicate item IDs as separate valid detail lines',()=>{
+ const f=fixture();f.state.receipts=[1,2].map(n=>({id:String(n),documentId:'same',date:'2026-09-24',supplierId:'s',itemId:'i1',quantity:n,note:'note'+n}));const before=JSON.stringify(f.state.receipts);f.run('renderReceiptDocuments()');assert.match(f.element('#receiptTable').innerHTML,/2 筆/);assert.equal(JSON.stringify(f.state.receipts),before);assert.equal((f.element('#receiptTable').innerHTML.match(/<td(?:>| )/g)||[]).length,8);
+});
+test('receipt count excludes deleted and invalid lines while preserving detail quantities',()=>{
+ const f=fixture(),line={documentId:'same',date:'2026-09-24',supplierId:'s',itemId:'i1',quantity:10};
+ f.state.receipts=[{...line,id:'valid'},{...line,id:'deleted',deleted_at:'2026-10-01'},{...line,id:'zero',quantity:0},{...line,id:'bad',quantity:'oops'},{...line,id:'missing',itemId:''}];
+ f.run('renderReceiptDocuments()');assert.match(f.element('#receiptTable').innerHTML,/1 筆/);assert.equal(f.element('receiptPagination').total,1);assert.equal(f.state.receipts[0].quantity,10);
 });
 test('pickup list omits item and total quantity, keeps eight aligned columns and original detail data',()=>{
  const end=html.indexOf('<tbody id="pickupTable">'),headers=html.slice(html.lastIndexOf('<thead>',end),end);

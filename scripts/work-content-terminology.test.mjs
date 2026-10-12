@@ -27,7 +27,7 @@ test("internal project identifiers and existing relations remain unchanged", () 
 
 test("work-log operation annotations and repair prompt are removed", () => {
   const start = html.indexOf('<section class="page" id="worklogs"');
-  const end = html.indexOf('<section class="page" id="materials"', start);
+  const end = html.indexOf('<section class="page guc-report" id="materials"', start);
   const worklogSection = html.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.doesNotMatch(worklogSection, /list-row-hint|獨立管理所有客戶/);

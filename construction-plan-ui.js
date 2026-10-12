@@ -7,16 +7,25 @@ function constructionProgress(plan){
  const days=Number(plan.completed_days||0),planned=Number(plan.planned_days||0),percent=Number(plan.progress_percent||0),over=Number(plan.overrun_days||0);
  return `<div class="construction-progress ${over?"overrun":planned&&days>=planned?"at-plan":""}"><p>預計 ${planned||"未設定"} 天｜已完成 ${days} 天${planned?"｜剩餘 "+Number(plan.remaining_days||0)+" 天":""}</p>${planned?`<progress max="100" value="${Math.min(Math.max(percent,0),100)}" aria-label="施工進度">${percent}%</progress><strong>${percent}%</strong>`:""}${over?`<p role="status">已超出預計施工天數 ${over} 天</p>`:""}</div>`;
 }
-async function refreshConstructionPane(){
- const host=document.querySelector("#constructionPlanningList");if(!host)return;
- host.innerHTML="<p>載入施工規劃中…</p>";
- try{
-  const data=await apiRequest({method:"GET",scope:"construction_plans"});
-  mergeConstructionContext(data);
-  const projects=state.projects.filter(constructionEligible);
-  host.innerHTML=projects.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3>${constructionPlanButton(project)}${(data.construction_plans||[]).filter(p=>p.project_id===project.id).map(p=>`<div class="construction-plan-card"><strong>${esc(p.content)}</strong><p>${esc(p.construction_date)} · ${esc(CONSTRUCTION_PLAN_STATUSES.find(([v])=>v===p.status)?.[1]||p.status)}</p>${constructionWarning(p)}${constructionProgress(p)}${constructionChecklist(p)}${constructionGantt(p)}</div>`).join("")||"<p>尚無施工規劃</p>"}</article>`).join("")||"<p>目前沒有可查看的小額採購或標案施工工作。</p>";
- }catch(error){host.innerHTML=`<p role="alert">${esc(error.message)}</p>`;}
+let planningGeneration=0;
+function renderPlanningProjects(){
+ syncProjectFilters('planningFilter');
+ tableState.planning ||= {page:1,perPage:10,sortKey:'code',direction:'asc',search:''};
+ const control=tableState.planning,plans=state.constructionPlans||[];
+ const rows=sortRows(state.projects.filter(p=>constructionEligible(p)||plans.some(plan=>plan.project_id===p.id)).map(p=>({...p,customer:byId(state.customers,p.customerId)?.name||'',statusText:workLogStatusText(p.status).replace('已完成','已結案')})).filter(p=>projectFilterMatches(p,'planningFilter')&&matches([p.code,p.name,p.customer,p.type,p.status,p.statusText,p.owner],control.search)),control.sortKey,control.direction);
+ const page=tablePage('planning',rows);
+ document.querySelector('#constructionPlanningList').innerHTML=page.rows.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3><p>${esc(project.customer)} · ${esc(project.type)} · ${esc(project.owner||'未指派')}</p>${constructionPlanButton(project)}${plans.filter(p=>p.project_id===project.id).map(p=>`<div class="construction-plan-card"><strong>${esc(p.content)}</strong><p>${esc(p.construction_date)} · ${esc(CONSTRUCTION_PLAN_STATUSES.find(([v])=>v===p.status)?.[1]||p.status)}</p>${constructionWarning(p)}${constructionProgress(p)}${constructionChecklist(p)}${constructionGantt(p)}</div>`).join('')||'<p>尚無施工規劃</p>'}</article>`).join('')||'<p class="dashboard-empty">沒有符合篩選的施工規劃。</p>';
+ renderPagination('planning','planningPagination',page.total);
 }
+async function refreshConstructionPane(){
+ const host=document.querySelector('#constructionPlanningList');if(!host)return;
+ const generation=++planningGeneration;host.innerHTML='<p>載入施工規劃中…</p>';
+ try{const data=await apiRequest({method:'GET',scope:'construction_plans'});if(generation!==planningGeneration)return;mergeConstructionContext(data);renderPlanningProjects();}
+ catch(error){if(generation===planningGeneration)host.innerHTML=`<p role="alert">${esc(error.message)}</p>`;}
+}
+document.addEventListener('input',event=>{if(event.target.id==='planningSearch'){tableState.planning.search=event.target.value;tableState.planning.page=1;renderPlanningProjects();}});
+document.addEventListener('change',event=>{if(event.target.id.startsWith('planningFilter')||event.target.id==='planningSort'){if(event.target.id==='planningSort')tableState.planning.sortKey=event.target.value;tableState.planning.page=1;renderPlanningProjects();}});
+document.addEventListener('click',event=>{if(event.target.closest('#planningDirection')){tableState.planning.direction=tableState.planning.direction==='asc'?'desc':'asc';event.target.textContent=tableState.planning.direction==='asc'?'升冪 ↑':'降冪 ↓';renderPlanningProjects();}});
 function renderConstructionDashboard(){
  let host=document.querySelector("#constructionProgressDashboard");if(!host){host=document.createElement("article");host.id="constructionProgressDashboard";host.className="panel";document.querySelector("#dashboard")?.append(host);}
  const plans=state.dashboard?.construction_progress||[];host.hidden=!plans.length;
@@ -24,6 +33,7 @@ function renderConstructionDashboard(){
  if(plans.some(p=>p.needs_attention))document.querySelector('#dashboard')?.prepend(host);
 }
 async function refreshConstructionProgressViews(){
+ invalidateSharedReports();
  loadedScopes.delete("dashboard");
  try{
   if(currentPage()==="dashboard")await loadScope("dashboard",{force:true,silent:true});
@@ -123,3 +133,12 @@ document.addEventListener("click",async event=>{
   }
  }catch(error){showToast(error.message,"操作未完成");}finally{target.disabled=false;}
 });
+
+async function applyConstructionReportLink(page){
+ const params=new URLSearchParams(location.search),key=page==='projects'?'construction_project_id':page==='worklogs'?'work_log_id':'';
+ const id=key&&params.get(key);if(!id)return;
+ const target=new URL(location.href);target.searchParams.delete(key);history.replaceState(null,'',target.pathname+target.search);
+ if(!/^[0-9a-f-]{36}$/i.test(id))return;
+ try{if(page==='projects')await openConstructionPlans(id);else await openWorkLogModal(id);}
+ catch(error){showToast(error.message,'無法開啟原始資料');}
+}
