@@ -198,6 +198,29 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .construction-progress.overrun { color:var(--construction-alert); }
 .construction-progress.overrun progress { accent-color:var(--construction-alert); }
 .construction-progress.at-plan { color:#176b50; }
+.construction-warning { margin:12px 0; padding:14px 16px; border:1px solid #e4b056; border-left:5px solid #b86b12; border-radius:8px; background:#fff6e3; color:#713f12; }
+.construction-warning p { margin:6px 0 0; }
+.construction-checklist { list-style:none; padding:0; margin:16px 0; display:grid; gap:8px; }
+.construction-checklist li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; background:#f5f8f7; border:1px solid var(--line); border-radius:8px; }
+.construction-checklist small { display:block; margin:6px 0 0 30px; color:#50645a; }
+.construction-item-check,.modal-card .form-grid .construction-item-check { display:flex; flex-direction:row; align-items:center; gap:10px; cursor:pointer; }
+.construction-item-check input,.modal-card .form-grid .construction-item-check input[type=checkbox] { width:20px; min-width:20px; height:20px; padding:0; margin:0; accent-color:#247758; flex:0 0 20px; }
+.construction-checklist .is-complete strong { color:#247758; }
+.construction-checklist .is-complete { background:#edf7f1; }
+.construction-item-editor { display:grid; grid-template-columns:minmax(160px,1fr) 100px 100px auto; gap:10px; align-items:end; padding:12px 0; border-bottom:1px solid var(--line); }
+.construction-item-editor label { min-width:0; }
+.construction-item-editor input { width:100%; }
+.construction-checklist-editor .panel-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.construction-gantt { margin:16px 0; padding:12px; border:1px solid var(--line); border-radius:8px; }
+.construction-gantt summary { cursor:pointer; font-weight:700; }
+.construction-gantt-scroll { overflow:auto; max-width:100%; border-radius:6px; background:#fff; }
+.construction-gantt svg { display:block; width:100%; min-width:680px; max-width:none; height:auto; }
+.gantt-grid { stroke:#e2e9e7; stroke-width:1; }
+.gantt-plan { fill:#d3e2eb; }
+.gantt-actual { fill:#247758; }
+.gantt-label { font-size:12px; fill:#233b30; }
+.gantt-axis { font-size:11px; fill:#50645a; }
+@media(max-width:640px) { .construction-item-editor { grid-template-columns:1fr 1fr; } .construction-item-editor .construction-item-title { grid-column:1/-1; } .construction-checklist li { align-items:flex-start; flex-direction:column; } .construction-checklist small { margin-left:0; } }
 .report-vertical-bars { display:flex; align-items:flex-end; gap:16px; overflow-x:auto; min-height:230px; padding:16px; border-bottom:1px solid #ccd2c6; }
 .report-vertical-bars figure { min-width:64px; flex:1; text-align:center; margin:0; }
 .report-vertical-bars .bar-track { height:170px; display:flex; align-items:flex-end; justify-content:center; }

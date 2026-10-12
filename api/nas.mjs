@@ -1,6 +1,10 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
-const SUPABASE_BASE = "https://bfgjdxhhnfotkjrbdckr.supabase.co/functions/v1";
+const LOCAL_SUPABASE_BASE = "http://guc-supabase-functions:9000";
+if (process.env.GUC_LOCAL_SUPABASE === "true" && (process.env.GUC_LOCAL_DOCKER !== "true" || process.env.SUPABASE_FUNCTIONS_URL !== LOCAL_SUPABASE_BASE)) {
+  throw new Error("Local Supabase requires the configured Docker Edge Runtime.");
+}
+const SUPABASE_BASE = process.env.GUC_LOCAL_SUPABASE === "true" ? LOCAL_SUPABASE_BASE : "https://bfgjdxhhnfotkjrbdckr.supabase.co/functions/v1";
 const GATEWAY_NAME = process.env.VERCEL_ENV === "production" ? "inventory-gateway" : "inventory-gateway-preview";
 const GATEWAY_ENDPOINT = `${SUPABASE_BASE}/${GATEWAY_NAME}`;
 const MAX_FILES = 10;

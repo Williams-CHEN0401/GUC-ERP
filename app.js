@@ -15,7 +15,9 @@ const QUOTATION_SYSTEM_TARGET_URL = globalThis.GUC_PUBLIC_CONFIG?.quotationUrl |
 const QUOTATION_SYSTEM_TARGET_ORIGIN = (() => { try { return new URL(QUOTATION_SYSTEM_TARGET_URL).origin; } catch { return ""; } })();
 const QUOTATION_SSO_READY_MESSAGE = "GUC_QUOTATION_SSO_READY";
 const QUOTATION_SSO_SESSION_MESSAGE = "GUC_QUOTATION_SSO_SESSION";
-const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST;
+const PREVIEW_MODE = location.hostname !== PRODUCTION_HOST
+  && !(globalThis.GUC_PUBLIC_CONFIG?.localProduction === true
+    && (location.origin === globalThis.GUC_PUBLIC_CONFIG?.productionOrigin || location.hostname === "localhost"));
 const CUSTOMER_CATEGORIES = [["school", "學校機關"], ["government", "政府機關"], ["social_welfare", "社福機關"], ["cleaning_team", "清潔隊"]];
 const PROJECT_WORK_TYPES = [["construction", "工程施工", "工程施工"], ["repair", "維修/查修", "維修紀錄"], ["maintenance", "維護保養", "維護保養"], ["delivery", "送貨", "送貨"], ["clerical", "文書作業", "文書作業"], ["site_survey", "場勘", "場勘"]];
 const WORK_LOG_TYPES = PROJECT_WORK_TYPES.map(([,label,storedValue])=>[storedValue,label]);
@@ -84,7 +86,15 @@ function esc(value) { return String(value ?? "").replace(/[&<>'"]/g, (char) => (
 function today() { return new Date().toISOString().slice(0, 10); }
 function formatDate(value) { return value ? new Date(value).toLocaleDateString("zh-TW") : "—"; }
 function formatDateTime(value) { return value ? new Date(value).toLocaleString("zh-TW", { hour12: false }) : "—"; }
-function uid() { return crypto.randomUUID(); }
+function uid() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  // HTTP LAN origins lack randomUUID, but still provide secure random bytes.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
 function valueText(value) { return String(value ?? "").toLocaleLowerCase("zh-Hant"); }
 function matches(values, term) { return !term || values.some((value) => valueText(value).includes(term)); }
 function statusLabel(status) { return status === "completed" ? '<span class="status complete">已完成</span>' : '<span class="status active">進行中</span>'; }
@@ -168,7 +178,7 @@ function requestSessionFromOtherTab(timeout = SESSION_HANDOFF_TIMEOUT_MS) {
   if (accessToken) return Promise.resolve(accessToken);
   const channel = sessionChannelInstance();
   if (!channel) return Promise.resolve("");
-  const requestId = crypto.randomUUID(), requestedAt = Date.now();
+  const requestId = uid(), requestedAt = Date.now();
   return new Promise((resolve) => {
     let timer = 0;
     const finish = (token = "") => {
@@ -630,10 +640,11 @@ async function ensureWorkLogWorkers(){
   if(workerErrors.length)throw new Error(`施工人員清單暫時無法讀取：${workerErrors.at(-1).message||"請稍後重試。"}`);
   throw new Error("目前沒有啟用的系統使用者可設為施工人員，請先由管理員至系統設定啟用帳號。");
 }
-async function openWorkLogModal(id="",planId=""){
+async function openWorkLogModal(id="",planId="",itemId=""){
   try{
     await ensureWorkLogWorkers();
     if(typeof activeConstructionLogPlanId!=="undefined")activeConstructionLogPlanId=planId||byId(state.siteData.logs,id)?.construction_plan_id||"";
+    if(typeof activeConstructionItemId!=="undefined")activeConstructionItemId=itemId||byId(state.siteData.logs,id)?.construction_item_id||"";
     openModal("workLogModal",id);
     return true;
   }catch(error){showToast(error.message,"施工人員清單載入失敗");return false;}
@@ -752,7 +763,7 @@ function applyPreviewMutation(operation,payload){const version=1,now=formatDateT
 async function mutate(operation,payload,message,{reloadScope=""}={}){if(typeof pinOpenFormVersion==="function")payload=pinOpenFormVersion(payload);if(typeof invalidateFormReferences==="function")invalidateFormReferences();if(PREVIEW_MODE){const result=applyPreviewMutation(operation,payload);if(message)showToast(`${message}（僅預覽暫存）`);return result;}const result=await apiRequest({operation,payload});loadedScopes.clear();await loadScope(reloadScope||PAGE_SCOPES[currentPage()]||"dashboard",{force:true});if(message)showToast(message);return result;}
 
 function savedWorkLogId(result){return result?.work_log?.id||result?.result?.work_log?.id||"";}
-function workLogMatchesSave(log,payload){if(!log)return false;const actualWorkers=[...(log.workerIds||[])].sort(),expectedWorkers=[...(payload.worker_user_ids||[])].sort();return (!payload.construction_plan_id||log.construction_plan_id===payload.construction_plan_id)&&(!payload.project_id||log.projectId===payload.project_id)&&log.log_date===payload.log_date&&(log.time_period||"")===(payload.time_period||"")&&(log.title||"")===(payload.project_name||"")&&log.work_type===payload.work_type&&log.status===payload.status&&(log.summary||"")===(payload.summary||"")&&(!Object.hasOwn(payload,"completed_content")||(log.completed_content??null)===payload.completed_content&&(log.pending_content??null)===payload.pending_content)&&actualWorkers.length===expectedWorkers.length&&actualWorkers.every((id,index)=>id===expectedWorkers[index]);}
+function workLogMatchesSave(log,payload){if(!log)return false;const actualWorkers=[...(log.workerIds||[])].sort(),expectedWorkers=[...(payload.worker_user_ids||[])].sort();return (!Object.hasOwn(payload,"construction_item_id")||(log.construction_item_id||null)===(payload.construction_item_id||null))&&(!payload.construction_plan_id||log.construction_plan_id===payload.construction_plan_id)&&(!payload.project_id||log.projectId===payload.project_id)&&log.log_date===payload.log_date&&(log.time_period||"")===(payload.time_period||"")&&(log.title||"")===(payload.project_name||"")&&log.work_type===payload.work_type&&log.status===payload.status&&(log.summary||"")===(payload.summary||"")&&(!Object.hasOwn(payload,"completed_content")||(log.completed_content??null)===payload.completed_content&&(log.pending_content??null)===payload.pending_content)&&actualWorkers.length===expectedWorkers.length&&actualWorkers.every((id,index)=>id===expectedWorkers[index]);}
 function maintenanceSaveMatches(result,payload){
   const expected=payload.maintenance_events||[],ids=(result?.result||result)?.maintenance_event_ids||[];
   if(ids.length!==expected.length)return false;
@@ -857,7 +868,7 @@ async function handleModalSubmit(event){event.preventDefault();const form=event.
     else if(!project||project.status==="completed")throw new Error("請選擇尚未完成的工作內容。");if(!assignee?.active)throw new Error("請選擇啟用中的人員。");if(!instructions)throw new Error("請輸入工作說明。");if(pickup&&(!item||item.categoryId!==data.pickupCategoryId))throw new Error("請選擇正確的取貨品項。");if(pickup&&(!Number.isInteger(quantity)||quantity<1))throw new Error("取貨數量須為正整數。");
     await mutate("create_work_assignment",{...projectPayload,assignee_user_id:assignee.id,assignment_type:data.assignmentType,instructions,inventory_item_id:item?.id||null,pickup_quantity:quantity},"工作指派已建立",{reloadScope:"dashboard"});
   }
-  if(type==="workLogModal"){if(form.dataset.constructionPlanId)data.workType="工程施工";const existing=id?byId(state.siteData.logs,id):null,project=existing?byId(state.projects,existing.projectId):null,selectedProject=workLogSaveProject(project),moving=!!(project&&selectedProject&&selectedProject.id!==project.id),workerIds=[...new FormData(form).getAll("workerIds")],customerId=workLogFormCustomerId(),projectName=selectedProject&&(!project||moving)?selectedProject.name:(data.projectName||"").trim(),timePeriod=(data.timePeriod||"").trim(),maintenanceEvents=collectMaintenanceEvents(),summary=workLogSummaryForSave(form,maintenanceEvents);if(!customerId||!projectName)throw new Error("請選擇客戶並輸入工作內容／日誌標題。");if(timePeriod.length>80)throw new Error("時段不可超過 80 個字。");if(!["in_progress","completed"].includes(data.status))throw new Error("請選擇有效的工作日誌狀態。");const payload={...(form.dataset.constructionPlanId?{construction_plan_id:form.dataset.constructionPlanId}:{}),request_id:form.dataset.requestId,id:id||null,row_version:existing?.row_version||null,project_id:selectedProject?.id||(state.currentUser?.project_scoped?state.projects.find(p=>p.customerId===customerId&&p.name===projectName)?.id:null)||null,customer_id:customerId,department_id:workLogDepartmentValue(project,customerId,projectName),project_name:projectName,log_date:data.logDate,time_period:timePeriod,work_type:data.workType,status:data.status,summary,...workLogContentSections(form),worker_user_ids:workerIds,maintenance_events:maintenanceEvents},result=await mutate("upsert_customer_project_work_log",payload,"",{reloadScope:"worklogs"});await verifySavedWorkLog(result,payload);await refreshConstructionProgressViews();showToast("工作日誌已儲存並核對");if(!id)newWorkLogId=savedWorkLogId(result);}
+  if(type==="workLogModal"){if(form.dataset.constructionPlanId)data.workType="工程施工";const existing=id?byId(state.siteData.logs,id):null,project=existing?byId(state.projects,existing.projectId):null,selectedProject=workLogSaveProject(project),moving=!!(project&&selectedProject&&selectedProject.id!==project.id),workerIds=[...new FormData(form).getAll("workerIds")],customerId=workLogFormCustomerId(),projectName=selectedProject&&(!project||moving)?selectedProject.name:(data.projectName||"").trim(),timePeriod=(data.timePeriod||"").trim(),maintenanceEvents=collectMaintenanceEvents(),summary=workLogSummaryForSave(form,maintenanceEvents);if(!customerId||!projectName)throw new Error("請選擇客戶並輸入工作內容／日誌標題。");if(timePeriod.length>80)throw new Error("時段不可超過 80 個字。");if(!["in_progress","completed"].includes(data.status))throw new Error("請選擇有效的工作日誌狀態。");const payload={...(form.dataset.constructionPlanId?{construction_plan_id:form.dataset.constructionPlanId,construction_item_id:form.elements.constructionItemId?.value||existing?.construction_item_id||null}:{}),request_id:form.dataset.requestId,id:id||null,row_version:existing?.row_version||null,project_id:selectedProject?.id||(state.currentUser?.project_scoped?state.projects.find(p=>p.customerId===customerId&&p.name===projectName)?.id:null)||null,customer_id:customerId,department_id:workLogDepartmentValue(project,customerId,projectName),project_name:projectName,log_date:data.logDate,time_period:timePeriod,work_type:data.workType,status:data.status,summary,...workLogContentSections(form),worker_user_ids:workerIds,maintenance_events:maintenanceEvents},result=await mutate("upsert_customer_project_work_log",payload,"",{reloadScope:"worklogs"});await verifySavedWorkLog(result,payload);await refreshConstructionProgressViews();showToast("工作日誌已儲存並核對");if(!id)newWorkLogId=savedWorkLogId(result);}
   if(type==="attachmentModal"){
     setAttachmentUploadProgress('checking','正在檢查附件與 NAS 連線，請稍候…');
     const customer=byId(state.customers,data.customerId),contractService=byId(state.contractServiceTypes,data.contractServiceTypeId),project=byId(state.projects,data.projectId),files=[...form.elements.files.files];
@@ -969,7 +980,7 @@ async function continueAfterAuthentication(){const requestedPage=requestedPageFr
 function openExternalSystem({url,origin,readyMessage,sessionMessage,label,externalWindow=null}){
   if(!url||!origin){showToast(`尚未設定${label}網址，因此未開啟新分頁。`,`${label}尚未開放`);return false;}
   if(!accessToken){showLogin(`請先登入 ERP，再開啟${label}。`);return false;}
-  const nonce=crypto.randomUUID(),target=new URL(url);
+  const nonce=uid(),target=new URL(url);
   target.searchParams.set("sso","erp");target.searchParams.set("sso_nonce",nonce);
   let timer=0;
   const receiveReady=(event)=>{

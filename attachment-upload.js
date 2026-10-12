@@ -98,7 +98,10 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
       const conflict = preflight.conflicts?.[0];
       const action = choices.has(fileIndex) ? choices.get(fileIndex) : conflict ? await conflictChoice(conflict) : 'new';
       if (action === 'cancel') { item.state='skipped';return { failed: { name: file.name, error: '已取消此檔案', skipped: true } }; }
-      const large = file.size > NAS_BROWSER_DIRECT_BYTES;
+      // Local Docker accepts the full file. HTTP LAN browsers lack SubtleCrypto
+      // needed by chunk hashing, so use the existing authenticated direct upload.
+      const localDirect = globalThis.GUC_PUBLIC_CONFIG?.localProduction === true && !globalThis.crypto?.subtle;
+      const large = file.size > NAS_BROWSER_DIRECT_BYTES && !localDirect;
       const body = bodyFor(large ? 'begin_file' : 'upload');
       body.append("preflight_ticket",preflight.preflight_ticket);
       body.append('description', description);body.append('attachment_type', attachmentType);

@@ -899,6 +899,10 @@ function maintenanceEventsInput(value: unknown) {
 }
 
 async function change(operation: string, payload: Row, user: AppUser | null) {
+  if(operation==="set_construction_item_completed"){
+    if(!uuid(payload.id)||!Number.isInteger(payload.row_version)||typeof payload.is_completed!=="boolean")throw new Error("施工子項目或版本不正確。");
+    return rpc("set_construction_item_completed_v1",{p_actor_user_id:user!.id,p_item_id:uuid(payload.id),p_row_version:payload.row_version,p_completed:payload.is_completed});
+  }
   if(operation==="save_construction_plan"||operation==="delete_construction_plan"){
     requirePermission(user!,"projects","UPDATE");
     if(!uuid(payload.id))throw new Error("施工規劃編號不正確。");
@@ -1569,7 +1573,7 @@ function redactAuditValue(value: unknown, depth=0): unknown {
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
-const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_plans","construction_details","maintenance_details","project_costs","work_assignment"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
+const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_plans","construction_plan_items","construction_details","maintenance_details","project_costs","work_assignment"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
 async function auditRecords(params: URLSearchParams, user: AppUser) {
   if(user.permissions)requirePermission(user,"audit");else requireRole(user,["admin"]);
   const page=Math.max(1,Math.min(10000,Number(params.get("page"))||1)),size=Math.max(1,Math.min(100,Number(params.get("page_size"))||25));
