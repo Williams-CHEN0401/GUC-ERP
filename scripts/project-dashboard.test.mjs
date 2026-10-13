@@ -23,3 +23,27 @@ test('Accounting preserves cents; price edit controls follow existing permission
  const readonly=render({report:r,accounting:true,pricePermissions:{view:true}});assert.match(readonly,/12.34/);assert.doesNotMatch(readonly,/data-gr-edit-price|data-gr-clear-price/);
  const writer=render({report:r,accounting:true,pricePermissions:{view:true,update:true,delete:true}});assert.match(writer,/data-gr-edit-price="item"/);assert.match(writer,/data-gr-clear-price="item"/);
 });
+test('report geometry remains usable under production CSP without inline styles',()=>{
+ const r=report();r.workerStats=[{name:'阿祥',constructionDays:9},{name:'阿勝',constructionDays:6}];
+ const html=render({report:r});
+ assert.doesNotMatch(html,/\sstyle=/);
+ const bars=[...html.matchAll(/class="gr-column-bar"[^>]+height="([\d.]+)"/g)].map(m=>Number(m[1]));
+ assert.equal(bars.length,2);assert(bars[0]>0);assert(Math.abs(bars[1]/bars[0]-2/3)<.0001);
+ assert.match(html,/class="gr-gauge"/);assert.match(html,/class="gr-gantt-bar"/);
+});
+test('material columns use authorized category rollups and keep mixed units separate',()=>{
+ const r=report();r.materialCategoryStats=[{id:'c1',name:'線材',recordCount:3,totalsByUnit:[{unit:'米',total:150},{unit:'捲',total:2}],amount:12345.67,unpricedItemCount:0},{id:null,name:'未分類',recordCount:1,totalsByUnit:[{unit:'米',total:5}],amount:null,unpricedItemCount:1}];
+ const html=render({report:r,tab:'materials'});
+ assert.match(html,/data-gr-material-unit/);assert.match(html,/data-gr-unit="米"/);assert.match(html,/data-gr-unit="捲" hidden/);
+ assert.match(html,/150 米/);assert.match(html,/2 捲/);assert.match(html,/5 米/);assert.match(html,/線材/);
+ assert.doesNotMatch(html,/12,345.67|157|單價（元）/);
+ const accounting=render({report:r,accounting:true,pricePermissions:{view:true}});
+ assert.match(accounting,/\$12,345.67/);assert.match(accounting,/未分類 · 未定價/);
+ assert.doesNotMatch(accounting,/未分類 · 0 元/);assert.match(accounting,/1 個品項未設定價格/);
+});
+test('category labels and unknown category data never create fake item groupings',()=>{
+ const r=report();r.materialStats=[{id:'i',name:'攝影機',quantity:2,unit:'台'}];
+ assert.match(render({report:r,tab:'materials'}),/材料分類統計尚未載入/);
+ r.materialCategoryStats=[{id:'cat',name:'<img src=x onerror=alert(1)>',totalsByUnit:[{unit:'台',total:2}]}];
+ const html=render({report:r,tab:'materials'});assert.doesNotMatch(html,/<img/);assert.match(html,/&lt;img/);
+});
