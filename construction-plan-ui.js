@@ -14,8 +14,12 @@ function renderPlanningProjects(){
  const control=tableState.planning,plans=state.constructionPlans||[];
  const rows=sortRows(state.projects.filter(p=>constructionEligible(p)||plans.some(plan=>plan.project_id===p.id)).map(p=>({...p,customer:byId(state.customers,p.customerId)?.name||'',statusText:workLogStatusText(p.status).replace('已完成','已結案')})).filter(p=>projectFilterMatches(p,'planningFilter')&&matches([p.code,p.name,p.customer,p.type,p.status,p.statusText,p.owner],control.search)),control.sortKey,control.direction);
  const page=tablePage('planning',rows);
- document.querySelector('#constructionPlanningList').innerHTML=page.rows.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3><p>${esc(project.customer)} · ${esc(project.type)} · ${esc(project.owner||'未指派')}</p>${constructionPlanButton(project)}${plans.filter(p=>p.project_id===project.id).map(p=>`<div class="construction-plan-card"><strong>${esc(p.content)}</strong><p>${esc(p.construction_date)} · ${esc(CONSTRUCTION_PLAN_STATUSES.find(([v])=>v===p.status)?.[1]||p.status)}</p>${constructionWarning(p)}${constructionProgress(p)}${constructionChecklist(p)}${constructionGantt(p)}</div>`).join('')||'<p>尚無施工規劃</p>'}</article>`).join('')||'<p class="dashboard-empty">沒有符合篩選的施工規劃。</p>';
+ document.querySelector('#constructionPlanningList').innerHTML=page.rows.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3><p>${esc(project.customer)} · ${esc(project.type)} · ${esc(project.owner||'未指派')}</p>${constructionPlanButton(project)}${plans.filter(p=>p.project_id===project.id).sort((a,b)=>a.construction_date.localeCompare(b.construction_date)||a.id.localeCompare(b.id)).map(constructionPlanningCard).join('')||'<p>尚無施工規劃</p>'}</article>`).join('')||'<p class="dashboard-empty">沒有符合篩選的施工規劃。</p>';
  renderPagination('planning','planningPagination',page.total);
+}
+function constructionPlanningCard(plan){
+ const logs=state.siteData.logs.filter(l=>l.construction_plan_id===plan.id&&!l.deleted_at);
+ return `<details class="construction-plan-card construction-plan-fold" data-planning-plan="${esc(plan.id)}"><summary><span>${esc(plan.content)}</span><small>預計 ${plan.planned_days||'未設定'} 天｜${Object.hasOwn(plan,"worked_days")?"已執行":"已完成"} ${Number(plan.worked_days??plan.completed_days??0)} 天</small></summary><div class="construction-plan-body"><p>${esc(plan.construction_date)} · ${esc(CONSTRUCTION_PLAN_STATUSES.find(([v])=>v===plan.status)?.[1]||plan.status)}</p>${constructionWarning(plan)}${constructionProgress(plan)}${constructionChecklist(plan)}${constructionGantt(plan)}<p>施工人員：${esc((plan.assignee_user_ids||[]).map(id=>byId(state.siteWorkers,id)?.displayName||'停用使用者').join('、')||'未指派')}</p>${plan.notes?'<p>'+esc(plan.notes)+'</p>':''}<div class="construction-plan-actions">${plan.can_manage?'<button type="button" class="outline" data-edit-construction-plan="'+esc(plan.id)+'">修改規劃</button><button type="button" class="outline danger" data-delete-construction-plan="'+esc(plan.id)+'">刪除規劃</button>':''}${plan.can_create_log?'<button type="button" class="primary" data-construction-log="'+esc(plan.id)+'">填寫工作日誌</button>':''}</div><details class="construction-log-list"><summary>相關工作日誌（${logs.length}）</summary>${logs.map(l=>'<p>'+esc(l.log_date)+' · '+esc(l.summary||'—')+' <button type="button" data-construction-open-log="'+esc(l.id)+'">查看日誌</button></p>').join('')}</details></div></details>`;
 }
 async function refreshConstructionPane(){
  const host=document.querySelector('#constructionPlanningList');if(!host)return;
@@ -24,8 +28,7 @@ async function refreshConstructionPane(){
  catch(error){if(generation===planningGeneration)host.innerHTML=`<p role="alert">${esc(error.message)}</p>`;}
 }
 document.addEventListener('input',event=>{if(event.target.id==='planningSearch'){tableState.planning.search=event.target.value;tableState.planning.page=1;renderPlanningProjects();}});
-document.addEventListener('change',event=>{if(event.target.id.startsWith('planningFilter')||event.target.id==='planningSort'){if(event.target.id==='planningSort')tableState.planning.sortKey=event.target.value;tableState.planning.page=1;renderPlanningProjects();}});
-document.addEventListener('click',event=>{if(event.target.closest('#planningDirection')){tableState.planning.direction=tableState.planning.direction==='asc'?'desc':'asc';event.target.textContent=tableState.planning.direction==='asc'?'升冪 ↑':'降冪 ↓';renderPlanningProjects();}});
+document.addEventListener('change',event=>{if(event.target.id.startsWith('planningFilter')){tableState.planning.page=1;renderPlanningProjects();}});
 function renderConstructionDashboard(){
  let host=document.querySelector("#constructionProgressDashboard");if(!host){host=document.createElement("article");host.id="constructionProgressDashboard";host.className="panel";document.querySelector("#dashboard")?.append(host);}
  const plans=state.dashboard?.construction_progress||[];host.hidden=!plans.length;
@@ -116,7 +119,7 @@ document.addEventListener("click",async event=>{
  try{
   if(target.hasAttribute("data-construction-project"))await openConstructionPlans(target.dataset.constructionProject);
   if(target.hasAttribute("data-new-construction-plan"))openModal("constructionPlanEditModal");
-  if(target.hasAttribute("data-edit-construction-plan"))openModal("constructionPlanEditModal",target.dataset.editConstructionPlan);
+  if(target.hasAttribute("data-edit-construction-plan")){const plan=constructionPlanById(target.dataset.editConstructionPlan);if(!plan?.can_manage)throw new Error("沒有管理施工規劃的權限。");constructionViewProjectId=plan.project_id;openModal("constructionPlanEditModal",plan.id);}
   if(target.hasAttribute("data-delete-construction-plan")&&confirm("刪除此施工規劃？已有工作日誌時會保留並拒絕刪除，可改為取消。")){
    const plan=constructionPlanById(target.dataset.deleteConstructionPlan);await apiRequest({operation:"delete_construction_plan",payload:{id:plan.id,row_version:plan.row_version}});await refreshConstructionProgressViews();await openConstructionPlans(plan.project_id);showToast("施工規劃已刪除");
   }
