@@ -1,18 +1,19 @@
 // One UI document, existing stock rows as its lines. Legacy rows stay separate.
 function receiptDocumentRows(id){return state.receipts.filter(row=>(row.documentId||row.id)===id).sort((a,b)=>(a.lineNo||0)-(b.lineNo||0)||String(a.id).localeCompare(String(b.id)));}
 function receiptDocument(id){return receiptDocumentRows(id)[0];}
+function validReceiptLine(row){return !!row.id&&!!row.itemId&&!row.deleted_at&&!row.deletedAt&&Number.isFinite(Number(row.quantity))&&Number(row.quantity)>0;}
 function renderReceiptDocuments(){
-  const groups=new Map();for(const row of state.receipts){const id=row.documentId||row.id;if(!groups.has(id))groups.set(id,[]);groups.get(id).push(row);}
+  const groups=new Map();for(const row of state.receipts.filter(validReceiptLine)){const id=row.documentId||row.id;if(!groups.has(id))groups.set(id,[]);groups.get(id).push(row);}
   const config=tableState.receipt,rows=[...groups].map(([id,lines])=>{
-    lines=receiptDocumentRows(id);const first=lines[0];
+    lines=receiptDocumentRows(id).filter(validReceiptLine);const first=lines[0];
     const names=lines.map(line=>{const item=byId(state.inventory,line.itemId);return `${item?.code||''} ${item?.name||''} ${item?.brand||''} ${item?.model||''}`.trim();});
     return {id,date:first.date,supplier:byId(state.suppliers,first.supplierId)?.name||first.supplierName||'',
-      documentNo:first.documentNo||'',item:names.join('、'),itemNames:names,itemCount:new Set(lines.map(line=>line.itemId)).size,quantity:lines.reduce((sum,line)=>sum+line.quantity,0),
+      documentNo:first.documentNo||'',item:names.join('、'),itemNames:names,itemCount:lines.length,
       customers:[...new Set(lines.flatMap(line=>line.customerIds||[]))].map(key=>byId(state.customers,key)?.name||'').join('、'),
       note:lines.map(line=>line.note).filter(Boolean).join('；')};
   }).filter(row=>matches([row.documentNo,row.date,row.supplier,row.item,row.customers,row.note],config.search)&&transactionDocumentFilter('receipt',row));
   const page=tablePage('receipt',sortRows(rows,config.sortKey||'date',config.direction||'desc'));
-  document.querySelector('#receiptTable').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes('receiptModal',row.id,canModule('purchases','UPDATE'))}><td>${esc(row.documentNo)||'舊單（未編號）'}</td><td>${esc(row.date)}</td><td>${esc(row.supplier)}</td><td>${row.itemNames.slice(0,2).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>2?`<small>另有 ${row.itemNames.length-2} 筆明細</small>`:''}</td><td>${row.itemCount} 種</td><td>${row.quantity}</td><td>${esc(row.customers)||'—'}</td><td>${esc(row.note)}</td><td class="actions">${canModule('purchases','DELETE')?`<button data-delete-receipt="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(9);
+  document.querySelector('#receiptTable').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes('receiptModal',row.id,canModule('purchases','UPDATE'))}><td>${esc(row.documentNo)||'舊單（未編號）'}</td><td>${esc(row.date)}</td><td>${esc(row.supplier)}</td><td>${row.itemNames.slice(0,2).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>2?`<small>另有 ${row.itemNames.length-2} 筆明細</small>`:''}</td><td>${row.itemCount} 筆</td><td>${esc(row.customers)||'—'}</td><td>${esc(row.note)}</td><td class="actions">${canModule('purchases','DELETE')?`<button data-delete-receipt="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(8);
   renderPagination('receipt','receiptPagination',page.total);
 }
 function receiptDocumentFields(id){
