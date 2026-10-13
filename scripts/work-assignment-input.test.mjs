@@ -35,12 +35,12 @@ test('manual assignment does not bypass admin, anonymous or preview boundaries',
 });
 test('switching project mode disables hidden required fields and preserves existing/pickup selections',()=>{
  const label={},newGroup={},pickupGroup={},existing={value:'existing-id',closest:()=>label};
- const fields={assignmentProjectMode:{value:'existing'},assignmentProjectId:existing,assignmentType:{value:'general'},pickupCategoryId:{value:'category'},inventoryItemId:{value:'item'},pickupQuantity:{value:'2'}};
- const form={elements:fields,querySelector:s=>s==='#workAssignmentNewProjectFields'?newGroup:pickupGroup};let syncs=0;
- const context=vm.createContext({document:{querySelector:s=>s==='#simpleModal'?{dataset:{type:'workAssignmentModal'}}:form},state:{inventory:[{id:'item',categoryId:'category',code:'I001',name:'測試品項',quantity:5,unit:'台'}]},esc:x=>x,syncModalCustomerOptions:()=>syncs++});
+ const fields={customerCategory:{},customerId:{},assignmentProjectMode:{value:'existing'},assignmentProjectId:existing,assignmentType:{value:'general'},pickupCategoryId:{value:'category'},inventoryItemId:{value:'item'},pickupQuantity:{value:'2'}};
+ const customerHost={dataset:{}};const form={elements:fields,querySelector:s=>s==='[data-customer-selector]'?customerHost:s==='#workAssignmentNewProjectFields'?newGroup:pickupGroup};let syncs=0;
+ const context=vm.createContext({document:{querySelector:s=>s==='#simpleModal'?{dataset:{type:'workAssignmentModal'}}:form},state:{inventory:[{id:'item',categoryId:'category',code:'I001',name:'測試品項',quantity:5,unit:'台'}]},esc:x=>x,syncModalCustomerOptions:()=>syncs++,syncAssignmentProjectOptions:()=>{}});
  vm.runInContext(app.slice(app.indexOf('function syncWorkAssignmentFields('),app.indexOf('async function openWorkAssignmentModal(')),context);
- context.syncWorkAssignmentFields();assert.equal(newGroup.disabled,true);assert.equal(newGroup.hidden,true);assert.equal(existing.required,true);assert.equal(pickupGroup.hidden,true);
- fields.assignmentProjectMode.value='manual';context.syncWorkAssignmentFields();assert.equal(newGroup.disabled,false);assert.equal(existing.disabled,true);assert.equal(existing.required,false);assert.equal(label.hidden,true);assert.equal(syncs,1);
+ context.syncWorkAssignmentFields();assert.equal(newGroup.disabled,true);assert.equal(newGroup.hidden,true);assert.equal(existing.required,true);assert.equal(pickupGroup.hidden,true);assert.equal(fields.customerId.required,false);
+ fields.assignmentProjectMode.value='manual';context.syncWorkAssignmentFields();assert.equal(newGroup.disabled,false);assert.equal(existing.disabled,true);assert.equal(existing.required,false);assert.equal(label.hidden,true);assert.equal(syncs,2);assert.equal(customerHost.dataset.required,'true');assert.equal(fields.customerId.required,true);assert.equal(fields.customerCategory.required,true);
  fields.assignmentType.value='pickup';context.syncWorkAssignmentFields();assert.equal(pickupGroup.hidden,false);assert.equal(fields.pickupQuantity.required,true);
  fields.assignmentProjectMode.value='existing';context.syncWorkAssignmentFields();assert.equal(newGroup.disabled,true);assert.equal(existing.disabled,false);assert.equal(existing.value,'existing-id');assert.equal(fields.inventoryItemId.value,'item');
 });

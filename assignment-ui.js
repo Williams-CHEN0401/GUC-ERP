@@ -107,3 +107,21 @@ async function refreshVisibleAssignments(){
 window.addEventListener('focus',refreshVisibleAssignments);
 document.addEventListener('visibilitychange',refreshVisibleAssignments);
 setInterval(refreshVisibleAssignments,30000);
+
+// Share the same customer/category/department controls with manual creation.
+function assignmentProjectMatches(project,form){
+ const category=form.elements.customerCategory?.value||'',customer=form.elements.customerId?.value||'',department=form.elements.departmentId?.value||'';
+ return (!category||byId(state.customers,project.customerId)?.category===category)&&(!customer||project.customerId===customer)&&(!department||project.departmentId===department);
+}
+function syncAssignmentProjectOptions(reset=true){
+ const form=document.querySelector('#modalForm');if(document.querySelector('#simpleModal')?.dataset.type!=='workAssignmentModal'||form.elements.assignmentProjectMode.value!=='existing')return;
+ const select=form.elements.assignmentProjectId,current=reset?'':select.value;
+ const projects=sortRows(state.projects.filter(p=>p.status!=='completed'&&assignmentProjectMatches(p,form)),'code','asc');
+ select.innerHTML='<option value="">'+(projects.length?'請選擇工作內容':'沒有符合條件的既有工作')+'</option>'+projects.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.code)+'｜'+esc(p.name)+'</option>').join('');
+ select.value=projects.some(p=>p.id===current)?current:'';
+ const department=form.elements.departmentId;if(department&&!department.value&&department.options.length)department.options[0].textContent='全部科室';
+}
+document.addEventListener('change',event=>{if(event.target.closest('#modalForm')&&['customerCategory','customerId','departmentId'].includes(event.target.name))queueMicrotask(()=>syncAssignmentProjectOptions(true));});
+// Reference refresh rebuilds shared selects synchronously; reapply this form's
+// filter afterward while preserving any still-valid project selection.
+document.addEventListener('guc:form-references-updated',()=>queueMicrotask(()=>syncAssignmentProjectOptions(false)));

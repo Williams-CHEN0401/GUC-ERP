@@ -34,7 +34,7 @@ test('report geometry remains usable under production CSP without inline styles'
 test('material columns use authorized category rollups and keep mixed units separate',()=>{
  const r=report();r.materialCategoryStats=[{id:'c1',name:'線材',recordCount:3,totalsByUnit:[{unit:'米',total:150},{unit:'捲',total:2}],amount:12345.67,unpricedItemCount:0},{id:null,name:'未分類',recordCount:1,totalsByUnit:[{unit:'米',total:5}],amount:null,unpricedItemCount:1}];
  const html=render({report:r,tab:'materials'});
- assert.match(html,/data-gr-material-unit/);assert.match(html,/data-gr-unit="米"/);assert.match(html,/data-gr-unit="捲" hidden/);
+ assert.match(html,/data-gr-material-category/);assert.doesNotMatch(html,/data-gr-material-unit/);assert.match(html,/data-gr-unit="米"/);assert.match(html,/data-gr-unit="捲"/);assert.doesNotMatch(html,/data-gr-unit="捲" hidden/);
  assert.match(html,/150 米/);assert.match(html,/2 捲/);assert.match(html,/5 米/);assert.match(html,/線材/);
  assert.doesNotMatch(html,/12,345.67|157|單價（元）/);
  const accounting=render({report:r,accounting:true,pricePermissions:{view:true}});

@@ -1139,7 +1139,17 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     const document_no=typeof payload.document_no==="string"?payload.document_no.trim():null;
     if(document_no&&(document_no.length>64||/[\u0000-\u001f\u007f]/.test(document_no)))throw new Error("進貨單號最多 64 字，不能包含換行或控制字元。");
     const numberArgs=Object.hasOwn(payload,"document_no")?{p_document_no:document_no||null}:{};
-    return rpc(rows.some(row=>Object.hasOwn(row,"unit_price"))?"save_stock_receipt_document_v3":Object.hasOwn(payload,"document_no")?"save_stock_receipt_document_v2":"save_stock_receipt_document_v1",{p_document_id:document_id,p_create:operation==="create_stock_receipt_document",p_existing:existing,...numberArgs,
+    const metadata:Row={};
+    if(Object.hasOwn(payload,"receipt_metadata")){
+      const input=payload.receipt_metadata as Row;
+      if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(k=>!["tax_mode","tax_rate_basis_points","project_id"].includes(k)))throw new Error("進貨單設定不正確。");
+      if(Object.hasOwn(input,"tax_mode")||Object.hasOwn(input,"tax_rate_basis_points")){
+        if(!["exclusive","inclusive"].includes(String(input.tax_mode))||typeof input.tax_rate_basis_points!=="number"||!Number.isInteger(input.tax_rate_basis_points)||input.tax_rate_basis_points<0||input.tax_rate_basis_points>10000)throw new Error("計價模式或稅率不正確。");
+        requirePermission(user,"purchase_prices","VIEW");metadata.tax_mode=input.tax_mode;metadata.tax_rate_basis_points=input.tax_rate_basis_points;
+      }
+      if(Object.hasOwn(input,"project_id")){if(input.project_id!==null&&!uuid(input.project_id))throw new Error("工作內容編號不正確。");metadata.project_id=input.project_id;}
+    }
+    return rpc(Object.hasOwn(payload,"receipt_metadata")?"save_stock_receipt_document_v4":rows.some(row=>Object.hasOwn(row,"unit_price"))?"save_stock_receipt_document_v3":Object.hasOwn(payload,"document_no")?"save_stock_receipt_document_v2":"save_stock_receipt_document_v1",{p_document_id:document_id,p_create:operation==="create_stock_receipt_document",p_existing:existing,...numberArgs,...(Object.hasOwn(payload,"receipt_metadata")?{p_metadata:metadata}:{}),
       p_receipt_date:receipt_date,p_supplier_id:supplier_id,p_rows:rows,p_customer_ids:customer_ids,p_customer_departments:receiptDepartmentsInput(payload.customer_departments,customer_ids),p_actor_user_id:user!.id});
   }
   if (operation === "create_stock_receipt_batch") { requireOperation(user,operation,payload,["admin","operator"]); if(!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20) throw new Error("每次必須登錄 1 至 20 筆進貨資料。"); const rows=payload.rows.map((value,index)=>{ if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆進貨資料格式不正確。`); const row=value as Row,receipt_date=date(row.receipt_date),inventory_item_id=uuid(row.inventory_item_id),quantity=positive(row.quantity),supplier_id=uuid(row.supplier_id),note=nullable(row.note,500); if(!receipt_date||!inventory_item_id||quantity===null||!Number.isInteger(quantity)||!supplier_id||note===null) throw new Error(`第 ${index+1} 筆進貨資料不完整，數量須為正整數。`); return {receipt_date,inventory_item_id,quantity,supplier_id,note:note||null}; }); const duplicateKeys=rows.map(row=>`${row.receipt_date}|${row.supplier_id}|${row.inventory_item_id}|${text(row.note).toLocaleLowerCase("zh-Hant")}`); if(new Set(duplicateKeys).size!==duplicateKeys.length) throw new Error("同一批進貨有重複列，請合併數量。"); if(Object.hasOwn(payload,"customer_departments")){const ids=receiptCustomerIds(payload.customer_ids);return rpc("create_stock_receipts_department_v1",{p_rows:rows,p_customer_ids:ids,p_customer_departments:receiptDepartmentsInput(payload.customer_departments,ids),p_actor_user_id:user!.id});} return Object.hasOwn(payload,"customer_ids")?rpc("create_stock_receipts_with_customers_v1",{p_rows:rows,p_customer_ids:receiptCustomerIds(payload.customer_ids),p_actor_user_id:user!.id}):rpc("create_stock_receipt_records_batch_v2",{p_rows:rows,p_actor:actor}); }
@@ -1543,7 +1553,7 @@ function receiptPriceResponse(body:unknown):unknown{
  if(privateContext.getStore()?.canViewReceiptPrices)return body;
  if(Array.isArray(body))return body.map(receiptPriceResponse);
  if(!body||typeof body!=="object")return body;
- return Object.fromEntries(Object.entries(body as Row).filter(([key])=>key!=="unit_price").map(([key,value])=>[key,receiptPriceResponse(value)]));
+ return Object.fromEntries(Object.entries(body as Row).filter(([key])=>!["unit_price","receipt_financials","receipt_tax_mode","receipt_tax_rate_basis_points"].includes(key)).map(([key,value])=>[key,receiptPriceResponse(value)]));
 }
 function privateResponse(body:unknown):unknown{
  const scope=privateContext.getStore();
@@ -1770,6 +1780,11 @@ async function handleRequest(request: Request) {
       if (scopeName === "site_customer") return json(await siteCustomerSnapshot(params,user,isPreviewGateway));
       if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
       const snapshot=await scopedSnapshot(user, scopeName, params.get("options_only")==="1") as Row;
+      if((Array.isArray(snapshot.receipts)||scopeName==="transactions")&&hasPermission(user,"purchases")){
+        const context=await rpc("receipt_document_context_v1",{p_actor_user_id:user.id,p_document_ids:[...new Set(((snapshot.receipts||[]) as Row[]).map(r=>r.receipt_document_id||r.id))]}) as Row;
+        if(Array.isArray(snapshot.receipts))snapshot.receipt_documents=context.documents;
+        snapshot.money_settings=context.money_settings;
+      }
       if(scopeName==="worklogs")mergeConstructionSnapshot(snapshot,await constructionSnapshot(user),params.get("options_only")==="1");
       const privateLedger=privateContext.getStore()?.configured&&!privateContext.getStore()?.direct;
       const restrictedLedger=["worklogs","inventory"].includes(scopeName)&&(!hasPermission(user,"pickups")||!hasPermission(user,"purchases"));
