@@ -34,12 +34,13 @@
    Styles stay inside this report; chart geometry remains CSP-compatible. */
 .guc-report .gr-dashboard{grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;background:transparent;border:0}
 .guc-report .gr-dashboard>.gr-card{border-radius:10px;box-shadow:0 5px 18px #353e2a08;margin:0;padding:14px}
-.guc-report .gr-workers-card{grid-column:span 4}.guc-report .gr-materials-card{grid-column:span 5}.guc-report .gr-gauge-card{grid-column:span 3}.guc-report .gr-gantt-card{grid-column:span 8}.guc-report .gr-distribution{grid-column:span 4}
+.guc-report .gr-dashboard>.gr-gantt-card,.guc-report .gr-dashboard>.gr-plans-card,.guc-report .gr-dashboard>.gr-summary-card{grid-column:1/-1}
+.guc-report .gr-workers-card,.guc-report .gr-materials-card{grid-column:span 9}.guc-report .gr-gauge-card,.guc-report .gr-distribution{grid-column:span 3}
 .guc-report .gr-chart-card{background:var(--gr-surface);color:var(--gr-ink);border:1px solid var(--gr-line);border-radius:10px;box-shadow:0 5px 18px #353e2a08}
 .guc-report .gr-chart-card h2{color:var(--gr-ink);font-family:"Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;font-size:16px;font-weight:500}
 .guc-report .gr-chart-card h3{color:var(--gr-muted);font-size:12px;font-weight:400}.guc-report .gr-chart-card>header{margin-bottom:8px}.guc-report .gr-chart-card>header p{color:var(--gr-muted);font-size:11px}
 .guc-report .gr-chart-with-legend{display:grid;grid-template-columns:minmax(0,1fr) minmax(74px,23%);gap:8px;align-items:center;min-width:0}
-.guc-report .gr-personnel-chart{grid-template-columns:minmax(0,1fr)}.guc-report .gr-personnel-chart>.gr-chart-legend{grid-row:1;justify-self:end}
+.guc-report .gr-personnel-chart,.guc-report .gr-item-chart{grid-template-columns:minmax(0,1fr)}.guc-report .gr-personnel-chart>.gr-chart-legend{grid-row:1;justify-self:end}
 .guc-report .gr-plot-scroll{max-width:100%;min-width:0;overflow:auto;scrollbar-color:#9aa68f #f0f2e9}
 .guc-report .gr-plot-scroll:focus-visible,.guc-report .gr-gantt:focus-visible{outline:2px solid var(--gr-accent);outline-offset:2px}
 .guc-report .gr-columns{display:block;width:auto;min-width:100%;height:258px;font:11px "Microsoft JhengHei","Noto Sans TC",Arial,sans-serif}
@@ -52,13 +53,19 @@
 .guc-report .gr-gauge{display:block;width:100%;height:auto;max-width:340px;margin:14px auto 0}.guc-report .gr-gauge-value{font:600 22px Arial,sans-serif;fill:var(--gr-accent)}.guc-report .gr-gauge-caption{font:23px "PMingLiU",serif;fill:var(--gr-ink)}
 .guc-report .gr-gauge-card .gr-chart-note{text-align:center}.guc-report .gr-gantt-card{background:var(--gr-surface);border:1px solid var(--gr-line)}.guc-report .gr-gantt{max-width:100%;overflow:auto}.guc-report .gr-gantt svg{display:block;min-width:700px;width:100%;height:auto;font:12px "Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;fill:var(--gr-ink)}
 .guc-report .gr-donut-layout{display:flex;align-items:center;gap:12px;min-width:0}.guc-report .gr-donut{width:65%;max-width:320px;height:auto;flex-shrink:0;font:11px "Microsoft JhengHei","Noto Sans TC",Arial,sans-serif;fill:var(--gr-ink)}.guc-report .gr-donut-label{fill:#fff;font:11px Arial,sans-serif}.guc-report .gr-donut-total{font-size:22px}.guc-report .gr-distribution .gr-chart-legend{flex:1}
-@media(max-width:1180px){.guc-report .gr-dashboard{grid-template-columns:repeat(2,minmax(0,1fr))}.guc-report .gr-dashboard>.gr-card{grid-column:auto}.guc-report .gr-dashboard>.gr-materials-card,.guc-report .gr-dashboard>.gr-gantt-card{grid-column:span 2}.guc-report .gr-workers-card{order:1}.guc-report .gr-gauge-card{order:2}.guc-report .gr-materials-card{order:3}.guc-report .gr-gantt-card{order:5}.guc-report .gr-distribution{order:4}}
-@media(max-width:780px){.guc-report .gr-dashboard{grid-template-columns:minmax(0,1fr)}.guc-report .gr-dashboard>.gr-card{grid-column:1}.guc-report .gr-chart-with-legend{grid-template-columns:minmax(0,1fr)}.guc-report .gr-chart-legend{flex-direction:row;flex-wrap:wrap;gap:8px 12px}.guc-report .gr-personnel-chart>.gr-chart-legend{justify-self:end}.guc-report .gr-material-facets{max-height:360px}.guc-report .gr-donut-layout{flex-direction:column}.guc-report .gr-donut{width:100%;max-width:280px}.guc-report .gr-workers-card{order:1}.guc-report .gr-materials-card{order:2}.guc-report .gr-gauge-card{order:3}}
+@media(max-width:1180px){.guc-report .gr-dashboard>.gr-workers-card{grid-column:span 8}.guc-report .gr-dashboard>.gr-gauge-card{grid-column:span 4}.guc-report .gr-dashboard>.gr-materials-card,.guc-report .gr-dashboard>[data-gr-category-donut]{grid-column:1/-1}}
+@media(max-width:780px){.guc-report .gr-dashboard{grid-template-columns:minmax(0,1fr)}.guc-report .gr-dashboard>.gr-card{grid-column:1/-1}.guc-report .gr-chart-with-legend{grid-template-columns:minmax(0,1fr)}.guc-report .gr-chart-legend{flex-direction:row;flex-wrap:wrap;gap:8px 12px}.guc-report .gr-personnel-chart>.gr-chart-legend{justify-self:end}.guc-report .gr-donut-layout{flex-direction:column}.guc-report .gr-donut{width:100%;max-width:280px}}
 
 /* Category selection and native disclosure share the existing report theme. */
 .guc-report .gr-category-picker{display:flex;gap:8px;align-items:center;margin:8px 0 14px;font-size:13px;flex-wrap:wrap}
 .guc-report .gr-category-picker select{min-width:0;max-width:100%;border:1px solid var(--gr-line);border-radius:6px;background:var(--gr-surface);color:var(--gr-ink);padding:8px;font:inherit}
-.guc-report .gr-material-facets{max-height:440px;overflow:auto}.guc-report .gr-material-unit+.gr-material-unit{margin-top:18px}
+.guc-report .gr-material-facets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.guc-report .gr-material-category{min-width:0;border:1px solid var(--gr-line);border-radius:8px;padding:12px 8px;background:var(--gr-surface)}
+.guc-report .gr-material-category>h3{font-size:14px;font-weight:600;color:var(--gr-ink);margin:0 4px 8px;overflow-wrap:anywhere}
+.guc-report .gr-material-unit-label{font-size:11px;color:var(--gr-muted);margin-left:4px}.guc-report .gr-material-unit+.gr-material-unit{margin-top:18px}
+.guc-report .gr-dashboard [data-gr-category-donut] .gr-donut-layout{flex-direction:column}.guc-report .gr-dashboard [data-gr-category-donut] .gr-donut{width:100%}
+.guc-report .gr-dashboard [data-gr-category-donut] .gr-chart-legend{width:100%}
 .guc-report .gr-dashboard{align-items:start}.guc-report [data-gr-category-donut]{min-width:0}.guc-report [data-gr-category-donut]>.gr-card{height:100%}
 .guc-report .gr-plan>summary::-webkit-details-marker{display:none}.guc-report .gr-plan-body>.gr-gantt-card{padding:12px;border:0;box-shadow:none}
-@media(max-width:1180px){.guc-report [data-gr-category-donut]{grid-column:span 2;order:4}}@media(max-width:780px){.guc-report [data-gr-category-donut]{grid-column:1}.guc-report .gr-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:780px){.guc-report .gr-material-facets{grid-template-columns:repeat(2,minmax(0,1fr))}.guc-report [data-gr-category-donut]{grid-column:1/-1}.guc-report .gr-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.guc-report .gr-material-facets{grid-template-columns:minmax(0,1fr)}}
