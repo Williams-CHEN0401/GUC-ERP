@@ -3,7 +3,8 @@
 let activeConstructionItemId="";
 function constructionChecklistProgress(plan){
  const worked=Number(plan.worked_days||0),planned=Number(plan.planned_days||0),total=Number(plan.item_count||0),done=Number(plan.completed_item_count||0),percent=Number(plan.completion_percent||0),over=Math.max(worked-planned,0);
- return `<div class="construction-progress ${planned&&over?"overrun":""}"><p>預計 ${planned||"未設定"} 天｜已執行 ${worked} 天${planned?`｜剩餘 ${Math.max(planned-worked,0)} 天`:""}</p>${total?`<progress max="100" value="${Math.min(Math.max(percent,0),100)}" aria-label="子項目完成率">${percent}%</progress><strong>${percent}%（${done}/${total} 項完成）</strong>`:'<small>尚無子項目；新增清單後顯示完成率。</small>'}${planned&&over?`<p>已超出預計施工天數 ${over} 天</p>`:""}</div>`;
+ const number=value=>Number(value||0).toLocaleString('zh-TW',{maximumFractionDigits:2});
+ return `<div class="construction-progress ${planned&&over?"overrun":""}"><p>預計 ${planned||"未設定"} 天｜已執行 ${worked} 天</p><progress max="100" value="${Math.min(Math.max(percent,0),100)}" aria-label="施工完成率">${percent}%</progress><strong>${percent}%${total?`（${done}/${total} 項完成）`:''}</strong>${planned?`<p>完成工期 ${number(plan.completed_days)} 天｜剩餘工期 ${number(plan.remaining_days)} 天</p>`:''}<small>${total?'依勾選完成的子項目預計天數加權；日誌天數只計施工投入。':'尚無子項目；依整筆規劃的完成狀態計算。'}</small>${planned&&over?`<p>已超出預計施工天數 ${over} 天</p>`:""}</div>`;
 }
 function constructionWarning(plan){
  if(!plan.needs_attention)return "";

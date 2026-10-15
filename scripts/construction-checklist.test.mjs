@@ -6,10 +6,10 @@ function fixture(){
  const handlers={},c=vm.createContext({document:{addEventListener:(name,fn)=>handlers[name]=fn},uid:()=> 'test-id',esc:v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;')});
  vm.runInContext(readFileSync(new URL('../construction-checklist.js',import.meta.url),'utf8'),c);return{c,handlers};
 }
-const plan={content:'配管施工',planned_days:14,worked_days:12,item_count:3,completed_item_count:2,completion_percent:66.7,warning_after_days:12,needs_attention:true,unstarted_items:[{title:'C 棟配管施工'}],work_dates:['2026-09-01','2026-09-02'],items:[{id:'A',title:'A 棟',start_day:1,planned_days:4,is_completed:true,worked_days:2,log_dates:['2026-09-01','2026-09-02']}]};
+const plan={content:'配管施工',planned_days:14,worked_days:12,item_count:2,completed_item_count:1,completion_percent:57.1,completed_days:8,remaining_days:6,warning_after_days:12,needs_attention:true,unstarted_items:[{title:'C 棟配管施工'}],work_dates:['2026-09-01','2026-09-02'],items:[{id:'A',title:'A 棟',start_day:1,planned_days:4,is_completed:true,worked_days:2,log_dates:['2026-09-01','2026-09-02']}]};
 test('completion and consumed workdays are independent metrics',()=>{
  const {c}=fixture(),html=c.constructionChecklistProgress(plan);
- assert.match(html,/已執行 12 天/);assert.match(html,/剩餘 2 天/);assert.match(html,/66.7%（2\/3 項完成）/);assert.doesNotMatch(html,/85.7%/);
+ assert.match(html,/已執行 12 天/);assert.match(html,/完成工期 8 天｜剩餘工期 6 天/);assert.match(html,/57.1%（1\/2 項完成）/);assert.doesNotMatch(html,/85.7%/);
  assert.match(c.constructionChecklistProgress({...plan,worked_days:16}),/超出預計施工天數 2 天/);
 });
 test('warning displays authoritative threshold and escapes titles',()=>{
