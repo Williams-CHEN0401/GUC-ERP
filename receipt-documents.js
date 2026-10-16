@@ -62,7 +62,7 @@ function receiptFinancialFields(id){
  const money=receiptHeader(id).receipt_financials,settings=state.moneySettings;
  const editable=canModule('purchase_prices',money?.mode?'UPDATE':'CREATE');
  const mode=money?.mode??(id||!editable?'':'exclusive'),rate=money?.tax_rate_basis_points??settings?.default_tax_rate_basis_points;
- return `<fieldset class="receipt-money span-2"><legend>進貨計價</legend><label>計價方式<select name="receiptTaxMode" ${editable?'':'disabled'}>${!mode?'<option value="">未設定計稅（保留原單價）</option>':''}<option value="exclusive" ${mode==='exclusive'?'selected':''}>未稅</option><option value="inclusive" ${mode==='inclusive'?'selected':''}>含稅</option></select></label><label>稅率（%）<input name="receiptTaxRate" type="number" min="0" max="100" step="0.01" value="${rate==null?'':esc(rate/100)}" ${editable?'':'readonly'}></label><p>單價依所選計價方式輸入；TWD 品項小計及整單稅額四捨五入至整元。</p><div id="receiptMoneySummary" aria-live="polite"></div></fieldset>`;
+ return `<fieldset class="receipt-money span-2"><legend>進貨計價</legend><label>計價方式<select name="receiptTaxMode" ${editable?'':'disabled'}>${!mode?'<option value="">未設定計稅（保留原單價）</option>':''}<option value="exclusive" ${mode==='exclusive'?'selected':''}>未稅</option><option value="inclusive" ${mode==='inclusive'?'selected':''}>含稅</option></select></label><label>稅率（%）<input name="receiptTaxRate" type="number" min="0" max="100" step="0.01" value="${rate==null?'':esc(rate/100)}" ${editable?'':'readonly'}></label><label>整單折扣（元）<input name="receiptDiscount" type="number" min="0" max="99999999999999" step="1" value="${esc(money?.discount_amount||0)}" ${editable?'':'readonly'}></label><p>折扣先從整單輸入金額扣除，再依含稅／未稅方式計稅。單價依所選計價方式輸入；TWD 品項小計及整單稅額四捨五入至整元。</p><div id="receiptMoneySummary" aria-live="polite"></div></fieldset>`;
 }
 function receiptProjectField(id){
  const projectId=receiptHeader(id).receipt_project_id||'';
@@ -79,6 +79,11 @@ function receiptMetadataPayload(form,id){
  const before=receiptHeader(id),metadata={};
  const project=form.elements.receiptProjectId?.value||null;
  if(project!==(before.receipt_project_id||null))metadata.project_id=project;
+ const discountInput=form.elements.receiptDiscount,discount=discountInput?Number(discountInput.value):Number(before.receipt_financials?.discount_amount||0);
+ if(discountInput&&discount!==Number(before.receipt_financials?.discount_amount||0)){
+  if(!canModule('purchase_prices','VIEW')||!canModule('purchase_prices',before.receipt_financials?.mode?'UPDATE':'CREATE'))throw Error('沒有進貨價格操作權限。');
+  if(!Number.isSafeInteger(discount)||discount<0||discount>=1e14)throw Error('折扣須為非負整數金額。');metadata.discount_amount=discount;
+ }
  const mode=form.elements.receiptTaxMode?.value||null,rateInput=form.elements.receiptTaxRate;
  if(mode){
   const rate=GUCReceiptMoney.rateBasisPoints(rateInput.value);
@@ -86,7 +91,7 @@ function receiptMetadataPayload(form,id){
    if(!canModule('purchase_prices','VIEW')||!canModule('purchase_prices',before.receipt_financials?.mode?'UPDATE':'CREATE'))throw Error('沒有進貨價格操作權限。');
    metadata.tax_mode=mode;metadata.tax_rate_basis_points=rate;
   }
-  GUCReceiptMoney.calculate([...form.querySelectorAll('[data-batch-row]')].map(row=>({quantity:Number(row.querySelector('[name="batchQuantity"]').value),unit_price:row.querySelector('[name="batchUnitPrice"]')?.value||null})),mode,rate);
+  GUCReceiptMoney.calculate([...form.querySelectorAll('[data-batch-row]')].map(row=>({quantity:Number(row.querySelector('[name="batchQuantity"]').value),unit_price:row.querySelector('[name="batchUnitPrice"]')?.value||null})),mode,rate,discount);
  }
  return metadata;
 }
@@ -95,11 +100,11 @@ function updateReceiptMoneySummary(){
  try{
   const mode=form.elements.receiptTaxMode.value||null,rate=mode?GUCReceiptMoney.rateBasisPoints(form.elements.receiptTaxRate.value):null;
   const lines=[...form.querySelectorAll('[data-batch-row]')].map(row=>({quantity:Number(row.querySelector('[name="batchQuantity"]').value),unit_price:row.querySelector('[name="batchUnitPrice"]')?.value||null}));
-  const money=GUCReceiptMoney.calculate(lines,mode,rate),fmt=v=>v==null?'未設定':Number(v).toLocaleString('zh-TW');
-  output.innerHTML=`<dl class="receipt-money-totals"><div><dt>未稅金額</dt><dd data-money-net>${fmt(money.net_amount)}</dd></div><div><dt>稅額</dt><dd data-money-tax>${fmt(money.tax_amount)}</dd></div><div><dt>含稅總金額</dt><dd data-money-total>${fmt(money.total_amount)}</dd></div></dl>${!mode?'<p>歷史計價方式尚未設定，保留原單價，不推算稅額。</p>':money.missing_price_count?`<p>${money.missing_price_count} 筆未設定單價，總額暫不計算。</p>`:''}`;
+  const money=GUCReceiptMoney.calculate(lines,mode,rate,Number(form.elements.receiptDiscount.value)),fmt=v=>v==null?'未設定':Number(v).toLocaleString('zh-TW');
+  output.innerHTML=`<dl class="receipt-money-totals"><div><dt>整單折扣</dt><dd data-money-discount>${fmt(money.discount_amount)}</dd></div><div><dt>未稅金額</dt><dd data-money-net>${fmt(money.net_amount)}</dd></div><div><dt>稅額</dt><dd data-money-tax>${fmt(money.tax_amount)}</dd></div><div><dt>含稅總金額</dt><dd data-money-total>${fmt(money.total_amount)}</dd></div></dl>${!mode?'<p>歷史計價方式尚未設定，保留原單價，不推算稅額。</p>':money.missing_price_count?`<p>${money.missing_price_count} 筆未設定單價，總額暫不計算。</p>`:''}`;
  }catch(error){output.textContent=error.message;}
 }
-document.addEventListener('input',event=>{if(event.target.closest('#modalForm')&&['batchUnitPrice','batchQuantity','receiptTaxRate'].includes(event.target.name))updateReceiptMoneySummary();});
+document.addEventListener('input',event=>{if(event.target.closest('#modalForm')&&['batchUnitPrice','batchQuantity','receiptTaxRate','receiptDiscount'].includes(event.target.name))updateReceiptMoneySummary();});
 document.addEventListener('change',event=>{if(event.target.closest('#modalForm')){if(event.target.name==='receiptTaxMode')updateReceiptMoneySummary();if(event.target.name==='receiptCustomerId'||event.target.id==='receiptCustomerCategory')queueMicrotask(syncReceiptProjectOptions);}});
 document.addEventListener('click',event=>{
  if(event.target.closest('[data-add-transaction-row],[data-remove-batch-row],[data-receipt-search-item]'))queueMicrotask(updateReceiptMoneySummary);

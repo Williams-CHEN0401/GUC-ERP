@@ -366,7 +366,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   if(user.project_scoped)throw new Error("您的帳號沒有執行此操作的權限。");
   return;
  }
- const modules:Record<string,string[]>={appointments:["appointments"],dashboard:["dashboard"],transactions:["purchases","pickups"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],work_report:["reports"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
+ const modules:Record<string,string[]>={appointments:["appointments"],dashboard:["dashboard"],transactions:["purchases","pickups"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],work_report:["reports"],pending_work_log_items:["worklogs"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
  if(!modules[scope]?.some(module=>hasPermission(user,module)))throw new Error("您的帳號沒有執行此操作的權限。");
 }
 async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
@@ -461,7 +461,7 @@ const datasets: Record<string, DatasetDefinition> = {
   site_route_segments: { path: "site_route_segments?select=*&order=route_id.asc,sequence_no.asc" },
   site_work_logs: { path: "site_work_logs?select=*&deleted_at=is.null&order=log_date.desc,created_at.desc,id.desc", paged: true },
   site_work_log_workers: { path: "site_work_log_workers?select=work_log_id,user_id,created_at&order=created_at.asc,work_log_id.asc,user_id.asc", paged: true },
-  site_workers: { path: "app_users?select=id,display_name,is_active&order=display_name.asc,id.asc", paged: true },
+  site_workers: { path: "app_users?select=id,display_name,is_active,can_work_on_site&order=display_name.asc,id.asc", paged: true },
   site_notes: { path: "site_notes?select=*&order=importance.desc,created_at.desc" },
   site_assets: { path: "site_assets?select=*&order=created_at.desc" },
   phone_systems: { path: "phone_systems?select=id,customer_id,contract_service_type_id,system_name,ip_address,installation_location,device_brand,device_model,notes,credential_configured,source,updated_by,row_version,created_at,updated_at&order=system_name.asc" },
@@ -1142,7 +1142,8 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     const metadata:Row={};
     if(Object.hasOwn(payload,"receipt_metadata")){
       const input=payload.receipt_metadata as Row;
-      if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(k=>!["tax_mode","tax_rate_basis_points","project_id"].includes(k)))throw new Error("進貨單設定不正確。");
+      if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(k=>!["tax_mode","tax_rate_basis_points","project_id","discount_amount"].includes(k)))throw new Error("進貨單設定不正確。");
+      if(Object.hasOwn(input,"discount_amount")){if(typeof input.discount_amount!=="number"||!Number.isSafeInteger(input.discount_amount)||input.discount_amount<0||input.discount_amount>=1e14)throw new Error("折扣須為非負整數金額。");requirePermission(user,"purchase_prices","VIEW");metadata.discount_amount=input.discount_amount;}
       if(Object.hasOwn(input,"tax_mode")||Object.hasOwn(input,"tax_rate_basis_points")){
         if(!["exclusive","inclusive"].includes(String(input.tax_mode))||typeof input.tax_rate_basis_points!=="number"||!Number.isInteger(input.tax_rate_basis_points)||input.tax_rate_basis_points<0||input.tax_rate_basis_points>10000)throw new Error("計價模式或稅率不正確。");
         requirePermission(user,"purchase_prices","VIEW");metadata.tax_mode=input.tax_mode;metadata.tax_rate_basis_points=input.tax_rate_basis_points;
@@ -1286,6 +1287,10 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
         const completed=payload.completed_content,pending=payload.pending_content;
         if(!(completed===null&&pending===null)&&!(typeof completed==="string"&&typeof pending==="string"&&completed.length<=2000&&pending.length<=2000))throw new Error("已完成／未完成內容格式不正確。");
         if(typeof completed==="string"&&typeof pending==="string"&&[completed.trim(),pending.trim()].filter(Boolean).join("\n")!==(summary||""))throw new Error("工作內容與已完成／未完成內容不一致。");
+        if(Object.hasOwn(payload,"reporter_on_site")||Object.hasOwn(payload,"subcontractor_count")||Object.hasOwn(payload,"resolved_pending_items")){
+          if(typeof payload.reporter_on_site!=="boolean"||typeof payload.subcontractor_count!=="number"||!Number.isInteger(payload.subcontractor_count)||payload.subcontractor_count<0||payload.subcontractor_count>1000||!Array.isArray(payload.resolved_pending_items)||payload.resolved_pending_items.length>100)throw new Error("到場、代工人數或待辦資料不正確。");
+          return rpc("save_work_log_workforce_v1",{p_actor_user_id:user!.id,p_payload:{...payload,maintenance_events:parameters.p_maintenance_events}});
+        }
         if(payload.construction_plan_id)return rpc("save_construction_work_log_v1",{p_actor_user_id:user!.id,p_plan_id:uuid(payload.construction_plan_id),p_payload:{...payload,maintenance_events:parameters.p_maintenance_events}});
         return rpc("upsert_work_log_sections_v1",{...parameters,p_completed_content:completed,p_pending_content:pending});
       }
@@ -1553,7 +1558,7 @@ function receiptPriceResponse(body:unknown):unknown{
  if(privateContext.getStore()?.canViewReceiptPrices)return body;
  if(Array.isArray(body))return body.map(receiptPriceResponse);
  if(!body||typeof body!=="object")return body;
- return Object.fromEntries(Object.entries(body as Row).filter(([key])=>!["unit_price","receipt_financials","receipt_tax_mode","receipt_tax_rate_basis_points"].includes(key)).map(([key,value])=>[key,receiptPriceResponse(value)]));
+ return Object.fromEntries(Object.entries(body as Row).filter(([key])=>!["unit_price","receipt_financials","receipt_tax_mode","receipt_tax_rate_basis_points","receipt_discount_amount","discount_amount"].includes(key)).map(([key,value])=>[key,receiptPriceResponse(value)]));
 }
 function privateResponse(body:unknown):unknown{
  const scope=privateContext.getStore();
@@ -1760,7 +1765,7 @@ async function handleRequest(request: Request) {
          const customer=uuid(params.get("customer_id")),service=uuid(params.get("service_id"));if(!customer||!service)throw new Error("請選擇客戶與承攬內容。");
          return json({...await privateReadRpc("search_equipment_history_v1",{p_customer_id:customer,p_service_id:service,p_search:text(params.get("search")).slice(0,160),p_type:text(params.get("type")).slice(0,60),p_page:Math.max(1,Number(params.get("page"))||1)},user) as Row,preview_readonly:isPreviewGateway});
        }
-       if (entity === "maintenance_workers") return json({records:await get("app_users?is_active=eq.true&select=id,display_name&order=display_name.asc")});
+       if (entity === "maintenance_workers") return json({records:await get("app_users?is_active=eq.true&can_work_on_site=eq.true&select=id,display_name&order=display_name.asc")});
        if (entity === "equipment_history") return json({...(await equipmentHistory(params,user) as Row),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_options") return json({...(await monitoringDeviceOptions(user,params)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_dashboard") return json({...(await monitoringDeviceDashboard(user)),preview_readonly:isPreviewGateway});
@@ -1771,6 +1776,11 @@ async function handleRequest(request: Request) {
         const id=params.get("project_id");if(id&&!uuid(id))throw new Error("工作內容編號不正確。");
         const data=await rpc("work_content_report_v1",{p_actor_user_id:user.id,p_project_id:id?uuid(id):null,p_from:date(params.get("from")),p_to:date(params.get("to")),p_work_type:params.get("work_type")||null,p_accounting:false}) as Row;
         return json({...data,scope:scopeName,current_user:publicUser(user),customer_categories:await getAll(datasets.customer_categories.path),customer_departments:await customerDepartmentRows(data.customers),errors:[]});
+      }
+      if(scopeName==="pending_work_log_items"){
+        const project=uuid(params.get("project_id")),day=date(params.get("from")),exclude=uuid(params.get("exclude_id"));
+        if(!project||!day||params.get("exclude_id")&&!exclude)throw new Error("工作內容或日期不正確。");
+        return json(await rpc("pending_work_log_items_v1",{p_actor_user_id:user.id,p_project_id:project,p_log_date:day,p_exclude_id:exclude}));
       }
       if(scopeName==="construction_plans"){
         const projectId=params.get("project_id");if(projectId&&!uuid(projectId))throw new Error("工作內容編號不正確。");

@@ -142,9 +142,10 @@ function refreshFormReferenceChoices(snapshot={}){
     const query=valueText((row.querySelector('[data-batch-item-search]')?.value||'').trim()),selected=item.value;
     replaceReferenceOptions(item,sortRows(state.inventory.filter(i=>i.categoryId===category.value&&(i.id===selected||matches([i.name,i.brand,i.model,i.code],query))),'name','asc').map(i=>[i.id,`${i.name}｜${i.brand} ${i.model}｜${i.code}`]),{placeholder:'請選擇品項',disabled:!category.value});
   });
-  for(const name of ['workerIds','projectWorkerIds']){const picker=form.querySelector(`.worker-picker:has([name="${name}"]) > div`)||[...form.querySelectorAll('.worker-picker')].find(node=>node.querySelector(`[data-worker-count="${name}"]`))?.querySelector('div');refreshReferenceCheckboxes(picker,name,sortRows(state.siteWorkers,'displayName','asc').map(row=>[row.id,row.displayName,row.active]));}
+  for(const name of ['workerIds','projectWorkerIds']){const picker=form.querySelector(`.worker-picker:has([name="${name}"]) > div`)||[...form.querySelectorAll('.worker-picker')].find(node=>node.querySelector(`[data-worker-count="${name}"]`))?.querySelector('div');refreshReferenceCheckboxes(picker,name,sortRows(state.siteWorkers.filter(row=>name==='projectWorkerIds'||row.canWorkOnSite!==false&&!['老闆娘','joyce'].includes(row.displayName.trim().toLowerCase())),'displayName','asc').map(row=>[row.id,row.displayName,row.active]));}
   refreshReferenceCheckboxes(form.querySelector('.contract-service-picker > div'),'contractServiceCodes',state.contractServiceTypes.filter(row=>row.active).map(row=>[row.code,row.name,true]));
   if(type==='workLogModal'){
+    if(typeof syncReporterAttendance==='function')syncReporterAttendance(form);
     const projects=workLogSelectableProjects(workLogFormCustomerId()),list=form.querySelector('#workLogProjectNames');
     if(list?.tagName==='SELECT')replaceReferenceOptions(list,projects.map(row=>[row.name,`${row.code}｜${row.name}`]),{placeholder:'請選擇授權工作內容'});
     else if(list)list.innerHTML=projects.map(row=>`<option value="${esc(row.name)}">${esc(row.code)}</option>`).join('');
@@ -168,7 +169,7 @@ function refreshReferenceFilters(){
     replaceReferenceOptions(customer,sortRows(state.customers.filter(row=>category.value&&row.category===category.value),'code','asc').map(row=>[row.id,row.code+'｜'+row.name]),{placeholder:!category.value?'請先選擇客戶分類':all?'此分類全部客戶':'請選擇客戶',disabled:!category.value});
     const department=departmentId&&document.getElementById(departmentId),project=projectId&&document.getElementById(projectId);
     replaceReferenceOptions(department,(state.customerDepartments||[]).filter(row=>row.customerId===customer.value).map(row=>[row.id,row.name]),{placeholder:'全部科室',disabled:!customer.value});
-    replaceReferenceOptions(project,sortRows(state.projects.filter(row=>(projectId!=='materialProject'||reportProjectIncluded(row))&&(all&&!customer.value||row.customerId===customer.value)&&(!all||!category.value||byId(state.customers,row.customerId)?.category===category.value)&&projectMatchesDepartment(row,department?.value||'*')),'code','asc').map(row=>[row.id,row.code+'｜'+row.name]),{placeholder:all?'所有工作內容':'請選擇工作內容',disabled:!all&&!customer.value});
+    replaceReferenceOptions(project,sortRows(state.projects.filter(row=>(projectId!=='materialProject'||reportProjectIncluded(row))&&((all||projectId==='materialProject'&&document.querySelector('#materialKeyword')?.value.trim())&&!customer.value||row.customerId===customer.value)&&(!all||!category.value||byId(state.customers,row.customerId)?.category===category.value)&&projectMatchesDepartment(row,department?.value||'*')),'code','asc').map(row=>[row.id,row.code+'｜'+row.name]),{placeholder:all?'所有工作內容':'請選擇工作內容',disabled:!all&&!customer.value&&!(projectId==='materialProject'&&document.querySelector('#materialKeyword')?.value.trim())});
   }
   replaceReferenceOptions(document.querySelector('#customerCategoryFilter'),customerCategoryChoices(),{placeholder:'所有客戶分類'});
   replaceReferenceOptions(document.querySelector('#categoryFilter'),state.categories.filter(row=>row.active).map(row=>[row.name,row.name]),{placeholder:'所有貨品種類'});

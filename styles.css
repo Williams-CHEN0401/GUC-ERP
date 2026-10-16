@@ -232,3 +232,5 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 @media(max-width:600px){.receipt-money{grid-template-columns:1fr}.receipt-money-totals{grid-template-columns:1fr}.construction-plan-fold>summary{flex-wrap:wrap}.construction-plan-fold>summary>small{width:100%;margin-left:28px}}
 
 .construction-plan-fold>summary>span>small{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-weight:400}.construction-pending-reminder{border:1px solid var(--line,#dcded2);border-left:4px solid var(--accent,#4b6047);border-radius:10px;background:var(--surface,#fffefb);padding:14px 18px;color:var(--text,#303b34)}.construction-pending-reminder p{margin:8px 0;font-size:13px}.construction-pending-reminder ul{padding-left:22px;margin:8px 0}.construction-pending-reminder li{margin:5px 0;overflow-wrap:anywhere}
+
+.worker-picker.workforce-picker input[type="number"]{width:8rem!important;max-width:100%;height:auto!important;min-height:44px;padding:8px 10px}.workforce-picker>label+label{margin-top:8px}
