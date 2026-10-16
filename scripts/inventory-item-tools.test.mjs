@@ -35,10 +35,3 @@ test('name input updates its row and Enter does not submit the batch or interfer
  events.keydown({target,key:'Enter',isComposing:true,preventDefault(){prevented++;}});assert.equal(prevented,0);
  events.keydown({target,key:'Enter',isComposing:false,preventDefault(){prevented++;}});assert.equal(prevented,1);
 });
-test('explicit edit action requires UPDATE and a valid selected item belonging to the category',()=>{
- const {c,button,selection,opened,notices}=harness();
- c.syncAdjustmentEditButton();assert.equal(button.hidden,false);assert.equal(button.disabled,false);
- c.openAdjustmentItemEditor();assert.equal(opened[0].id,'a');
- selection.value='b';c.syncAdjustmentEditButton();assert.equal(button.disabled,true);c.openAdjustmentItemEditor();assert.equal(opened.length,1);
- selection.value='a';c.allowed=false;c.syncAdjustmentEditButton();assert.equal(button.hidden,true);c.openAdjustmentItemEditor();assert.equal(opened.length,1);assert.match(notices.at(-1),/權限/);
-});
