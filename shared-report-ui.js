@@ -7,7 +7,10 @@ function invalidateSharedReports(){
 }
 function reportProjectIncluded(project){
  const selected=document.querySelector("#materialWorkType")?.value||"";
- return !["clerical","site_survey"].includes(project.rawType)&&(!selected||project.rawType===selected);
+ const keyword=document.querySelector('#materialKeyword')?.value.trim().toLocaleLowerCase()||'';
+ const words=[project.code,project.name,byId(state.customers,project.customerId)?.name].join(' ').toLocaleLowerCase();
+ const category=document.querySelector("#materialCustomerCategory")?.value||"";
+ return (!category||byId(state.customers,project.customerId)?.category===category)&&(!keyword||words.includes(keyword))&&!["clerical","site_survey"].includes(project.rawType)&&(!selected||project.rawType===selected);
 }
 function sharedProjectReport(projectId,refresh=false){
  const from=document.querySelector("#materialDateFrom")?.value||"",to=document.querySelector("#materialDateTo")?.value||"",workType=document.querySelector("#materialWorkType")?.value||"";
@@ -26,6 +29,7 @@ function reportVerticalBars(rows){
 }
 document.addEventListener("DOMContentLoaded",()=>{
  const select=document.querySelector("#materialWorkType");if(!select)return;
+ const label=document.createElement('label');label.innerHTML='關鍵字<input id="materialKeyword" type="search" placeholder="工作編號、名稱、客戶">';select.closest('label').before(label);label.querySelector('input').addEventListener('input',()=>updateMaterialProjects(true));
  select.innerHTML='<option value="">所有類型</option>'+PROJECT_WORK_TYPES.filter(([code])=>!["clerical","site_survey"].includes(code)).map(([code,name])=>`<option value="${esc(code)}">${esc(name)}</option>`).join("");
  select.addEventListener("change",()=>updateMaterialProjects(true));
 });
@@ -39,7 +43,7 @@ setInterval(refreshVisibleReport,30000);
 document.addEventListener('click',event=>{
  if(event.target.closest('[data-gr-refresh]'))invalidateSharedReports();
  if(event.target.closest('[data-gr-reset-filters]')){
-  document.querySelector('#materialWorkType').value='';document.querySelector('#materialCustomerCategory').value='';
+  document.querySelector('#materialKeyword').value='';document.querySelector('#materialWorkType').value='';document.querySelector('#materialCustomerCategory').value='';
   updateMaterialCustomers(true);projectReportDateContext='';renderProjectReport();
  }
 });

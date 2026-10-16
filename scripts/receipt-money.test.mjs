@@ -26,3 +26,21 @@ test('invalid monetary input is rejected without float rounding',()=>{
  for(const quantity of [0,-1,1.1,NaN])assert.throws(()=>money([{quantity,unit_price:1}],'exclusive',500));
  for(const rate of [-1,10001,1.5,null])assert.throws(()=>money([{quantity:1,unit_price:1}],'exclusive',rate));
 });
+
+test('whole-document discount reduces the input before exclusive or inclusive tax',()=>{
+ const lines=[{quantity:2,unit_price:100}];
+ const a=c.GUCReceiptMoney.calculate(lines,'exclusive',500,20);
+ assert.equal(a.input_amount,200);assert.equal(a.discount_amount,20);assert.equal(a.net_amount,180);assert.equal(a.tax_amount,9);assert.equal(a.total_amount,189);
+ const b=c.GUCReceiptMoney.calculate(lines,'inclusive',500,20);
+ assert.equal(b.net_amount,171);assert.equal(b.tax_amount,9);assert.equal(b.total_amount,180);
+ assert.equal(c.GUCReceiptMoney.calculate(lines,'exclusive',500,200).total_amount,0);
+});
+
+test('discount validation and missing prices never invent totals',()=>{
+ const lines=[{quantity:2,unit_price:100}];
+ for(const discount of [-1,0.1,NaN,Infinity,'20',201])assert.throws(()=>c.GUCReceiptMoney.calculate(lines,'exclusive',500,discount));
+ assert.equal(c.GUCReceiptMoney.calculate([{quantity:2,unit_price:null}],'exclusive',500,20).total_amount,null);
+ assert.equal(c.GUCReceiptMoney.calculate(lines,null,null,20).total_amount,null);
+ const discounted=c.GUCReceiptMoney.calculate([{quantity:3,unit_price:'0.50'}],'exclusive',500,1);
+ assert.equal(discounted.input_amount,2);assert.equal(discounted.net_amount,1);
+});
