@@ -28,8 +28,9 @@ function applyPermissionUI(){
  document.querySelectorAll('[data-system-choice="sites"]').forEach(el=>el.hidden=!canModule('site'));
  document.querySelectorAll('[data-open]').forEach(el=>{const module=MODAL_PERMISSIONS[el.dataset.open];if(module)el.hidden=module==='worklogs'?!canWorkLog('CREATE'):!canModule(module,'CREATE');});
  document.querySelector('#itemBatchForm button[type=submit]').disabled=!canModule('inventory','CREATE');
- document.querySelector('#adjustForm button').disabled=!canModule('inventory','CREATE');
- for(const pane of ['items','adjust'])document.querySelectorAll('#inventory [data-tab="'+pane+'"],#inventory [data-pane="'+pane+'"]').forEach(el=>el.hidden=!canModule('inventory','CREATE'));
+ document.querySelector('#adjustForm button[type="submit"]').disabled=!canModule('inventory','CREATE');
+ for(const pane of ['items','adjust'])document.querySelectorAll('#inventory [data-tab="'+pane+'"],#inventory [data-pane="'+pane+'"]').forEach(el=>el.hidden=!(canModule('inventory','CREATE')||pane==='adjust'&&canModule('inventory','UPDATE')));
+ syncAdjustmentEditButton();
  for(const [tab,module]of [['users','users'],['logs','audit']])document.querySelectorAll('#settings [data-tab="'+tab+'"],#settings [data-pane="'+tab+'"]').forEach(el=>el.hidden=!canModule(module));
  document.querySelectorAll('#settings [data-tab="permissions"]').forEach(el=>el.hidden=!canAdmin()&&!state.currentUser?.private_access?.can_configure);
  document.querySelectorAll('[data-delete-account]').forEach(el=>el.hidden=!canModule('users','DELETE')||!canManagePrivateIdentity(el.dataset.deleteAccount));
