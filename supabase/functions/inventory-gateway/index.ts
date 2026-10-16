@@ -913,7 +913,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(uuid(payload.id)){
       const records=await get(`site_work_logs?id=eq.${uuid(payload.id)}&select=*`) as Row[];
       const plan=records[0]?.construction_plan_id;
-      if(plan){if(Object.hasOwn(payload,"construction_plan_id")&&payload.construction_plan_id!==plan)throw new Error("不能變更施工日誌的施工規劃關聯。");payload={...payload,construction_plan_id:plan};}
+      if(plan&&!payload.construction_plan_id)payload={...payload,construction_plan_id:plan};
     }
   }
   await enforceWorkLogScope(user!,operation,payload);
