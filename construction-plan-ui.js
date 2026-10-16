@@ -12,7 +12,7 @@ function renderPlanningProjects(){
  syncProjectFilters('planningFilter');
  tableState.planning ||= {page:1,perPage:10,sortKey:'code',direction:'asc',search:''};
  const control=tableState.planning,plans=state.constructionPlans||[];
- const rows=sortRows(state.projects.filter(p=>constructionEligible(p)||plans.some(plan=>plan.project_id===p.id)).map(p=>({...p,customer:byId(state.customers,p.customerId)?.name||'',statusText:workLogStatusText(p.status).replace('已完成','已結案')})).filter(p=>projectFilterMatches(p,'planningFilter')&&matches([p.code,p.name,p.customer,p.type,p.status,p.statusText,p.owner],control.search)),control.sortKey,control.direction);
+ const rows=sortRows(state.projects.filter(p=>p.rawType==="construction").map(p=>({...p,customer:byId(state.customers,p.customerId)?.name||'',statusText:workLogStatusText(p.status).replace('已完成','已結案')})).filter(p=>projectFilterMatches(p,'planningFilter')&&matches([p.code,p.name,p.customer,p.type,p.status,p.statusText,p.owner],control.search)),control.sortKey,control.direction);
  const page=tablePage('planning',rows);
  document.querySelector('#constructionPlanningList').innerHTML=page.rows.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3><p>${esc(project.customer)} · ${esc(project.type)} · ${esc(project.owner||'未指派')}</p>${constructionPlanButton(project)}${plans.filter(p=>p.project_id===project.id).sort((a,b)=>a.construction_date.localeCompare(b.construction_date)||a.id.localeCompare(b.id)).map(constructionPlanningCard).join('')||'<p>尚無施工規劃</p>'}</article>`).join('')||'<p class="dashboard-empty">沒有符合篩選的施工規劃。</p>';
  renderPagination('planning','planningPagination',page.total);
@@ -89,18 +89,13 @@ async function saveConstructionPlan(form,id){
  await apiRequest({operation:"save_construction_plan",payload});
  await refreshConstructionProgressViews();closeModal(true);await openConstructionPlans(payload.project_id);showToast("施工規劃已儲存並重新讀取");
 }
-function initializeConstructionLog(){
+function initializeConstructionLog(initial=false){
  const form=document.querySelector("#modalForm"),modal=document.querySelector("#simpleModal");
- if(modal.dataset.type!=="workLogModal"||!activeConstructionLogPlanId)return;
+ if(modal.dataset.type!=="workLogModal")return;
+ syncConstructionLogSelectors(initial);
+ if(!activeConstructionLogPlanId)return;
  const plan=constructionPlanById(activeConstructionLogPlanId),project=byId(state.projects,plan?.project_id||byId(state.siteData.logs,modal.dataset.id)?.projectId);
  if(!project)return;
- form.dataset.constructionPlanId=activeConstructionLogPlanId;
- const existingLog=byId(state.siteData.logs,modal.dataset.id),items=plan?.items||[];
- if(items.length&&!form.elements.constructionItemId){
-  const label=document.createElement('label');label.className='span-2';
-  label.innerHTML=`施工子項目<select name="constructionItemId" ${existingLog?'disabled':'required'}><option value="">${existingLog?'原有未分類日誌':'請選擇子項目'}</option>${items.map(i=>`<option value="${esc(i.id)}">${esc(i.title)}${i.is_completed?'（已完成）':''}</option>`).join('')}</select>`;
-  label.querySelector('select').value=existingLog?.construction_item_id||activeConstructionItemId||'';form.prepend(label);
- }
  // Preserve submitted values, but prevent accidental changing of plan identity.
  for(const [name,value] of Object.entries({customerId:project.customerId,departmentId:project.departmentId||"",projectName:project.name,workType:"工程施工"})){
   const field=form.elements[name];
@@ -111,6 +106,35 @@ function initializeConstructionLog(){
  const search=form.querySelector('[name="customerSelectorSearch"]');if(search)search.closest("label").hidden=true;
  if(!form.querySelector('[data-construction-context]')){const notice=document.createElement("p");notice.dataset.constructionContext="true";notice.className="span-2 form-sync-hint";notice.textContent=`施工規劃：${plan?.construction_date||""} ${plan?.content||""}。日誌儲存不會自動完成施工規劃。`;form.prepend(notice);}
 }
+// General and shortcut editors share the same authorized plan and item choices.
+function syncConstructionLogSelectors(initial=false){
+ const form=document.querySelector('#modalForm'),modal=document.querySelector('#simpleModal');
+ if(modal?.dataset.type!=='workLogModal')return;
+ const log=byId(state.siteData.logs,modal.dataset.id),lockedPlan=constructionPlanById(activeConstructionLogPlanId);
+ const project=lockedPlan?byId(state.projects,lockedPlan.project_id):workLogChosenProject()||(!workLogContextChanged(workLogOriginalProject())?workLogOriginalProject():null);
+ let host=form.querySelector('[data-construction-selectors]');
+ if(!host){host=document.createElement('div');host.className='span-2 form-grid';host.dataset.constructionSelectors='true';form.prepend(host);}
+ const editable=!log||canWorkLog('UPDATE',log.id);
+ const previous=initial?activeConstructionLogPlanId:form.elements.constructionPlanId?.value||'';
+ const itemId=initial?(log?.construction_item_id||activeConstructionItemId||''):form.elements.constructionItemId?.value||'';
+ const plans=(state.constructionPlans||[]).filter(p=>p.project_id===project?.id&&(p.can_create_log||p.id===log?.construction_plan_id));
+ const selected=plans.find(p=>p.id===previous),items=selected?.items||[];
+ form.dataset.constructionPlanId=selected?.id||'';
+ host.hidden=!plans.length;
+ const required=!!log?.construction_plan_id,legacyUnclassified=!!log&&log.construction_plan_id===selected?.id&&!log.construction_item_id;
+ host.innerHTML=`<label>施工規劃<select name="constructionPlanId" ${editable?'':'disabled'} ${required?'required':''}><option value="">${required?'請選擇施工規劃':'不指定施工規劃'}</option>${plans.map(p=>`<option value="${esc(p.id)}">${esc(p.construction_date)}｜${esc(p.content)}</option>`).join('')}</select></label><label ${items.length?'':'hidden'}>施工子項目<select name="constructionItemId" ${editable?'':'disabled'} ${items.length&&!legacyUnclassified?'required':''}><option value="">${legacyUnclassified?'原有未分類（可補選）':'請選擇子項目'}</option>${items.map(i=>`<option value="${esc(i.id)}">${esc(i.title)}${i.is_completed?'（已完成）':''}</option>`).join('')}</select></label>`;
+ form.elements.constructionPlanId.value=selected?.id||'';
+ form.elements.constructionItemId.value=items.some(i=>i.id===itemId)?itemId:'';
+}
+document.addEventListener('change',event=>{
+ if(!event.target.closest('#modalForm'))return;
+ if(event.target.name==='constructionPlanId'){
+  const form=document.querySelector('#modalForm');
+  if(form.elements.constructionItemId)form.elements.constructionItemId.value='';
+  syncConstructionLogSelectors();
+ }else if(['customerId','departmentId','projectName','workType','customerCategory'].includes(event.target.name)||event.target.id==='workLogProjectChoice')queueMicrotask(()=>syncConstructionLogSelectors());
+});
+document.addEventListener('input',event=>{if(event.target.name==='projectName'&&event.target.closest('#modalForm'))queueMicrotask(()=>syncConstructionLogSelectors());});
 function constructionAssignmentAction(row){
  return `<details class="construction-plan-card construction-plan-fold construction-assignment-fold" data-construction-assignment="${esc(row.construction_plan_id)}"><summary><span>${esc(row.project)}<small>${esc(row.instructions)} · ${esc(row.construction_date)}</small></span><small>完成 ${Number(row.completion_percent||0)}%</small></summary><div class="construction-plan-body"><p>${esc(row.project_code)}｜${esc(row.customer)}</p>${constructionProgress(row)}<div class="construction-plan-actions"><button class="primary" type="button" data-construction-log="${esc(row.construction_plan_id)}">填寫工作日誌</button><button class="outline" type="button" data-construction-project="${esc(row.project_id)}">查看施工規劃</button></div></div></details>`;
 }
