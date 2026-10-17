@@ -69,3 +69,23 @@
 .guc-report .gr-plan>summary::-webkit-details-marker{display:none}.guc-report .gr-plan-body>.gr-gantt-card{padding:12px;border:0;box-shadow:none}
 @media(max-width:780px){.guc-report .gr-material-facets{grid-template-columns:repeat(2,minmax(0,1fr))}.guc-report [data-gr-category-donut]{grid-column:1/-1}.guc-report .gr-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.guc-report .gr-material-facets{grid-template-columns:minmax(0,1fr)}}
+
+/* Match 工作管理 > 工作內容 by semantic role; the same file is used by Accounting. */
+.guc-report{--gr-font:var(--guc-font-body,Inter,"Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif);--gr-display:var(--guc-font-heading,"Noto Serif TC","Songti TC","PMingLiU",Georgia,serif);--gr-body-size:var(--guc-text-size,17px);--gr-title-size:var(--guc-title-size,28px);--gr-card-size:var(--guc-panel-title-size,22px);--gr-table-size:var(--guc-table-size,14px);--gr-label-size:var(--guc-label-size,14px);--gr-caption-size:var(--guc-caption-size,12px);--gr-note-size:var(--guc-note-size,13px);font-family:var(--gr-font);font-size:var(--gr-body-size);line-height:var(--guc-text-line,1.55)}
+.guc-report h2,.guc-report .gr-chart-card h2{font-family:var(--gr-display);font-size:var(--gr-card-size);font-weight:600;line-height:1.55;letter-spacing:.025em}
+.guc-report .page-actions h2,.guc-report .gr-heading h2{font-size:var(--gr-title-size)}
+.guc-report h3,.guc-report .gr-chart-card h3,.guc-report .gr-material-category>h3{font-family:var(--gr-font);font-size:var(--gr-label-size);font-weight:600;line-height:1.55}
+.guc-report .page-actions p,.guc-report .gr-heading p,.guc-report .gr-card>header p,.guc-report .gr-chart-card>header p,.guc-report .gr-note{font-size:var(--gr-note-size);line-height:1.65}
+.guc-report button,.guc-report .gr-tabs button{font-family:var(--gr-font);font-size:var(--gr-label-size);font-weight:600;line-height:1.45;min-height:44px}
+.guc-report .gr-filters>summary,.guc-report .gr-filter-fields label,.guc-report .gr-filter-fields select,.guc-report .gr-filter-fields input,.guc-report .gr-category-picker,.guc-report .gr-unit-picker,.guc-report .gr-unit-picker select{font-family:var(--gr-font);font-size:var(--gr-label-size);line-height:1.55}
+.guc-report table,.guc-report td{font-family:var(--gr-font);font-size:var(--gr-table-size);line-height:1.6;font-weight:400}
+.guc-report th,.guc-report th button{font-family:var(--gr-font);font-size:var(--gr-caption-size);line-height:1.55;font-weight:650;letter-spacing:.03em}
+.guc-report td small,.guc-report .gr-code,.guc-report .gr-status,.guc-report .gr-kpi span,.guc-report .gr-kpi small,.guc-report .gr-plan>summary small,.guc-report .gr-plan>summary>b,.guc-report .gr-item>summary span,.guc-report .gr-chart-note,.guc-report .gr-chart-legend,.guc-report .gr-material-unit-label{font-family:var(--gr-font);font-size:var(--gr-caption-size);line-height:1.6}
+.guc-report .gr-kpi strong{font-family:var(--gr-font);font-size:var(--gr-title-size);font-weight:600;line-height:1.4}
+.guc-report .gr-plan>summary,.guc-report .gr-item>summary,.guc-report .gr-meter-label,.guc-report .gr-meter-label strong{font-size:var(--gr-table-size);line-height:1.6}
+.guc-report .gr-columns,.guc-report .gr-gantt svg,.guc-report .gr-donut{font-family:var(--gr-font);font-size:var(--gr-caption-size)}
+.guc-report .gr-columns .gr-axis-tick,.guc-report .gr-columns .gr-axis-unit,.guc-report .gr-column-value,.guc-report .gr-column-label,.guc-report .gr-project-label,.guc-report .gr-donut-label{font-family:var(--gr-font);font-size:var(--gr-caption-size)}
+.guc-report .gr-gauge-value{font-family:var(--gr-font);font-size:var(--gr-title-size);font-weight:600}.guc-report .gr-gauge-caption{font-family:var(--gr-display);font-size:var(--gr-card-size)}
+@media(max-width:780px){.guc-report{--gr-body-size:var(--guc-text-size,16px);--gr-title-size:var(--guc-title-size,26px);--gr-card-size:var(--guc-panel-title-size,21px)}}
+.guc-report .gr-filter-fields input,.guc-report .gr-filter-fields select{font-weight:500}
+@media(max-width:780px){.guc-report .gr-filter-fields input,.guc-report .gr-filter-fields select{font-size:16px}}

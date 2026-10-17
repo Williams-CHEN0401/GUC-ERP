@@ -7,7 +7,7 @@ function harness(){
  const rows=[],events={},button={},category={value:'cat'},selection={value:'a'},notices=[],opened=[];
  const inventory=[{id:'a',name:'網路線 CAT6',code:'A01',categoryId:'cat',category:'線材',brand:'A',model:'CAT6',unit:'米'},{id:'b',name:'網路線 CAT6A',code:'A02',categoryId:'other',category:'其他',brand:'B',model:'6A',unit:'箱'},{id:'c',name:'網路攝影機',code:'A03',categoryId:'cat'}];
  const c=vm.createContext({state:{inventory,categories:[]},allowed:true,canModule:()=>c.allowed,showToast:message=>notices.push(message),openModal:(type,id)=>opened.push({type,id}),document:{querySelector:s=>s==='#adjustEditItem'?button:s==='#adjustCategory'?category:s==='#adjustItem'?selection:{dataset:{}},querySelectorAll:()=>rows,addEventListener:(name,fn)=>events[name]=fn}});
- for(const name of ['esc','byId'])vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),c);
+ for(const name of ['esc','byId','searchValue'])vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),c);
  vm.runInContext(app.slice(app.indexOf('function normalizeInventoryName('),app.indexOf('function transactionItemSearchFields(')),c);
  const row=value=>{const input={value},panel={innerHTML:'',hidden:true};const node={querySelector:s=>s==='[name="name"]'?input:panel};rows.push(node);return {input,panel,node};};
  return {c,row,events,button,category,selection,notices,opened};

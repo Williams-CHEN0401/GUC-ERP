@@ -14,23 +14,23 @@ function applyContractServiceCatalogSnapshot(snapshot){
 }
 function renderContractServiceCatalog(){
  const host=document.querySelector("#contractServiceTable");if(!host)return;
- const search=document.querySelector("#contractServiceSearch").value;
+ const search=searchValue(document.querySelector("#contractServiceSearch"));
  const rows=state.contractServiceTypes.filter(r=>matches([r.name],search)).sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name,"zh-Hant"));
  host.innerHTML=rows.map(row=>{
   const count=state.customers.filter(c=>(c.contractServiceCodes||[]).includes(row.code)).length,reason=contractServiceDeleteReason(row),ready=state.contractServicesReady;
-  return `<tr><td><strong>${esc(row.name)}</strong>${row.active?"":"<small>已停用</small>"}</td><td>${esc(row.sortOrder)}</td><td>${count}</td><td class="actions">${canModule("customers","UPDATE")?`<button type="button" data-edit-contract-service="${esc(row.id)}" ${ready?"":"disabled"}>修改</button>`:""}${canModule("customers","DELETE")?`<button type="button" data-delete-contract-service="${esc(row.id)}" ${reason||!ready?`disabled title="${esc(reason||"資料尚未就緒")}"`:""}>刪除</button>`:""}${reason?`<small>${esc(reason)}</small>`:""}</td></tr>`;
- }).join("")||emptyRow(4,"沒有符合的承攬內容");
+  return `<tr><td><strong>${esc(row.name)}</strong>${row.active?"":"<small>已停用</small>"}</td><td>${count}</td><td class="actions">${canModule("customers","UPDATE")?`<button type="button" data-edit-contract-service="${esc(row.id)}" ${ready?"":"disabled"}>修改</button>`:""}${canModule("customers","DELETE")?`<button type="button" data-delete-contract-service="${esc(row.id)}" ${reason||!ready?`disabled title="${esc(reason||"資料尚未就緒")}"`:""}>刪除</button>`:""}${reason?`<small>${esc(reason)}</small>`:""}</td></tr>`;
+ }).join("")||emptyRow(3,"沒有符合的承攬內容");
  document.querySelector('[data-open="contractServiceModal"]').disabled=!state.contractServicesReady;
  document.querySelector("#contractServiceHint").textContent=state.contractServicesReady?"名稱同步至共用承攬表單；新增項目須先在客戶資料勾選才會出現在該客戶的日誌與附件選單。已有客戶、設備或歷史紀錄的項目不能刪除。":"承攬內容管理尚未就緒，請重新載入或確認資料庫更新已完成。";
 }
 function contractServiceCatalogFields(id){
  const r=byId(state.contractServiceTypes,id)||{};
- return '<p class="span-2">修改共用名稱不會變更客戶承攬、設備及歷史資料的關聯；已存在的 NAS 檔案路徑保持不變。</p>'+inputField("name","承攬內容名稱","text",true,r.name)+`<label>排序<input name="sortOrder" type="number" min="0" max="100000" step="1" value="${esc(r.sortOrder??1000)}" required></label>`+submitField(id?"儲存修改":"建立承攬內容");
+ return '<p class="span-2">修改共用名稱不會變更客戶承攬、設備及歷史資料的關聯；已存在的 NAS 檔案路徑保持不變。</p>'+inputField("name","承攬內容名稱","text",true,r.name)+submitField(id?"儲存修改":"建立承攬內容");
 }
 async function saveContractServiceCatalog(id,data){
  if(!state.contractServicesReady||!canModule("customers",id?"UPDATE":"CREATE"))throw new Error("目前無法管理承攬內容，請確認權限與資料載入狀態。");
- const name=String(data.name||"").trim(),sortOrder=Number(data.sortOrder),row=byId(state.contractServiceTypes,id);
- if(!name||name.length>80||data.sortOrder===""||!Number.isInteger(sortOrder)||sortOrder<0||sortOrder>100000)throw new Error("承攬名稱須為 1–80 個字；排序須為 0–100000 的整數。");
+ const name=String(data.name||"").trim(),row=byId(state.contractServiceTypes,id),sortOrder=row?.sortOrder??Math.min(100000,Math.max(0,...state.contractServiceTypes.map(item=>Number(item.sortOrder)||0))+1);
+ if(!name||name.length>80||!Number.isInteger(sortOrder)||sortOrder<0||sortOrder>100000)throw new Error("承攬名稱須為 1–80 個字。");
  if(id&&!row)throw new Error("承攬內容已刪除，請重新載入。");
  if(state.contractServiceTypes.some(r=>r.id!==id&&r.name.trim().toLowerCase()===name.toLowerCase()))throw new Error("此承攬內容名稱已存在。");
  await mutate(id?"update_contract_service_type":"create_contract_service_type",{name,sort_order:sortOrder,...(id?{id,row_version:row.rowVersion}:{})},id?"承攬內容已修改並同步共用選單":"承攬內容已新增",{reloadScope:"crm"});

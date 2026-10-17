@@ -12,12 +12,17 @@ function harness(){let handler;const calls=[];const context=vm.createContext({As
 test('dashboard limits summary cards but returns every previous-day log and current-user assignments',async()=>{
  // Additional projection is verified separately; this fixture contains no plans.
  const h=harness();h.context.get=async path=>{h.calls.push(path);if(path.startsWith('site_work_logs?'))return[{id:id(2),project_id:id(3),log_date:'2026-09-06'}];if(path.startsWith('projects?select=id,project_code,name'))return[{id:id(3),customer_id:id(4),name:'工作內容'}];if(path.startsWith('customers?'))return[{id:id(4),name:'測試客戶'}];if(path.startsWith('site_work_log_workers?'))return[{work_log_id:id(2),user_id:id(1)}];if(path.startsWith('app_users?'))return[{id:id(1),display_name:'施工人員'}];return[];};
+ h.context.getAll=async path=>h.context.get(path); // This projection fixture supplies the complete dataset, not an endless page.
  h.context.rpc=async(name,args)=>{assert.equal(name,'construction_scope_v1');assert.equal(args.p_actor_user_id,user.id);return {construction_plans:[]};};
  const result=await h.context.dashboardSnapshot(user);assert.equal(result.dashboard.worklogs[0].customer,'測試客戶');assert.equal(result.dashboard.worklogs[0].workers,'施工人員');
  for(const path of h.calls.slice(0,2))assert.equal(new URLSearchParams(path.split('?')[1]).get('limit'),'15');
  const logQuery=new URLSearchParams(h.calls.find(p=>p.startsWith('site_work_logs?')).split('?')[1]);assert.equal(logQuery.get('order'),'created_at.asc,id.asc');assert.equal(logQuery.get('limit'),null);assert.ok(logQuery.get('log_date')?.startsWith('eq.'));
  const assignmentQueries=h.calls.filter(p=>p.startsWith('work_assignments?'));assert.equal(assignmentQueries.length,2);assert.ok(assignmentQueries.some(path=>path.includes(`assignee_user_id=eq.${user.id}`)));assert.ok(assignmentQueries.some(path=>path.includes(`created_by_user_id=eq.${user.id}`)));
  assert.ok(h.calls.every(p=>!p.startsWith('pickup_records')));assert.equal(h.calls.length,9);
+});
+test('dashboard export removes both summary and assignment page limits and reads every database page',async()=>{
+ const h=harness(),queryPaths=[];h.context.get=async path=>{queryPaths.push(path);const params=new URLSearchParams(path.split('?')[1]);if(path.startsWith('projects?')&&params.get('status')==='neq.completed'){const offset=Number(params.get('offset')||0);return offset===0?Array.from({length:1000},(_,n)=>({id:id(n+10),name:'工作'+n,status:'pending'})):offset===1000?[{id:id(1010),name:'最後工作',status:'pending'}]:[];}return[];};h.context.rpc=async()=>({construction_plans:[]});
+ const result=await h.context.dashboardSnapshot(user,true);assert.equal(result.dashboard.projects.length,1001);const pages=queryPaths.filter(p=>p.startsWith('projects?')&&p.includes('status=neq.completed'));assert.deepEqual(pages.map(p=>new URLSearchParams(p.split('?')[1]).get('offset')),['0','1000','1001']);const assignments=queryPaths.filter(p=>p.startsWith('work_assignments?'));assert.equal(assignments.length,2);assert(assignments.every(p=>new URLSearchParams(p.split('?')[1]).getAll('limit').join()==='1000'));
 });
 test('audit endpoint is admin-only, server-paginated, ordered, bounded, filtered, and redacts nested credentials',async()=>{
  const h=harness();let path;h.context.db=async p=>{path=p;return Response.json([{id:1,action:'UPDATE',before_data:{password:'bad',nested:[{access_token:'bad'}]},after_data:{notes:'Bearer sensitive-token',name:'名稱'}}],{headers:{'content-range':'25-49/80'}});};
@@ -50,9 +55,9 @@ test('preview allows authenticated conflict lookups but blocks all mutations bef
  for(const operation of ['upsert_monitoring_device','update_account','logout','request_excel_sync','restore_database_backup'])assert.equal((await h.handler(req(operation))).status,403);
  assert.equal(writes,0);h.context.currentUser=async()=>null;assert.equal((await h.handler(req('check_monitoring_ip_conflicts'))).status,401);
 });
-test('spreadsheet export and user-facing backup entry are absent while import routes remain',()=>{
+test('new XLSX and encrypted backup entries preserve imports without restoring old unsafe export routes',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
- assert.doesNotMatch(app+html,/exportProjectMaterials|exportMaterials|exportInventory|text\/csv|exportBackup|data-page="backup"/);assert.doesNotMatch(source,/request_excel_sync/);assert.match(source,/import_monitoring_devices/);assert.doesNotMatch(app,/activities\.unshift/);
+ assert.doesNotMatch(app+html,/exportProjectMaterials|exportMaterials|exportInventory|text\/csv|exportBackup/);assert.match(html,/shared-excel-export\.js/);assert.match(html,/system-backup\.js/);assert.match(source,/requirePermission\(user,"system_backups"/);assert.doesNotMatch(source,/request_excel_sync/);assert.match(source,/import_monitoring_devices/);assert.doesNotMatch(app,/activities\.unshift/);
 });
 test('every ERP list starts with its business date descending and resolves equal dates consistently',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');const context=vm.createContext({});

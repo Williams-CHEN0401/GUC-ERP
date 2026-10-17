@@ -4,6 +4,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { proxySystemBackup } from '../api/system-backup.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -39,6 +40,7 @@ export async function createERPServer() {
     try {
       const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
       if (pathname === '/healthz') return res.json({ ok: true, service: 'guc-erp', mode });
+      if (pathname.startsWith('/api/system-backup')) return await proxySystemBackup(req,res);
       if (pathname === '/api/nas') {
         if (!nas) return res.status(403).json({ error: '本機 Docker 預覽不連線 NAS；附件操作使用既有預覽流程。', code: 'PREVIEW_NAS_WRITE_BLOCKED' });
         if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ error: 'Method not allowed.' });

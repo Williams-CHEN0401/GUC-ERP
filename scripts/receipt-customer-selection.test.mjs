@@ -21,7 +21,9 @@ function pickerContext(document) {
     esc: (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]),
     byId: (rows, id) => rows.find((row) => row.id === id),
   };
-  vm.runInNewContext(pickerSource, context);
+  vm.createContext(context);
+  for(const name of ['matches','searchValue'])vm.runInContext(appSource.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),context);
+  vm.runInContext(pickerSource, context);
   return context;
 }
 
