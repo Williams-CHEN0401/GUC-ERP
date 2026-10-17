@@ -20,6 +20,17 @@ function departmentOptionsMarkup(customerId,value="",{all=false,legacy=false}={}
 function customerSelectorFields(customerId="",category="",departmentId="",{legacy=false,required=true}={}){
  return `<div class="customer-department-selector span-2" data-customer-selector data-legacy-customer="${legacy?esc(customerId):""}" data-legacy-department="${legacy?esc(departmentId):""}" data-required="${required}"><label class="customer-selector-search">搜尋客戶<input type="search" name="customerSelectorSearch" placeholder="客戶編號或名稱" autocomplete="off"></label>${customerCategoryOptions(category)}${customerOptions(customerId,category)}<label>科室<select name="departmentId">${departmentOptionsMarkup(customerId,departmentId,{legacy})}</select></label><input type="hidden" name="categoryId" value="${esc(state.customerCategories.find(row=>row.code===category)?.id||"")}"></div>`;
 }
+function filterModalCustomerSearch(){
+ const form=document.querySelector('#modalForm'),host=form?.querySelector('[data-customer-selector]');if(!host||form.dataset.constructionPlanId)return;
+ const select=form.elements.customerId,category=form.elements.customerCategory?.value||'',selected=select.value,query=searchValue(form.elements.customerSelectorSearch);
+ const rows=sortRows(state.customers.filter(row=>(!row.deletedAt||row.id===host.dataset.legacyCustomer)&&(!category||row.category===category)&&(row.id===selected||matches([row.code,row.name],query))),'code','asc');
+ const available=!!category||!!query.trim()||!!selected;
+ select.innerHTML='<option value="">'+(!available?'請選擇分類或搜尋客戶':rows.length?'請選擇客戶':'沒有符合的客戶')+'</option>'+(available?rows.map(row=>`<option value="${esc(row.id)}">${esc(row.code)}｜${esc(row.name)}</option>`).join(''):'');
+ if(rows.some(row=>row.id===selected))select.value=selected;
+ select.disabled=!available||!rows.length;
+ let status=host.querySelector('[data-customer-search-status]');if(!status){status=document.createElement('small');status.dataset.customerSearchStatus='';status.setAttribute('role','status');host.querySelector('.customer-selector-search').append(status);}
+ status.textContent=query.trim()?(rows.length?`找到 ${rows.length} 位客戶${selected?'（包含目前選取）':''}`:'沒有符合的客戶。'):'';
+}
 function syncModalDepartmentOptions(reset=false){
  const form=document.querySelector("#modalForm"),host=form?.querySelector("[data-customer-selector]");if(!host)return;
  const customer=form.elements.customerId?.value||"",select=form.elements.departmentId,value=reset?"":select.value;
@@ -28,7 +39,7 @@ function syncModalDepartmentOptions(reset=false){
  select.disabled=!customer||!state.customerDepartmentsReady;
  select.required=host.dataset.required==="true"&&!legacy&&customerDepartmentRows(customer).length>0;
  if(form.elements.categoryId)form.elements.categoryId.value=state.customerCategories.find(row=>row.code===form.elements.customerCategory?.value)?.id||"";
- const search=valueText((form.elements.customerSelectorSearch?.value||"").trim());
+ const search=valueText(searchValue(form.elements.customerSelectorSearch).trim());
  [...form.elements.customerId.options].forEach(option=>option.hidden=!!option.value&&option.value!==customer&&!matches([option.text],search));
 }
 function modalDepartmentValue({project=null}={}){
@@ -59,8 +70,8 @@ function renderCustomerDepartments(){
  const host=document.querySelector("#customerDepartmentTable");if(!host)return;
  const category=document.querySelector("#departmentCustomerCategory"),customer=document.querySelector("#departmentCustomer"),oldCategory=category.value,oldCustomer=customer.value;
  category.innerHTML='<option value="">請選擇分類</option>'+customerCategoryChoices().map(([code,name])=>`<option value="${esc(code)}">${esc(name)}</option>`).join("");category.value=oldCategory;
- customer.innerHTML='<option value="">請選擇客戶</option>'+state.customers.filter(row=>row.category===category.value).map(row=>`<option value="${esc(row.id)}">${esc(row.code)}｜${esc(row.name)}</option>`).join("");customer.value=oldCustomer;customer.disabled=!category.value;
- const search=valueText(document.querySelector("#customerDepartmentSearch").value.trim()),status=document.querySelector("#customerDepartmentStatus").value;
+ customer.innerHTML='<option value="">請選擇客戶</option>'+state.customers.filter(row=>!row.deletedAt&&row.category===category.value).map(row=>`<option value="${esc(row.id)}">${esc(row.code)}｜${esc(row.name)}</option>`).join("");customer.value=oldCustomer;customer.disabled=!category.value;
+ const search=valueText(searchValue(document.querySelector("#customerDepartmentSearch")).trim()),status=document.querySelector("#customerDepartmentStatus").value;
  const rows=(state.customerDepartments||[]).filter(row=>row.customerId===customer.value&&matches([row.name],search)&&(!status||String(row.active)===status));
  host.innerHTML=rows.map(row=>`<tr><td><strong>${esc(row.name)}</strong></td><td>${row.active?"啟用":"已停用"}</td><td class="actions">${canModule("customers","UPDATE")?`<button type="button" data-edit-department="${esc(row.id)}">修改</button>${row.active?"":`<button type="button" data-activate-department="${esc(row.id)}">重新啟用</button>`}`:""}${row.active&&canModule("customers","DELETE")?`<button type="button" data-deactivate-department="${esc(row.id)}">停用</button>`:""}</td></tr>`).join("")||emptyRow(3,customer.value?"沒有符合的科室":"請先選擇客戶分類與客戶");
  document.querySelector('[data-open="customerDepartmentModal"]').disabled=!customer.value||!state.customerDepartmentsReady;
@@ -82,8 +93,10 @@ function previewCustomerDepartmentMutation(operation,payload){
 }
 document.addEventListener("input",event=>{
  if(event.target.id==="customerDepartmentSearch")renderCustomerDepartments();
- if(event.target.name==="customerSelectorSearch")syncModalDepartmentOptions(false);
+ if(event.target.name==="customerSelectorSearch")filterModalCustomerSearch();
 });
+// Set the selected customer's category before the existing dependent-field handlers run.
+document.addEventListener('change',event=>{if(event.target.name!=='customerId'||!event.target.closest('[data-customer-selector]'))return;const customer=byId(state.customers,event.target.value),form=event.target.form;if(customer&&form?.elements.customerCategory&&!form.elements.customerCategory.value)form.elements.customerCategory.value=customer.category;},true);
 document.addEventListener("change",event=>{
  if(event.target.id==="departmentCustomerCategory"){document.querySelector("#departmentCustomer").value="";renderCustomerDepartments();}
  if(["departmentCustomer","customerDepartmentStatus"].includes(event.target.id))renderCustomerDepartments();

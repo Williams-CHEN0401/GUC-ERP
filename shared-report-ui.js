@@ -7,10 +7,10 @@ function invalidateSharedReports(){
 }
 function reportProjectIncluded(project){
  const selected=document.querySelector("#materialWorkType")?.value||"";
- const keyword=document.querySelector('#materialKeyword')?.value.trim().toLocaleLowerCase()||'';
- const words=[project.code,project.name,byId(state.customers,project.customerId)?.name].join(' ').toLocaleLowerCase();
+ const keyword=searchValue(document.querySelector('#materialKeyword'));
+ const words=[project.code,project.name,byId(state.customers,project.customerId)?.name];
  const category=document.querySelector("#materialCustomerCategory")?.value||"";
- return (!category||byId(state.customers,project.customerId)?.category===category)&&(!keyword||words.includes(keyword))&&!["clerical","site_survey"].includes(project.rawType)&&(!selected||project.rawType===selected);
+ return (!category||byId(state.customers,project.customerId)?.category===category)&&matches(words,keyword)&&!["clerical","site_survey"].includes(project.rawType)&&(!selected||project.rawType===selected);
 }
 function sharedProjectReport(projectId,refresh=false){
  const from=document.querySelector("#materialDateFrom")?.value||"",to=document.querySelector("#materialDateTo")?.value||"",workType=document.querySelector("#materialWorkType")?.value||"";

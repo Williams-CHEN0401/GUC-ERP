@@ -106,7 +106,7 @@ function refreshFormReferenceChoices(snapshot={}){
     if(!row){row=document.createElement('tr');row.dataset.accessProject=project.id;row.innerHTML='<th scope="row"></th>'+['view','create_work_log','update_work_log','delete_work_log'].map(action=>`<td><input type="checkbox" name="${action}" aria-label="${esc(project.name)} ${action}" ${accessUser?'':'disabled'}></td>`).join('');accessBody.append(row);}
     row.querySelector('th').textContent=project.project_code+'｜'+project.name;
     row.dataset.search=(project.project_code+' '+project.name).toLowerCase();
-    row.hidden=!row.dataset.search.includes((document.querySelector('#projectAccessSearch')?.value||'').trim().toLowerCase());
+    row.hidden=!matches([row.dataset.search],searchValue(document.querySelector('#projectAccessSearch')));
   }
   document.dispatchEvent(new CustomEvent('guc:form-references-updated',{detail:{datasets:Object.keys(snapshot)}}));
   if(!modal||!form)return;
@@ -118,7 +118,7 @@ function refreshFormReferenceChoices(snapshot={}){
   if(fields.customerId&&!form.dataset.constructionPlanId){
     const category=fields.customerCategory?.value,customerId=fields.customerId.value;
     replaceReferenceOptions(fields.customerId,sortRows(state.customers.filter(row=>row.category===category),'code','asc').map(row=>[row.id,`${row.code}｜${row.name}`]),{placeholder:category?'請選擇客戶':'請先選擇客戶分類',disabled:!category});
-    const search=valueText((fields.customerSelectorSearch?.value||'').trim());
+    const search=valueText(searchValue(fields.customerSelectorSearch).trim());
     [...fields.customerId.options].forEach(option=>option.hidden=!!option.value&&option.value!==customerId&&!matches([option.text],search));
     replaceReferenceOptions(fields.departmentId,customerDepartmentRows(customerId,{includeId:fields.departmentId?.value}).map(row=>[row.id,row.name]),{placeholder:customerDepartmentRows(customerId).length?'請選擇科室':'此客戶尚未設定科室',disabled:!customerId||!state.customerDepartmentsReady});
     const host=form.querySelector('[data-customer-selector]');
@@ -155,6 +155,7 @@ function refreshFormReferenceChoices(snapshot={}){
     if(form.dataset.constructionPlanId&&typeof initializeConstructionLog==='function')initializeConstructionLog();
   }
   if(type==='receiptModal')refreshReceiptReferenceChoices();
+  if(typeof filterModalCustomerSearch==='function')filterModalCustomerSearch();
   if(type==='accountModal')replaceReferenceOptions(fields.role,(state.appRoles||[]).map(row=>[row.code,row.name]),{placeholder:'請選擇角色'});
 }
 function refreshReferenceFilters(){

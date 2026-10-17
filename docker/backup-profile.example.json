@@ -1,0 +1,19 @@
+{
+  "mode": "production",
+  "gateway": "https://guc-erp.theworkpc.com:8080/api/inventory",
+  "directory": "F:/GUC-Docker/private-backups/production",
+  "port": 18970,
+  "database": {"container": "supabase-db", "name": "postgres", "admin": "supabase_admin"},
+  "rest": {"container": "supabase-rest"},
+  "websites": {
+    "erp": {"label": "ERP 系統", "source": "F:/GUC-ERP-main/GUC-ERP-main", "container": "guc-local-erp-1"},
+    "quotation": {"label": "會計管理系統", "source": "F:/GUC-Quotation-main/GUC-Quotation-main", "container": "guc-local-quotation-1"},
+    "site-data": {"label": "案場承攬系統", "source": "F:/GUC-Site-Data-main/GUC-Site-Data-main", "container": "guc-local-site-data-1"}
+  },
+  "storage": {"container": "supabase-storage", "containerPath": "/var/lib/storage"},
+  "deploymentRoot": "F:/GUC-Docker",
+  "nasEnvironmentFile": "F:/GUC-Docker/.env.production",
+  "maxBytes": 107374182400,
+  "maxUploadBytes": 107374182400,
+  "restoreTmpfsBytes": 8589934592
+}
