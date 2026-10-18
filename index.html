@@ -156,7 +156,10 @@
               <label>結束日期<input id="materialDateTo" type="date" /></label>
               <p class="report-filter-hint">日期區間同時套用於取貨日期與工作日誌日期；留白代表不限。</p>
             </article><button type="button" data-gr-reset-filters>清除篩選</button></details>
-            <div class="report-tabs gr-tabs" role="tablist" aria-label="工作內容統計報表分頁"><button class="active" type="button" role="tab" aria-selected="true" data-report-tab="overview">總覽</button><button type="button" role="tab" aria-selected="false" data-report-tab="materials">用料統計</button><button type="button" role="tab" aria-selected="false" data-report-tab="workers">施工人員</button><button type="button" data-gr-refresh>重新讀取</button></div>
+            <div class="gr-report-toolbar">
+              <div class="report-tabs gr-tabs" role="tablist" aria-label="工作內容統計報表分頁"><button class="active" type="button" role="tab" aria-selected="true" data-report-tab="overview">總覽</button><button type="button" role="tab" aria-selected="false" data-report-tab="materials">用料統計</button><button type="button" role="tab" aria-selected="false" data-report-tab="workers">施工人員</button><button type="button" data-gr-refresh>重新讀取</button></div>
+              <details id="reportExportMenu" class="gr-export-menu" hidden><summary>匯出 Excel</summary><div class="gr-export-options" role="group" aria-label="選擇匯出項目"></div></details>
+            </div>
             <div class="material-summary" id="materialSummary"><article class="empty-state"><span>≣</span><h2>請選擇客戶與工作內容</h2><p>系統只會顯示該客戶實際關聯的工作內容。</p></article></div>
           </section>
 

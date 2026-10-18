@@ -65,6 +65,18 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .report-tabs button{min-width:112px;border:0;border-radius:8px;background:transparent;padding:9px 15px;color:#5b6965;font-weight:750}
 .report-tabs button.active{background:#fff;color:var(--green-800);box-shadow:0 3px 10px rgba(18,55,44,.1)}
 .report-tabs button:focus-visible{outline:2px solid var(--green-700);outline-offset:1px}
+.guc-report .gr-report-toolbar{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.guc-report .gr-report-toolbar .gr-tabs{margin:0;min-width:0}
+.guc-report .gr-export-menu{position:relative;margin-left:auto;flex-shrink:0}
+.guc-report .gr-export-menu>summary{display:flex;align-items:center;justify-content:center;gap:12px;min-height:44px;padding:8px 14px;border:1px solid var(--gr-line);border-radius:6px;background:var(--gr-surface);color:var(--gr-accent);font:600 var(--gr-label-size,14px)/1.45 var(--gr-font,inherit);cursor:pointer;list-style:none;box-sizing:border-box}
+.guc-report .gr-export-menu>summary::-webkit-details-marker{display:none}
+.guc-report .gr-export-menu>summary::after{content:'▾';font-size:12px}
+.guc-report .gr-export-menu[open]>summary::after{content:'▴'}
+.guc-report .gr-export-menu>summary:hover,.guc-report .gr-export-menu[open]>summary{background:#e4e9dd}
+.guc-report .gr-export-options{position:absolute;right:0;top:calc(100% + 8px);z-index:20;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:min(460px,calc(100vw - 48px));padding:12px;border:1px solid var(--gr-line);border-radius:8px;background:var(--gr-surface);box-shadow:0 8px 24px #303b3424;box-sizing:border-box}
+.guc-report .gr-export-options button{width:100%;text-align:left;min-width:0}
+@media(max-width:780px){.guc-report .gr-report-toolbar .gr-tabs{flex:1 1 100%}.guc-report .gr-export-menu{width:100%;margin-left:0}.guc-report .gr-export-options{position:static;width:100%;margin-top:8px;box-shadow:none}}
+@media(max-width:560px){.guc-report .gr-export-options{grid-template-columns:1fr}}
 .report-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,#fff,#f1faf6)}
 .report-heading>div{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}.report-heading h2{font-size:20px}.report-heading p{width:100%;margin:0;color:var(--muted);font-size:13px}
 .report-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}.report-kpis.compact{grid-template-columns:repeat(4,minmax(0,1fr))}
