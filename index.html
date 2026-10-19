@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/table-sorting.css" />
   <link rel="stylesheet" href="/work-content-report.css" />
   <link rel="stylesheet" href="/shared-excel-export.css" />
-  <link rel="stylesheet" href="/system-backup.css" />
+  <link rel="stylesheet" href="/system-backup.css" /><link rel="stylesheet" href="/site-returns.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -30,8 +30,7 @@
           <a class="nav-item" data-page="inventory" href="/?page=inventory"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/inventory.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>商品與庫存</span></a>
           <a class="nav-item" data-page="crm" href="/?page=crm"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/crm.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>客戶與供應商</span></a>
           <a class="nav-item" data-page="worklogs" href="/?page=worklogs" data-work-group><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/worklogs.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>工作管理</span></a>
-          <a class="nav-item" data-page="backup" href="/?page=backup"><span class="nav-icon-shell" aria-hidden="true">▣</span><span>系統備份</span></a>
-          <a class="nav-item" data-page="settings" href="/?page=settings"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/settings.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>管理設定</span></a>
+          <a class="nav-item" data-page="settings" href="/?page=settings"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/settings.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>系統設定</span></a>
         </nav>
         <div class="sidebar-foot">
           <div class="avatar" id="userAvatar">使</div>
@@ -52,7 +51,6 @@
         </header>
 
         <div class="content">
-          <section class="page" id="backup" data-page="backup"><div id="systemBackupRoot" aria-live="polite"></div></section>
           <nav id="workManagementTabs" class="section-tabs work-management-tabs" aria-label="工作管理子頁籤" hidden>
             <a data-work-tab data-page="worklogs" href="/?page=worklogs" aria-controls="worklogs">工作日誌</a>
             <a data-work-tab data-page="projects" href="/?page=projects" aria-controls="projects">工作內容</a>
@@ -86,11 +84,17 @@
             <div class="table-card"><table><thead><tr><th data-table-sort="appointment" data-key="appointment_date">預約日期</th><th data-table-sort="appointment" data-key="customer">客戶</th><th data-table-sort="appointment" data-key="department">科室</th><th data-table-sort="appointment" data-key="typeLabel">類型</th><th data-table-sort="appointment" data-key="instructions">內容</th><th data-table-sort="appointment" data-key="assignee">責任人</th><th data-table-sort="appointment" data-key="statusLabel">狀態</th><th data-table-sort="appointment" data-key="assigned_date">指派日期</th><th>操作</th></tr></thead><tbody id="appointmentTable"></tbody></table></div><div id="appointmentPagination"></div>
           </section>
           <section class="page" id="transactions" data-page="transactions">
-            <div class="section-tabs" data-tabs="transaction"><button class="active" data-tab="pickups">取貨</button><button data-tab="receipts">進貨</button></div>
+            <div class="section-tabs" data-tabs="transaction"><button class="active" data-tab="pickups">取貨</button><button data-tab="receipts">進貨</button><button data-tab="returns">案場餘料入庫</button></div>
             <div class="tab-pane active" data-pane="pickups">
               <div class="page-actions"><div><h2>取貨管理</h2><p>一張取貨單管理多筆品項，開啟即可整單修改</p></div><button class="primary" data-open="pickupModal">＋ 新增取貨單</button></div>
               <div class="filterbar"><label class="search">⌕<input id="pickupSearch" placeholder="搜尋單號、日期、客戶、工作內容、品項或取貨帳號" /></label><label>日期起<input type="date" id="pickupDateFrom" data-transaction-filter="pickup"></label><label>日期迄<input type="date" id="pickupDateTo" data-transaction-filter="pickup"></label><label>工作內容<select id="pickupScopeFilter" data-transaction-filter="pickup"><option value="">全部</option></select></label></div>
               <p class="list-row-hint">雙擊資料列開啟內容；手機點一下，鍵盤按 Enter。</p><div class="table-card"><table><thead><tr><th data-table-sort="pickup" data-key="documentNo">取貨單號</th><th data-table-sort="pickup" data-key="date">取貨日期</th><th data-table-sort="pickup" data-key="customer">客戶</th><th data-table-sort="pickup" data-key="project">工作內容</th><th data-table-sort="pickup" data-key="itemCount">品項種類數</th><th data-table-sort="pickup" data-key="account">取貨帳號</th><th data-table-sort="pickup" data-key="note">備註</th><th>操作</th></tr></thead><tbody id="pickupTable"></tbody></table></div><div id="pickupPagination"></div>
+            </div>
+            <div class="tab-pane" data-pane="returns" id="siteReturnsPane">
+              <div class="page-actions"><div><h2>案場餘料入庫</h2><p>整張單據退回剩餘材料，同步庫存與工作內容淨用料。</p></div><button class="primary" type="button" id="newSiteReturn" hidden>＋ 新增餘料入庫單</button></div>
+              <div class="filterbar"><label class="search">⌕<input id="returnSearch" placeholder="搜尋單號、客戶、案名、品項或備註"></label><label>日期起<input id="returnFrom" type="date"></label><label>日期迄<input id="returnTo" type="date"></label><label>客戶分類<select id="returnCategory"><option value="">全部客戶分類</option></select></label><label>客戶名稱<select id="returnCustomer"><option value="">全部客戶</option></select></label><label>工作案名<select id="returnProject"><option value="">全部工作案名</option></select></label><label>狀態<select id="returnStatus"><option value="">全部狀態</option><option value="active">有效</option><option value="cancelled">已取消</option></select></label><button type="button" class="outline" data-return-clear>清除篩選</button><button type="button" class="outline" data-return-refresh>重新讀取</button></div>
+              <p data-return-message role="status"></p><p class="list-row-hint">一張單據顯示一列；雙擊或按「查看明細」可開啟全部材料。已取消的單據保留歷史。</p>
+              <div class="table-card"><table><thead><tr><th>入庫單號</th><th>入庫日期</th><th>客戶分類</th><th>客戶名稱</th><th>工作案名</th><th>入庫筆數</th><th>入庫人員</th><th>狀態</th><th>操作</th></tr></thead><tbody id="returnTable"></tbody></table></div><div id="returnPagination"></div>
             </div>
             <div class="tab-pane" data-pane="receipts">
               <div class="page-actions"><div><h2>進貨管理</h2><p>一張進貨單管理多筆品項，開啟即可整單修改</p></div><button class="primary" data-open="receiptModal">＋ 新增進貨單</button></div>
@@ -154,7 +158,7 @@
               <label>選擇工作內容<select id="materialProject" disabled><option value="">請先選擇客戶</option></select></label>
               <label>起始日期<input id="materialDateFrom" type="date" /></label>
               <label>結束日期<input id="materialDateTo" type="date" /></label>
-              <p class="report-filter-hint">日期區間同時套用於取貨日期與工作日誌日期；留白代表不限。</p>
+              <p class="report-filter-hint">日期區間同時套用於取貨、退料與工作日誌日期；留白代表不限。</p>
             </article><button type="button" data-gr-reset-filters>清除篩選</button></details>
             <div class="gr-report-toolbar">
               <div class="report-tabs gr-tabs" role="tablist" aria-label="工作內容統計報表分頁"><button class="active" type="button" role="tab" aria-selected="true" data-report-tab="overview">總覽</button><button type="button" role="tab" aria-selected="false" data-report-tab="materials">用料統計</button><button type="button" role="tab" aria-selected="false" data-report-tab="workers">施工人員</button><button type="button" data-gr-refresh>重新讀取</button></div>
@@ -164,7 +168,8 @@
           </section>
 
           <section class="page" id="settings" data-page="settings">
-            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="permissions">權限管理</button><button data-tab="logs">系統日誌</button></div>
+            <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="permissions">權限管理</button><button data-tab="logs">系統日誌</button><button data-tab="backup">系統備份</button></div>
+            <div class="tab-pane" id="backup" data-pane="backup"><div id="systemBackupRoot" aria-live="polite"></div></div>
             <div class="tab-pane" data-pane="permissions"><div id="permissionSettings"></div><div id="privateAccessSettings"></div></div>
             <div class="tab-pane active" data-pane="system"><article class="panel settings-card"><h2>系統資訊</h2><dl class="details"><div><dt>系統名稱</dt><dd>GUC ERP／工作內容與庫存管理</dd></div><div><dt>部署環境</dt><dd>Vercel Production</dd></div><div><dt>資料模式</dt><dd>Supabase 單一主要資料來源</dd></div><div><dt>受保護後端</dt><dd>既有 inventory-gateway</dd></div><div><dt>案場系統</dt><dd>由登入後系統選擇開啟獨立網站</dd></div></dl></article></div>
             <div class="tab-pane" data-pane="users">
@@ -261,6 +266,8 @@
     <script src="/table-sorting.js" defer></script>
     <script src="/shared-excel-export.js" defer></script>
     <script src="/excel-export-ui.js" defer></script>
+    <dialog id="siteReturnDialog" aria-labelledby="siteReturnTitle"><h2 id="siteReturnTitle">案場餘料入庫單</h2><form id="siteReturnForm"><fieldset><div class="return-form-grid"><label>入庫單號<input name="number" readonly></label><label>入庫日期<input name="date" type="date" required></label><label>入庫人員<input name="account" readonly></label><label>客戶分類<select name="category" required></select></label><label>客戶名稱<select name="customer" required></select></label><label>工作案名<select name="project" required></select></label></div><div class="batch-editor-head"><h3>材料明細</h3><button type="button" class="outline" data-return-add>＋ 新增一列</button></div><div data-return-lines></div><section class="batch-editor pickup-item-search" data-return-item-search aria-labelledby="returnItemSearchHeading"><div class="batch-editor-head"><div><b id="returnItemSearchHeading">搜尋品項</b><small>點選結果會帶入第一筆空白入庫明細；沒有空白列時新增一列。</small></div></div><label>關鍵字<input type="search" id="returnItemSearch" placeholder="搜尋名稱、品牌、型號或編號" autocomplete="off"></label><div id="returnItemSearchResults" class="pickup-item-results"></div><p id="returnItemSearchStatus" role="status" aria-live="polite"></p></section><label>備註<textarea name="note" maxlength="500"></textarea></label></fieldset><p data-return-form-message role="alert"></p><div class="return-actions"><button type="button" class="outline" data-return-close>關閉</button><button type="submit" class="primary" data-return-save>儲存整張入庫單</button></div></form></dialog>
+    <script src="/site-returns.js" defer></script>
     <script src="/system-backup.js" defer></script>
   </body>
 </html>

@@ -1,5 +1,5 @@
 const PERMISSION_LABELS = {data_export:'Excel 資料匯出',quotation_invoices:'發票管理',system_backups:'系統備份專用權限',purchase_prices:'進貨價格',accounting_reports:'會計工作統計',accounting_prices:'會計用料價格',appointments:'客戶預約事項',dashboard:'首頁',worklogs:'工作日誌',purchases:'進貨管理',pickups:'取貨管理',inventory:'商品與庫存',customers:'客戶管理',projects:'工作內容管理',suppliers:'供應商',repairs:'維修品管理',reports:'工作內容統計報表',backup:'資料備份／復原',settings:'系統設定',users:'使用者管理',audit:'系統日誌',site:'案場系統入口',phone:'電話設備',monitoring:'監控設備',equipment:'其他案場設備',history:'維修／設定紀錄',credentials:'設備帳密',monitoring_import:'監控 Excel 匯入'};
-const PAGE_PERMISSIONS={appointments:['appointments'],dashboard:['dashboard'],transactions:['purchases','pickups'],repairs:['repairs'],inventory:['inventory'],crm:['customers','suppliers'],projects:['projects'],worklogs:['worklogs'],materials:['reports'],backup:['system_backups'],settings:['settings','users','audit']};
+const PAGE_PERMISSIONS={appointments:['appointments'],dashboard:['dashboard'],transactions:['purchases','pickups'],repairs:['repairs'],inventory:['inventory'],crm:['customers','suppliers'],projects:['projects'],worklogs:['worklogs'],materials:['reports'],backup:['system_backups'],settings:['settings','users','audit','system_backups']};
 const MODAL_PERMISSIONS={appointmentModal:'appointments',customerModal:'customers',contractServiceModal:'customers',customerCategoryModal:'customers',customerDepartmentModal:'customers',supplierModal:'suppliers',accountModal:'users',categoryModal:'inventory',itemModal:'inventory',projectModal:'projects',pickupModal:'pickups',receiptModal:'purchases',repairModal:'repairs',workLogModal:'worklogs',workLogPickupModal:'pickups',attachmentModal:'equipment'};
 function canModule(module,action='VIEW'){
  const user=state.currentUser;if(!user)return false;if(user.role==='admin')return true;
@@ -30,13 +30,13 @@ function applyPermissionUI(){
  document.querySelector('#itemBatchForm button[type=submit]').disabled=!canModule('inventory','CREATE');
  document.querySelector('#adjustForm button').disabled=!canModule('inventory','CREATE');
  for(const pane of ['items','adjust'])document.querySelectorAll('#inventory [data-tab="'+pane+'"],#inventory [data-pane="'+pane+'"]').forEach(el=>el.hidden=!canModule('inventory','CREATE'));
- for(const [tab,module]of [['users','users'],['logs','audit']])document.querySelectorAll('#settings [data-tab="'+tab+'"],#settings [data-pane="'+tab+'"]').forEach(el=>el.hidden=!canModule(module));
+ for(const [tab,module]of [['users','users'],['logs','audit'],['backup','system_backups']])document.querySelectorAll('#settings [data-tab="'+tab+'"],#settings [data-pane="'+tab+'"]').forEach(el=>el.hidden=!canModule(module));
  document.querySelectorAll('#settings [data-tab="permissions"]').forEach(el=>el.hidden=!canAdmin()&&!state.currentUser?.private_access?.can_configure);
  document.querySelectorAll('[data-delete-account]').forEach(el=>el.hidden=!canModule('users','DELETE')||!canManagePrivateIdentity(el.dataset.deleteAccount));
  if(typeof renderPrivateAccessUI==='function')renderPrivateAccessUI();
  const scoped=state.currentUser?.project_scoped;
  if(scoped)document.querySelectorAll('[data-work-log-pickup],[data-work-log-attachment]').forEach(el=>el.hidden=true);
- for(const [scope,tabs] of Object.entries({transactions:{pickups:'pickups',receipts:'purchases'},crm:{customers:'customers',suppliers:'suppliers'}})){
+ for(const [scope,tabs] of Object.entries({transactions:{pickups:'pickups',receipts:'purchases',returns:'purchases'},crm:{customers:'customers',suppliers:'suppliers'}})){
   const section=document.querySelector(`.page[data-page="${scope}"]`);if(!section)continue;
   for(const [tab,module]of Object.entries(tabs)){section.querySelectorAll(`[data-tab="${tab}"]`).forEach(el=>el.hidden=!canModule(module));section.querySelectorAll(`[data-pane="${tab}"]`).forEach(el=>el.hidden=!canModule(module));}
   const active=section.querySelector('.section-tabs [data-tab].active');if(active?.hidden)section.querySelector('.section-tabs [data-tab]:not([hidden])')?.click();
