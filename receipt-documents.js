@@ -1,31 +1,33 @@
 // One UI document, existing stock rows as its lines. Legacy rows stay separate.
-function receiptDocumentRows(id){return state.receipts.filter(row=>(row.documentId||row.id)===id).sort((a,b)=>(a.lineNo||0)-(b.lineNo||0)||String(a.id).localeCompare(String(b.id)));}
-function receiptDocument(id){return receiptDocumentRows(id)[0];}
+function receiptEditorKind(){return document.querySelector('#simpleModal')?.dataset.type==='supplierReturnModal'?'supplierReturn':'receipt';}
+function receiptSourceRows(kind='receipt'){return kind==='supplierReturn'?(state.supplierReturnDocuments||[]).flatMap(d=>(d.lines||[]).map(l=>({id:l.id,documentId:d.id,documentNo:d.document_no,date:d.return_date,supplierId:d.supplier_id,itemId:l.inventory_item_id,quantity:Number(l.quantity),unitPrice:l.unit_price??'',lineNo:l.line_no,note:l.note,customerIds:d.customer_departments.map(c=>c.customer_id),customerDepartments:d.customer_departments,rowVersion:d.row_version}))):state.receipts;}
+function receiptDocumentRows(id,kind='receipt'){return receiptSourceRows(kind).filter(row=>(row.documentId||row.id)===id).sort((a,b)=>(a.lineNo||0)-(b.lineNo||0)||String(a.id).localeCompare(String(b.id)));}
+function receiptDocument(id,kind='receipt'){return receiptDocumentRows(id,kind)[0];}
 function validReceiptLine(row){return !!row.id&&!!row.itemId&&!row.deleted_at&&!row.deletedAt&&Number.isFinite(Number(row.quantity))&&Number(row.quantity)>0;}
-function renderReceiptDocuments(){
-  const groups=new Map();for(const row of state.receipts.filter(validReceiptLine)){const id=row.documentId||row.id;if(!groups.has(id))groups.set(id,[]);groups.get(id).push(row);}
-  const config=tableState.receipt,rows=[...groups].map(([id,lines])=>{
-    lines=receiptDocumentRows(id).filter(validReceiptLine);const first=lines[0];
+function renderReceiptDocuments(kind='receipt'){
+  const groups=new Map();for(const row of receiptSourceRows(kind).filter(validReceiptLine)){const id=row.documentId||row.id;if(!groups.has(id))groups.set(id,[]);groups.get(id).push(row);}
+  const config=tableState[kind],rows=[...groups].map(([id,lines])=>{
+    lines=receiptDocumentRows(id,kind).filter(validReceiptLine);const first=lines[0];
     const names=lines.map(line=>{const item=byId(state.inventory,line.itemId);return `${item?.code||''} ${item?.name||''} ${item?.brand||''} ${item?.model||''}`.trim();});
     return {id,date:first.date,supplier:byId(state.suppliers,first.supplierId)?.name||first.supplierName||'',
       documentNo:first.documentNo||'',item:names.join('、'),itemNames:names,itemCount:lines.length,
       customers:[...new Set(lines.flatMap(line=>line.customerIds||[]))].map(key=>byId(state.customers,key)?.name||'').join('、'),
       note:lines.map(line=>line.note).filter(Boolean).join('；')};
-  }).filter(row=>matches([row.documentNo,row.date,row.supplier,row.item,row.customers,row.note],config.search)&&transactionDocumentFilter('receipt',row));
-  const page=tablePage('receipt',sortRows(rows,config.sortKey||'date',config.direction||'desc'));
-  document.querySelector('#receiptTable').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes('receiptModal',row.id,canModule('purchases','UPDATE'))}><td>${esc(row.documentNo)||'舊單（未編號）'}</td><td>${esc(row.date)}</td><td>${esc(row.supplier)}</td><td>${row.itemNames.slice(0,2).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>2?`<small>另有 ${row.itemNames.length-2} 筆明細</small>`:''}</td><td>${row.itemCount} 筆</td><td>${esc(row.customers)||'—'}</td><td>${esc(row.note)}</td><td class="actions">${canModule('purchases','DELETE')?`<button data-delete-receipt="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(8);
-  renderPagination('receipt','receiptPagination',page.total);
+  }).filter(row=>matches([row.documentNo,row.date,row.supplier,row.item,row.customers,row.note],config.search)&&transactionDocumentFilter(kind,row));
+  const page=tablePage(kind,sortRows(rows,config.sortKey||'date',config.direction||'desc'));
+  document.querySelector('#'+kind+'Table').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes(kind==='receipt'?'receiptModal':'supplierReturnModal',row.id,canModule('purchases','UPDATE'))}><td>${esc(row.documentNo)||'舊單（未編號）'}</td><td>${esc(row.date)}</td><td>${esc(row.supplier)}</td><td>${row.itemNames.slice(0,2).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>2?`<small>另有 ${row.itemNames.length-2} 筆明細</small>`:''}</td><td>${row.itemCount} 筆</td><td>${esc(row.customers)||'—'}</td><td>${esc(row.note)}</td><td class="actions">${canModule('purchases','DELETE')?`<button data-delete-${kind==='receipt'?'receipt':'supplier-return'}="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(8);
+  renderPagination(kind,kind+'Pagination',page.total);
 }
-function receiptDocumentFields(id){
-  const row=receiptDocument(id)||{};
-  return receiptDocumentNumberField(row.documentNo,id)+inputField('date','進貨日期','date',true,row.date||today())+selectField('supplierId','供應商',state.suppliers.map(s=>[s.id,s.name]),row.supplierId)+
-    `<div class="batch-editor span-2"><div class="batch-editor-head"><div><b>進貨明細</b><small>整張進貨單一起儲存；每列可修改品項、數量及備註。</small></div>${canModule('purchases','CREATE')?'<button class="outline" type="button" data-add-transaction-row="receipt">＋ 新增一列</button>':''}</div><div id="transactionBatchRows" class="transaction-batch receipt-batch"></div></div>`+
-    receiptFinancialFields(id)+transactionItemSearchFields('receipt')+receiptCustomerPicker(row.customerIds||[])+receiptProjectField(id)+submitField(id?'儲存整張進貨單':'建立進貨單');
+function receiptDocumentFields(id,kind='receipt'){
+  const row=receiptDocument(id,kind)||{},label=kind==='receipt'?'進貨':'退貨';
+  return receiptDocumentNumberField(row.documentNo,id,label)+inputField('date',label+'日期','date',true,row.date||today())+selectField('supplierId','供應商',state.suppliers.map(s=>[s.id,s.name]),row.supplierId)+
+    `<div class="batch-editor span-2"><div class="batch-editor-head"><div><b>${label}明細</b><small>整張${label}單一起儲存；每列可修改品項、數量及備註。</small></div>${canModule('purchases','CREATE')?'<button class="outline" type="button" data-add-transaction-row="receipt">＋ 新增一列</button>':''}</div><div id="transactionBatchRows" class="transaction-batch receipt-batch"></div></div>`+
+    receiptFinancialFields(id,kind)+transactionItemSearchFields('receipt',label)+receiptCustomerPicker(row.customerIds||[],row)+receiptProjectField(id,kind)+submitField(id?'儲存整張'+label+'單':'建立'+label+'單');
 }
-function initializeReceiptDocument(id){
-  const form=document.querySelector('#modalForm'),lines=receiptDocumentRows(id);
+function initializeReceiptDocument(id,kind='receipt'){
+  const form=document.querySelector('#modalForm'),lines=receiptDocumentRows(id,kind);
   // Pin all versions on open; reference refresh must not replace this snapshot.
-  form._receiptDocument={id:id||uid(),existing:lines.map(row=>({id:row.id,row_version:row.rowVersion}))};
+  form._receiptDocument={kind,requestId:uid(),rowVersion:lines[0]?.rowVersion??null,id:id||uid(),existing:lines.map(row=>({id:row.id,row_version:row.rowVersion}))};
   for(const row of lines){addTransactionBatchRow('receipt',{...row,categoryId:byId(state.inventory,row.itemId)?.categoryId||''});
     const element=form.querySelector('#transactionBatchRows').lastElementChild;element.dataset.receiptId=row.id;
     element.querySelector('[data-remove-batch-row]').hidden=!canModule('purchases','DELETE');
@@ -35,11 +37,14 @@ function initializeReceiptDocument(id){
 }
 async function saveReceiptDocument(form,id,data){
   const rows=collectTransactionBatchRows('receipt'),elements=[...form.querySelectorAll('[data-batch-row]')],snapshot=form._receiptDocument;
-  await mutate(id?'update_stock_receipt_document':'create_stock_receipt_document',{
+  const isReturn=snapshot.kind==='supplierReturn',operation=isReturn?(id?'update_supplier_return':'create_supplier_return'):(id?'update_stock_receipt_document':'create_stock_receipt_document');
+  const payload={
     document_id:snapshot.id,existing:snapshot.existing,document_no:data.documentNo?.trim()||null,receipt_date:data.date,supplier_id:data.supplierId,
     customer_ids:[...new FormData(form).getAll('receiptCustomerId')],customer_departments:collectReceiptCustomerDepartments(),receipt_metadata:receiptMetadataPayload(form,id),
     rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,note:row.note,...receiptPricePayload(elements[index])}))
-  },id?'整張進貨單已修改':'進貨單已建立');
+  };
+  if(isReturn){payload.return_date=payload.receipt_date;delete payload.receipt_date;payload.row_version=snapshot.rowVersion;payload.request_id=snapshot.requestId;const signature=JSON.stringify({...payload,request_id:null});if(snapshot.signature&&snapshot.signature!==signature)payload.request_id=snapshot.requestId=uid();snapshot.signature=signature;}
+  await mutate(operation,payload,isReturn?(id?'整張退貨單已修改':'退貨單已建立'):(id?'整張進貨單已修改':'進貨單已建立'));
 }
 function receiptPriceField(row){
   if(!canModule('purchase_prices','VIEW'))return '';
@@ -56,17 +61,17 @@ function receiptPricePayload(element){
 }
 document.addEventListener('click',event=>{const button=event.target.closest('[data-clear-receipt-price]');if(button&&canModule('purchase_prices','DELETE')){button.closest('label').querySelector('input').value='';updateReceiptMoneySummary();}});
 
-function receiptHeader(id){return (state.receiptDocuments||[]).find(d=>d.id===id)||{};}
-function receiptFinancialFields(id){
+function receiptHeader(id,kind=receiptEditorKind()){if(kind==='supplierReturn'){const d=(state.supplierReturnDocuments||[]).find(d=>d.id===id);return d?{receipt_project_id:d.project_id,receipt_financials:d.financials}:{};}return (state.receiptDocuments||[]).find(d=>d.id===id)||{};}
+function receiptFinancialFields(id,kind='receipt'){
  if(!canModule('purchase_prices','VIEW'))return '';
- const money=receiptHeader(id).receipt_financials,settings=state.moneySettings;
+ const money=receiptHeader(id,kind).receipt_financials,settings=state.moneySettings;
  const editable=canModule('purchase_prices',money?.mode?'UPDATE':'CREATE');
  const mode=money?.mode??(id||!editable?'':'exclusive'),rate=money?.tax_rate_basis_points??settings?.default_tax_rate_basis_points;
- return `<fieldset class="receipt-money span-2"><legend>進貨計價</legend><label>計價方式<select name="receiptTaxMode" ${editable?'':'disabled'}>${!mode?'<option value="">未設定計稅（保留原單價）</option>':''}<option value="exclusive" ${mode==='exclusive'?'selected':''}>未稅</option><option value="inclusive" ${mode==='inclusive'?'selected':''}>含稅</option></select></label><label>稅率（%）<input name="receiptTaxRate" type="number" min="0" max="100" step="0.01" value="${rate==null?'':esc(rate/100)}" ${editable?'':'readonly'}></label><label>整單折扣（元）<input name="receiptDiscount" type="number" min="0" max="99999999999999" step="1" value="${esc(money?.discount_amount||0)}" ${editable?'':'readonly'}></label><p>折扣先從整單輸入金額扣除，再依含稅／未稅方式計稅。單價依所選計價方式輸入；TWD 品項小計及整單稅額四捨五入至整元。</p><div id="receiptMoneySummary" aria-live="polite"></div></fieldset>`;
+ return `<fieldset class="receipt-money span-2"><legend>${kind==='receipt'?'進貨':'退貨'}計價</legend><label>計價方式<select name="receiptTaxMode" ${editable?'':'disabled'}>${!mode?'<option value="">未設定計稅（保留原單價）</option>':''}<option value="exclusive" ${mode==='exclusive'?'selected':''}>未稅</option><option value="inclusive" ${mode==='inclusive'?'selected':''}>含稅</option></select></label><label>稅率（%）<input name="receiptTaxRate" type="number" min="0" max="100" step="0.01" value="${rate==null?'':esc(rate/100)}" ${editable?'':'readonly'}></label><label>整單折扣（元）<input name="receiptDiscount" type="number" min="0" max="99999999999999" step="1" value="${esc(money?.discount_amount||0)}" ${editable?'':'readonly'}></label><p>折扣先從整單輸入金額扣除，再依含稅／未稅方式計稅。單價依所選計價方式輸入；TWD 品項小計及整單稅額四捨五入至整元。</p><div id="receiptMoneySummary" aria-live="polite"></div></fieldset>`;
 }
-function receiptProjectField(id){
- const projectId=receiptHeader(id).receipt_project_id||'';
- return `<label class="span-2">關聯工作內容（選填）<select name="receiptProjectId" data-original-project="${esc(projectId)}"><option value="">未分配工作內容</option>${state.projects.filter(p=>p.id===projectId).map(p=>`<option value="${esc(p.id)}" selected>${esc(p.code)}｜${esc(p.name)}</option>`).join('')}</select><small>先勾選訂貨客戶；只有明確選取的工作內容會列入會計報表進貨歷史。</small></label>`;
+function receiptProjectField(id,kind='receipt'){
+ const projectId=receiptHeader(id,kind).receipt_project_id||'';
+ return `<label class="span-2">關聯工作內容（選填）<select name="receiptProjectId" data-original-project="${esc(projectId)}"><option value="">未分配工作內容</option>${state.projects.filter(p=>p.id===projectId).map(p=>`<option value="${esc(p.id)}" selected>${esc(p.code)}｜${esc(p.name)}</option>`).join('')}</select><small>先勾選訂貨客戶；${kind==='receipt'?'只有明確選取的工作內容會列入會計報表進貨歷史。':'可關聯這張退貨單所屬的工作內容。'}</small></label>`;
 }
 function syncReceiptProjectOptions(){
  const form=document.querySelector('#modalForm'),select=form?.elements.receiptProjectId;if(!select)return;
@@ -120,7 +125,7 @@ function previewReceiptDocument(payload){
     Object.assign(existing,{documentId:payload.document_id,documentNo:number,numberingSupplierId:scope,lineNo:index+1,date:payload.receipt_date,supplierId:payload.supplier_id,itemId:row.inventory_item_id,...(Object.hasOwn(row,"unit_price")?{unitPrice:row.unit_price??""}:{}),quantity:row.quantity,note:row.note||'',customerIds:payload.customer_ids,customerDepartments:payload.customer_departments,rowVersion:existing.rowVersion+1});});
 }
 
-function receiptDocumentNumberField(number,id){return `<label class="span-2">進貨單號<input name="documentNo" maxlength="64" value="${esc(number||'')}" placeholder="留白時自動產生"><small>${id?'可手動修改；留白則保留原單號。修改日期／廠商不會自動重編。':'留白時依進貨日期及廠商自動編號，也可自行輸入。'} 單號須在原編號廠商範圍內不重複。</small></label>`;}
+function receiptDocumentNumberField(number,id,label='進貨'){return `<label class="span-2">${label}單號<input name="documentNo" maxlength="64" value="${esc(number||'')}" placeholder="留白時自動產生"><small>${id?'可手動修改；留白則保留原單號。修改日期／廠商不會自動重編。':'留白時依'+label+'日期及廠商自動編號，也可自行輸入。'} 單號須在原編號廠商範圍內不重複。</small></label>`;}
 function documentNumberField(number,id){return `<label class="span-2">單號<output>${esc(number)||(id?'舊單（未編號）':'儲存後依實際日期產生')}</output></label>`;}
 function pickupDocumentRows(id){return state.pickups.filter(row=>(row.documentId||row.id)===id).sort((a,b)=>(a.requestRow||0)-(b.requestRow||0)||String(a.id).localeCompare(String(b.id)));}
 function pickupDocument(id){return pickupDocumentRows(id)[0];}
@@ -143,10 +148,10 @@ function renderPickupDocuments(){
 }
 function transactionDocumentFilter(kind,row){
   const from=document.querySelector(`#${kind}DateFrom`)?.value||'',to=document.querySelector(`#${kind}DateTo`)?.value||'',scope=document.querySelector(`#${kind}ScopeFilter`)?.value||'';
-  return (!from||row.date>=from)&&(!to||row.date<=to)&&(!scope||(kind==='receipt'?receiptDocument(row.id)?.supplierId:row.projectId)===scope);
+  return (!from||row.date>=from)&&(!to||row.date<=to)&&(!scope||(['receipt','supplierReturn'].includes(kind)?receiptDocument(row.id,kind)?.supplierId:row.projectId)===scope);
 }
 function refreshTransactionFilters(){
-  for(const [kind,options] of [['receipt',state.suppliers.map(row=>[row.id,row.name])],['pickup',state.projects.map(row=>[row.id,`${row.code}｜${row.name}`])]]){
+  for(const [kind,options] of [['supplierReturn',state.suppliers.map(row=>[row.id,row.name])],['receipt',state.suppliers.map(row=>[row.id,row.name])],['pickup',state.projects.map(row=>[row.id,`${row.code}｜${row.name}`])]]){
     const select=document.querySelector(`#${kind}ScopeFilter`);if(!select)continue;const current=select.value;
     select.innerHTML='<option value="">全部</option>'+options.map(([id,label])=>`<option value="${esc(id)}">${esc(label)}</option>`).join('');select.value=current;
   }
@@ -168,3 +173,6 @@ function previewPickupDocument(payload){
   payload.rows.forEach(row=>{let existing=byId(state.pickups,row.id);if(!existing){existing={...first,id:uid(),requestId:'',requestRow:null,workAssignmentId:'',rowVersion:0};state.pickups.push(existing);}
     Object.assign(existing,{workLogId:existing.projectId===payload.project_id?existing.workLogId:'',date:payload.pickup_date,projectId:payload.project_id,customerId:payload.customer_id,itemId:row.inventory_item_id,...(Object.hasOwn(row,"unit_price")?{unitPrice:row.unit_price??""}:{}),quantity:row.quantity,note:row.note||'',rowVersion:existing.rowVersion+1});});
 }
+
+async function deleteSupplierReturnDocument(id){const d=(state.supplierReturnDocuments||[]).find(d=>d.id===id);if(d&&confirm(`確定刪除整張退貨單（${d.lines.length} 筆明細）？已退貨數量將回補庫存。`))await mutate('delete_supplier_return',{document_id:id,row_version:d.row_version,request_id:uid()},'退貨單已刪除，庫存已回補');}
+document.addEventListener('click',event=>{const button=event.target.closest('[data-delete-supplier-return]');if(button)deleteSupplierReturnDocument(button.dataset.deleteSupplierReturn).catch(error=>showToast(error.message,'刪除失敗'));});
