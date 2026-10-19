@@ -61,7 +61,7 @@ test('material quantity chart keeps white and black CV-180 ties as independent i
  const r=materialReport(),html=render({report:r,tab:'materials'}),bars=itemColumns(html);
  assert.deepEqual(bars.map(({id,value})=>[id,value]),[['white-tie',3],['black-tie',1],['wire',150],['roll',2],['uncategorized',5]]);
  assert.match(bars[0].body,/CV-180束帶\(白色\).*3 包/);assert.match(bars[1].body,/CV-180束帶\(黑\).*1 包/);
- assert.deepEqual(categoryGroups(html),['supplies','cable','__uncategorized']);
+ assert.deepEqual(categoryGroups(html),['supplies','cable','cable','__uncategorized']);
  assert.doesNotMatch(html,/4 包|12,345.66|單價（元）/);
  assert.doesNotMatch(html,/\sstyle=/);
  const heights=bars.slice(0,2).map(bar=>Number(bar.body.match(/class="gr-column-bar"[^>]*height="([\d.]+)"/)?.[1]));
@@ -69,6 +69,10 @@ test('material quantity chart keeps white and black CV-180 ties as independent i
 });
 test('material categories with mixed units keep separate quantity axes and never create a summed unit',()=>{
  const html=render({report:materialReport(),tab:'materials'});
+ const cards=[...html.matchAll(/<section class="gr-material-category"[\s\S]*?<\/section><\/section>/g)].map(m=>m[0]);
+ assert.equal(cards.length,4,'Each category/unit plot occupies its own grid card');
+ assert(cards.every(card=>(card.match(/class="gr-material-unit"/g)||[]).length===1));
+ assert.deepEqual(cards.map(card=>card.match(/data-gr-unit="([^"]+)"/)[1]),['包','米','捲','米']);
  assert.match(html,/data-gr-unit="米"/);assert.match(html,/data-gr-unit="捲"/);assert.doesNotMatch(html,/data-gr-unit="捲" hidden/);
  const charts=[...html.matchAll(/<svg\b[^>]*class="gr-columns"[^>]*>[\s\S]*?<\/svg>/g)].map(m=>m[0]);
  const wireChart=charts.find(chart=>chart.includes('data-gr-item-id="wire"'));
@@ -78,13 +82,23 @@ test('material categories with mixed units keep separate quantity axes and never
  assert.match(rollChart,/2 捲/);assert.doesNotMatch(rollChart,/data-gr-item-id="wire"/);
  assert.doesNotMatch(html,/data-chart-value="(?:152|157)"|152 米|152 捲/);
 });
+test('accounting 12pt column charts reserve axis and multi-line label space without changing ERP geometry',()=>{
+ const r=materialReport();r.materialStats[0].name='測試使用三行顯示的材料品項名稱與品牌';r.materialStats[0].quantity=12345.67;
+ const erp=render({report:r,tab:'materials'}),accounting=render({report:r,tab:'materials',accounting:true});
+ const firstSvg=html=>html.match(/<svg\b[^>]*class="gr-columns"[\s\S]*?<\/svg>/)[0];
+ const a=firstSvg(accounting),e=firstSvg(erp),width=svg=>Number(svg.match(/viewBox="0 0 ([\d.]+) 258"/)[1]);
+ assert.match(e,/class="gr-baseline" x1="42" y1="184"/);assert.match(e,/dy="15"/);
+ assert.match(a,/class="gr-baseline" x1="[\d.]+" y1="170"/);assert.match(a,/dy="25"/);assert(width(a)>width(e));
+ assert(Number(a.match(/class="gr-baseline" x1="([\d.]+)"/)[1])>42);
+ assert.deepEqual(itemColumns(accounting).map(({id,value})=>[id,value]),itemColumns(erp).map(({id,value})=>[id,value]));
+});
 test('category and item identities remain distinct when their display names are identical',()=>{
  const r=materialReport();
  r.materialCategoryStats[1].name='耗材';
  r.materialStats[1].name=r.materialStats[0].name;
  r.materialStats[2].categoryName='耗材';r.materialStats[3].categoryName='耗材';
  const html=render({report:r,tab:'materials'});
- assert.deepEqual(categoryGroups(html),['supplies','cable','__uncategorized']);
+ assert.deepEqual(categoryGroups(html),['supplies','cable','cable','__uncategorized']);
  assert.deepEqual(itemColumns(html).map(({id,value})=>[id,value]),[['white-tie',3],['black-tie',1],['wire',150],['roll',2],['uncategorized',5]]);
 });
 test('accounting item amounts and unpriced states follow price-view permission without using category totals',()=>{
@@ -93,6 +107,8 @@ test('accounting item amounts and unpriced states follow price-view permission w
  assert.deepEqual(itemColumns(hidden).slice(0,2).map(({value})=>value),[3,1]);
  assert.doesNotMatch(hidden,/37\.02|11\.11|12,345\.66|單價（元）|data-gr-edit-price|data-gr-clear-price/);
  const visible=render({report:r,tab:'materials',accounting:true,pricePermissions:{view:true}}),bars=itemColumns(visible);
+ assert.deepEqual(categoryGroups(visible),['supplies','cable','__uncategorized'],'Price mode keeps one card per category regardless of quantity units');
+ assert.equal(bars.length,r.materialStats.length,'Price mode must not duplicate items across quantity units');
  assert.deepEqual(bars.slice(0,4).map(({id,value})=>[id,value]),[['white-tie',37.02],['black-tie',11.11],['wire',12000],['roll',345.66]]);
  assert.match(bars[0].body,/\$37.02/);assert.match(bars[1].body,/\$11.11/);
  const missing=bars.find(bar=>bar.id==='uncategorized');
