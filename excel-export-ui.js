@@ -16,6 +16,7 @@
   ['construction_projects','constructionProjectTable','projects',()=>({q:value('constructionSearch'),construction_category:value('constructionCategoryFilter')})],
   ['construction_plans','constructionPlanningList','projects',()=>({q:value('planningSearch'),...projectFilters('planningFilter')})],
   ['worklogs','worklogTable','worklogs',()=>({q:value('worklogSearch'),category:value('worklogCustomerCategoryFilter'),customer_id:value('worklogCustomerFilter'),department_id:value('worklogDepartmentFilter'),project_id:value('worklogProjectFilter'),type:value('worklogTypeFilter')})],
+  ['site_returns','returnTable','purchases',()=>globalThis.GucSiteReturns?.filters()||{}],
   ['receipts','receiptTable','purchases',()=>({q:value('receiptSearch'),from:value('receiptDateFrom'),to:value('receiptDateTo'),supplier_id:value('receiptScopeFilter')})],
   ['pickups','pickupTable','pickups',()=>({q:value('pickupSearch'),from:value('pickupDateFrom'),to:value('pickupDateTo'),project_id:value('pickupScopeFilter')})],
   ['repairs','repairTable','repairs',()=>({q:value('repairSearch'),status:value('repairStatusFilter')})],

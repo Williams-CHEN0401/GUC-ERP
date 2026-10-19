@@ -319,7 +319,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups","update_pickup_document","delete_pickup_document"],
- purchases:["delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
+ purchases:["create_site_return","update_site_return","delete_site_return","cancel_site_return","delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
  repairs:["upsert_repair_item","delete_repair_item"],
  phone:["upsert_phone_system","delete_phone_system","upsert_phone_extension","delete_phone_extension","batch_update_phone_extensions","batch_delete_phone_extensions","import_phone_terminal_rows","create_phone_terminal_version"],
  credentials:["reveal_phone_system_credential","set_phone_system_credential"],
@@ -335,7 +335,7 @@ function operationPermission(operation:string,payload:Row):{module:string;action
  if(!module)return null;
  if((["upsert_project_site_entry","delete_project_site_entry"].includes(operation)&&payload.module==="logs")||(operation==="delete_site_entry"&&payload.entity==="work_log"))module="worklogs";
  let action:PermissionAction=operation==="check_monitoring_ip_conflicts"||operation==="reveal_phone_system_credential"?"VIEW":/^(delete|batch_delete|void)_/.test(operation)?"DELETE":/^(update|bulk_update|batch_update|set|restore)_/.test(operation)?"UPDATE":/^(upsert|save|manage)_/.test(operation)?payload.id||payload.row_version?"UPDATE":"CREATE":"CREATE";
-  if(operation==="deactivate_customer_department")action="DELETE";
+  if(operation==="deactivate_customer_department"||operation==="cancel_site_return")action="DELETE";
   if(["complete_work_assignment","acknowledge_work_assignment","close_work_content"].includes(operation))action="UPDATE";
  if(operation==="save_equipment_history")action=(payload.event as Row)?.id?"UPDATE":"CREATE";
  if(operation==="manage_customer_service")action=({create:"CREATE",update:"UPDATE",delete:"DELETE"} as Record<string,PermissionAction>)[text(payload.action)]||"UPDATE";
@@ -351,6 +351,7 @@ function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyA
 }
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
+ if(scope==="site_returns"){if(params.has("entity"))throw Error("案場餘料入庫不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
  if(scope==="system_backup_authorization"){
   const action=text(params.get("action"));
   if(!["VIEW","CREATE","UPDATE","DELETE"].includes(action))throw new Error("備份操作不正確。");
@@ -618,6 +619,8 @@ async function exportErpData(payload:Row,user:AppUser){
   const projects=((options.projects||[]) as Row[]).filter(p=>{const c=customers.find(c=>c.id===p.customer_id);return !p.deleted_at&&!['clerical','site_survey'].includes(text(p.project_type))&&(!filters.project_id||p.id===filters.project_id)&&(!filters.customer_id||p.customer_id===filters.customer_id)&&(!filters.department_id||p.department_id===filters.department_id)&&(!filters.category||c?.customer_category===filters.category)&&(!workType||p.project_type===workType)&&(!filters.q||[p.name,p.project_code,c?.name].some(v=>normalized(v).includes(normalized(filters.q))));});
   const reports:Row[]=[];for(let start=0;start<projects.length;start+=4){const group=await Promise.all(projects.slice(start,start+4).map(p=>rpc('work_content_report_v1',{p_actor_user_id:user.id,p_project_id:p.id,p_from:from,p_to:to,p_work_type:workType,p_accounting:false}) as Promise<Row>));for(const result of group)if(result.report)reports.push(result.report as Row);}
   snapshot={reports};
+ }else if(spec.scope==='site_returns'){
+  snapshot={siteReturnData:await rpc('site_return_list_v1',{p_actor_user_id:user.id})};
  }else if(spec.scope==='construction_plans'){
   snapshot=await constructionSnapshot(user);
   snapshot.work_content_types=await rpc('erp_work_content_types_v1',{});
@@ -1157,6 +1160,16 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "create_inventory_item_batch") { requireOperation(user,operation,payload,["admin"]); if(!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20) throw new Error("每次必須建立 1 至 20 筆品項。"); const rows=payload.rows.map((value,index)=>{ if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆品項格式不正確。`); const row=value as Row,category_id=uuid(row.category_id),brand=limited(row.brand,120),item_name=limited(row.item_name,200),unit=limited(row.unit,30),model=nullable(row.model,120),opening_quantity=nonNegative(row.opening_quantity); if(!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null||!Number.isInteger(opening_quantity)) throw new Error(`第 ${index+1} 筆品項資料不完整，期初庫存須為 0 以上整數。`); return {category_id,brand,item_name,unit,model:model||null,opening_quantity}; }); const keys=rows.map(row=>[row.category_id,row.item_name,row.brand,row.model||""].map(value=>String(value).trim().toLocaleLowerCase("zh-Hant")).join("|")); if(new Set(keys).size!==keys.length) throw new Error("同一批次中有重複品項，請檢查種類、名稱、品牌與型號。"); return rpc("create_inventory_items_batch_v1",{p_rows:rows,p_actor:actor}); }
   if (operation === "update_inventory_item") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),category_id=uuid(payload.category_id),item_name=limited(payload.item_name,200),brand=limited(payload.brand,120),model=nullable(payload.model,120),unit=limited(payload.unit,30),opening_quantity=nonNegative(payload.opening_quantity),row_version=Number(payload.row_version); if (!id||!category_id||!item_name||!brand||model===null||!unit||opening_quantity===null||!Number.isInteger(opening_quantity)||!Number.isInteger(row_version)||row_version<1) throw new Error("請完整填寫品項資料，期初庫存須為 0 以上整數。"); const categories=await get(`product_categories?id=eq.${category_id}&is_active=eq.true&select=id,name`) as {id:string;name:string}[]; if(categories.length!==1) throw new Error("請選擇有效的貨品種類。"); const response=await db(`inventory_items?id=eq.${id}&row_version=eq.${row_version}`,{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify({item_name,category_id,item_type:categories[0].name,brand,model:model||null,unit,opening_quantity,...meta})}); if (!response.ok) { const failure=await response.json().catch(()=>({})) as {code?:string}; if(failure.code==="23505") throw new Error("相同種類、名稱、品牌與型號的品項已存在。"); throw new Error("品項更新失敗。"); } const rows=await response.json(); if (!Array.isArray(rows)||rows.length!==1) throw new Error("此品項已被其他管理者更新，請重新載入後再編輯。"); return; }
   if (operation === "delete_inventory_item") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),row_version=Number(payload.row_version); if(!id||!Number.isInteger(row_version)||row_version<1) throw new Error("品項資料或版本不正確。"); return rpc("delete_inventory_item",{p_id:id,p_row_version:row_version,p_actor:actor}); }
+  if (["create_site_return","update_site_return","cancel_site_return","delete_site_return"].includes(operation)) {
+    requireOperation(user,operation,payload,["admin","operator"]);
+    const documentId=uuid(payload.document_id),requestId=uuid(payload.request_id),action=operation.split('_')[0];
+    if(!documentId||!requestId||action!=="create"&&(!Number.isInteger(payload.row_version)||Number(payload.row_version)<1))throw Error("入庫單識別碼或版本不正確。");
+    const writing=["create","update"].includes(action);
+    const rows=writing&&Array.isArray(payload.rows)?payload.rows.map((value:unknown)=>{const row=value as Row,id=uuid(row?.inventory_item_id),quantity=Number(row?.quantity);if(!id||!Number.isFinite(quantity)||quantity<=0||Math.abs(quantity*100-Math.round(quantity*100))>0.000001)throw Error("材料品項或入庫數量不正確。");return {inventory_item_id:id,quantity};}):[];
+    if(writing&&(rows.length<1||rows.length>50||!date(payload.return_date)||!uuid(payload.customer_id)||!uuid(payload.project_id)))throw Error("請完整填寫客戶、工作案名、日期與 1 至 50 筆明細。");
+    const note=writing?nullable(payload.note,500):"";if(note===null)throw Error("備註最多 500 字。");
+    return rpc("save_site_return_v1",{p_actor_user_id:user.id,p_document_id:documentId,p_request_id:requestId,p_row_version:action==="create"?null:payload.row_version,p_action:action,p_return_date:writing?date(payload.return_date):null,p_customer_id:writing?uuid(payload.customer_id):null,p_project_id:writing?uuid(payload.project_id):null,p_rows:rows,p_note:note||""});
+  }
   if (operation === "update_pickup_document" || operation === "delete_pickup_document" || operation === "delete_stock_receipt_document") {
     requireOperation(user,operation,payload,operation==="update_pickup_document"?["admin","operator"]:["admin"]);
     const document_id=uuid(payload.document_id);
@@ -1843,6 +1856,7 @@ async function handleRequest(request: Request) {
       if (entity === "monitoring_device_imports") return json({...(await monitoringDeviceImports(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (params.has("entity")) return json(await queryRecords(params,user));
       const scopeName = text(params.get("scope")) || "dashboard";
+      if(scopeName==="site_returns")return json({...await rpc("site_return_list_v1",{p_actor_user_id:user.id}) as Row,current_user:publicUser(user),errors:[]});
       if(scopeName==="materials"||scopeName==="work_report"){
         const id=params.get("project_id");if(id&&!uuid(id))throw new Error("工作內容編號不正確。");
         const data=await rpc("work_content_report_v1",{p_actor_user_id:user.id,p_project_id:id?uuid(id):null,p_from:date(params.get("from")),p_to:date(params.get("to")),p_work_type:params.get("work_type")||null,p_accounting:false}) as Row;
@@ -1867,9 +1881,7 @@ async function handleRequest(request: Request) {
         snapshot.money_settings=context.money_settings;
       }
       if(scopeName==="worklogs")mergeConstructionSnapshot(snapshot,await constructionSnapshot(user),params.get("options_only")==="1");
-      const privateLedger=privateContext.getStore()?.configured&&!privateContext.getStore()?.direct;
-      const restrictedLedger=["worklogs","inventory"].includes(scopeName)&&(!hasPermission(user,"pickups")||!hasPermission(user,"purchases"));
-      if((privateLedger||restrictedLedger)&&Array.isArray(snapshot.items))snapshot.stock_totals=await rpc("erp_stock_totals_v1",{p_actor_user_id:user.id});
+      if(Array.isArray(snapshot.items))snapshot.stock_totals=await rpc("erp_stock_totals_v1",{p_actor_user_id:user.id});
       return json(snapshot);
     }
     if(request.method !== "POST") return json({error:"僅支援 GET 與 POST。"},405);
