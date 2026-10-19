@@ -23,8 +23,8 @@ test('search is below pickup rows in both entry forms, never inside pickup item 
  const rowSource=app.split(/\r?\n/).find(line=>line.startsWith('function transactionBatchRow('));
  assert.ok(!rowSource.includes('type="search"'));
  const receiptFields=receipts.slice(receipts.indexOf('function receiptDocumentFields('),receipts.indexOf('function initializeReceiptDocument('));
- assert.ok(receiptFields.indexOf('進貨明細')<receiptFields.indexOf("transactionItemSearchFields('receipt')"));
- assert.ok(receiptFields.indexOf("transactionItemSearchFields('receipt')")<receiptFields.indexOf('receiptCustomerPicker('));
+ assert.ok(receiptFields.indexOf('${label}明細')<receiptFields.indexOf("transactionItemSearchFields('receipt',label)"));
+ assert.ok(receiptFields.indexOf("transactionItemSearchFields('receipt',label)")<receiptFields.indexOf('receiptCustomerPicker('));
  const {c}=harness();
  assert.equal(c.transactionItemSearchFields('receipt').replaceAll('receipt','pickup').replaceAll('進貨','取貨'),c.pickupItemSearchFields());
 });

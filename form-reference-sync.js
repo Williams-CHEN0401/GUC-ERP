@@ -5,7 +5,7 @@ let formReferenceGeneration = 0;
 function invalidateFormReferences(){formReferenceGeneration++;formReferenceTimes.clear();formReferenceFingerprints.clear();}
 function formReferenceScopes(){
   const modal=document.querySelector('#simpleModal.open');
-  const scopes={customerModal:['crm'],customerCategoryModal:['crm'],customerDepartmentModal:['crm'],contractServiceModal:['crm'],projectModal:['crm'],supplierModal:['crm'],categoryModal:['inventory'],itemModal:['inventory'],pickupModal:['transactions'],receiptModal:['transactions'],repairModal:['repairs'],workLogModal:['worklogs'],workLogPickupModal:['transactions'],workAssignmentModal:['crm','inventory'],accountModal:['settings'],attachmentModal:['worklogs']};
+  const scopes={customerModal:['crm'],customerCategoryModal:['crm'],customerDepartmentModal:['crm'],contractServiceModal:['crm'],projectModal:['crm'],supplierModal:['crm'],categoryModal:['inventory'],itemModal:['inventory'],pickupModal:['transactions'],receiptModal:['transactions'],supplierReturnModal:['transactions'],repairModal:['repairs'],workLogModal:['worklogs'],workLogPickupModal:['transactions'],workAssignmentModal:['crm','inventory'],accountModal:['settings'],attachmentModal:['worklogs']};
   if(modal)return scopes[modal.dataset.type]||[];
   const page=currentPage();return ['inventory','transactions','repairs','crm','projects','worklogs','materials','settings'].includes(page)?[PAGE_SCOPES[page]]:[];
 }
@@ -154,7 +154,7 @@ function refreshFormReferenceChoices(snapshot={}){
     refreshMaintenanceInventoryChoices();renderEquipmentDrawer();
     if(form.dataset.constructionPlanId&&typeof initializeConstructionLog==='function')initializeConstructionLog();
   }
-  if(type==='receiptModal')refreshReceiptReferenceChoices();
+  if(type==='receiptModal'||type==='supplierReturnModal')refreshReceiptReferenceChoices();
   if(typeof filterModalCustomerSearch==='function')filterModalCustomerSearch();
   if(type==='accountModal')replaceReferenceOptions(fields.role,(state.appRoles||[]).map(row=>[row.code,row.name]),{placeholder:'請選擇角色'});
 }

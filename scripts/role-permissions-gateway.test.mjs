@@ -78,7 +78,7 @@ test('readonly accounting can load purchases and no other transactions, cannot w
  const h=harness([permission('purchases','view')]);
  const response=await h.read('scope=transactions');assert.equal(response.status,200);const body=await response.json();assert.deepEqual(body.pickups,[]);assert.deepEqual(body.projects,[]);
  for(const operation of ['create_stock_receipt_batch','update_stock_receipt','delete_stock_receipts'])assert.equal((await h.write(operation,{id:id(2),row_version:1})).status,403);
- assert.ok(!h.calls.some(c=>typeof c==='object'&&!['receipt_document_context_v1','erp_stock_totals_v1'].includes(c.name)));
+ assert.ok(!h.calls.some(c=>typeof c==='object'&&!['receipt_document_context_v1','supplier_return_list_v1','erp_stock_totals_v1'].includes(c.name)));
 });
 
 test('return scope cannot be combined with an unrelated entity to bypass its read permission',async()=>{
