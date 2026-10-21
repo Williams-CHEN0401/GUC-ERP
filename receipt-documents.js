@@ -20,7 +20,7 @@ function renderReceiptDocuments(kind='receipt'){
 }
 function receiptDocumentFields(id,kind='receipt'){
   const row=receiptDocument(id,kind)||{},label=kind==='receipt'?'進貨':'退貨';
-  return receiptDocumentNumberField(row.documentNo,id,label)+inputField('date',label+'日期','date',true,row.date||today())+selectField('supplierId','供應商',state.suppliers.map(s=>[s.id,s.name]),row.supplierId)+
+  return receiptDocumentNumberField(row.documentNo,id,label)+inputField('date',label+'日期','date',true,row.date||today())+selectField('supplierId','供應商名稱',state.suppliers.map(s=>[s.id,s.name]),row.supplierId)+
     `<div class="batch-editor span-2"><div class="batch-editor-head"><div><b>${label}明細</b><small>整張${label}單一起儲存；每列可修改品項、數量及備註。</small></div>${canModule('purchases','CREATE')?'<button class="outline" type="button" data-add-transaction-row="receipt">＋ 新增一列</button>':''}</div><div id="transactionBatchRows" class="transaction-batch receipt-batch"></div></div>`+
     receiptFinancialFields(id,kind)+transactionItemSearchFields('receipt',label)+receiptCustomerPicker(row.customerIds||[],row)+receiptProjectField(id,kind)+submitField(id?'儲存整張'+label+'單':'建立'+label+'單');
 }
@@ -106,7 +106,7 @@ function updateReceiptMoneySummary(){
   const mode=form.elements.receiptTaxMode.value||null,rate=mode?GUCReceiptMoney.rateBasisPoints(form.elements.receiptTaxRate.value):null;
   const lines=[...form.querySelectorAll('[data-batch-row]')].map(row=>({quantity:Number(row.querySelector('[name="batchQuantity"]').value),unit_price:row.querySelector('[name="batchUnitPrice"]')?.value||null}));
   const money=GUCReceiptMoney.calculate(lines,mode,rate,Number(form.elements.receiptDiscount.value)),fmt=v=>v==null?'未設定':Number(v).toLocaleString('zh-TW');
-  output.innerHTML=`<dl class="receipt-money-totals"><div><dt>整單折扣</dt><dd data-money-discount>${fmt(money.discount_amount)}</dd></div><div><dt>未稅金額</dt><dd data-money-net>${fmt(money.net_amount)}</dd></div><div><dt>稅額</dt><dd data-money-tax>${fmt(money.tax_amount)}</dd></div><div><dt>含稅總金額</dt><dd data-money-total>${fmt(money.total_amount)}</dd></div></dl>${!mode?'<p>歷史計價方式尚未設定，保留原單價，不推算稅額。</p>':money.missing_price_count?`<p>${money.missing_price_count} 筆未設定單價，總額暫不計算。</p>`:''}`;
+  output.innerHTML=`<dl class="receipt-money-totals"><div><dt>整單折扣（元）</dt><dd data-money-discount>${fmt(money.discount_amount)}</dd></div><div><dt>未稅金額</dt><dd data-money-net>${fmt(money.net_amount)}</dd></div><div><dt>稅額</dt><dd data-money-tax>${fmt(money.tax_amount)}</dd></div><div><dt>含稅金額</dt><dd data-money-total>${fmt(money.total_amount)}</dd></div></dl>${!mode?'<p>歷史計價方式尚未設定，保留原單價，不推算稅額。</p>':money.missing_price_count?`<p>${money.missing_price_count} 筆未設定單價，總額暫不計算。</p>`:''}`;
  }catch(error){output.textContent=error.message;}
 }
 document.addEventListener('input',event=>{if(event.target.closest('#modalForm')&&['batchUnitPrice','batchQuantity','receiptTaxRate','receiptDiscount'].includes(event.target.name))updateReceiptMoneySummary();});

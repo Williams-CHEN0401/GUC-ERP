@@ -56,7 +56,7 @@ test('receipt count excludes deleted and invalid lines while preserving detail q
 });
 test('pickup list omits item and total quantity, keeps eight aligned columns and original detail data',()=>{
  const end=html.indexOf('<tbody id="pickupTable">'),headers=html.slice(html.lastIndexOf('<thead>',end),end);
- assert.deepEqual([...headers.matchAll(/<th(?: [^>]*)?>(.*?)<\/th>/g)].map(m=>m[1]),['取貨單號','取貨日期','客戶','工作內容','品項種類數','取貨帳號','備註','操作']);
+ assert.deepEqual([...headers.matchAll(/<th(?: [^>]*)?>(.*?)<\/th>/g)].map(m=>m[1]),['取貨單號','取貨日期','客戶名稱','工作內容名稱','品項種類數','取貨帳號','備註','操作']);
  const f=fixture();f.state.pickups=[1,2,3].map(n=>({id:String(n),documentId:'doc',documentNo:'20261002',date:'2026-10-02',projectId:'p',itemId:'i'+n,quantity:n,note:'',account:'測試人員'}));
  const before=JSON.stringify(f.state.pickups);f.run('renderPickupDocuments()');
  assert.equal((f.element('#pickupTable').innerHTML.match(/<td(?:>| )/g)||[]).length,8);
