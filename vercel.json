@@ -33,5 +33,5 @@
       ]
     }
   ],
-  "ignoreCommand": "node -e \"const{execFileSync}=require('node:child_process');const message=execFileSync('git',['log','-1','--format=%s'],{encoding:'utf8'}).trim();process.exit(process.env.VERCEL_GIT_COMMIT_REF==='main'&&message.includes('[guc-github-sync-only-20261021]')?0:1)\""
+  "ignoreCommand": "node -e \"process.exit(process.env.VERCEL_GIT_COMMIT_REF==='main'&&require('child_process').execSync('git log -1 --format=%s').includes('[guc-github-sync-only-20261021]')?0:1)\""
 }
