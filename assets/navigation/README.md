@@ -17,3 +17,16 @@ Uses the final nine green glass icons from the shared conversation, downloaded o
 | settings.png | 系統設定 |
 
 Baseline: GitHub `main` commit `9ff6441540bac1244e888ef93ac801975746f31e`, verified against Vercel production deployment `dpl_7WdpMT8yitrdWcGycjedy6tz42Lv` before integration.
+
+## Appointments and system selection (2026-10-21)
+
+The user requested matching icons and explicitly selected the built-in GPT image generation tool after Canva could not authenticate. Generated from the supplied sidebar screenshot as a style reference: emerald glass tiles with ivory and gold objects. Each standalone image retains transparency and is proportionally downsampled to 144 × 144 PNG. No external image URL is needed at runtime.
+
+| File | Placement / subject |
+| --- | --- |
+| appointments.png | 客戶預約事項 — calendar, checkmark and clock |
+| system-erp.png | ERP 系統 — dashboard and inventory parcel |
+| system-sites.png | 案場資料 — building and hard hat |
+| system-accounting.png | 會計管理系統 — receipt, calculator and coins |
+
+Full generation prompts are saved in `gpt-prompts-20261021.json`. Original generated images and visual verification are retained in `F:/GUC-Docker/previews/20261021-icons-billing/`.

@@ -6,7 +6,7 @@ const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 test("ERP primary pages use the supplied local navigation images", () => {
-  const pages = ["dashboard", "transactions", "repairs", "inventory", "crm", "worklogs", "settings"];
+  const pages = ["dashboard", "appointments", "transactions", "repairs", "inventory", "crm", "worklogs", "settings"];
   for (const page of pages) {
     const link = html.match(new RegExp(`<a [^>]*data-page="${page}"[^>]*>(.*?)</a>`))?.[1];
     assert.ok(link, `missing ${page} link`);
@@ -18,7 +18,7 @@ test("ERP primary pages use the supplied local navigation images", () => {
     assert.equal(png.readUInt32BE(20), 144);
     assert.ok(png.length < 50000, `${page} should be optimized for the sidebar`);
   }
-  assert.equal((html.match(/class="nav-icon-shell"/g) || []).length, pages.length+1);
+  assert.equal((html.match(/class="nav-icon-shell"/g) || []).length, pages.length);
   assert.match(styles, /\.nav-item\.active \.nav-icon-shell/);
   assert.match(styles, /\.nav-item:focus-visible/);
 });

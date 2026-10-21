@@ -1,0 +1,22 @@
+{
+  "tool": "built-in GPT image_gen",
+  "date": "2026-10-21",
+  "prompts": [
+    {
+      "name": "appointments",
+      "prompt": "Create ONE finished square application icon for an existing GUC enterprise UI. The attached screenshot is only a style reference: match its glossy deep emerald glass rounded-square tiles, beveled green edges, dimensional ivory and warm gold objects, restrained specular highlights. Produce only the standalone icon, not a screenshot or layout. Center a rounded-square deep forest green tile, nearly filling the canvas with approximately 3 percent transparent margin. Front view, coherent soft lighting from upper left, refined small 3D objects with bold clean silhouettes readable at 34 to 48 pixels. No text, letters, digits, brand mark, captions or watermark. Transparent outside the tile. Subject: customer appointments: a large ivory appointment calendar with two binder rings and a gold checkmark, plus a small emerald-rimmed clock at the lower right. Minimal detail, strong readable silhouette."
+    },
+    {
+      "name": "system-erp",
+      "prompt": "Create ONE finished square application icon for an existing GUC enterprise UI. The attached screenshot is only a style reference: match its glossy deep emerald glass rounded-square tiles, beveled green edges, dimensional ivory and warm gold objects, restrained specular highlights. Produce only the standalone icon, not a screenshot or layout. Center a rounded-square deep forest green tile, nearly filling the canvas with approximately 3 percent transparent margin. Front view, coherent soft lighting from upper left, refined small 3D objects with bold clean silhouettes readable at 34 to 48 pixels. No text, letters, digits, brand mark, captions or watermark. Transparent outside the tile. Subject: ERP work and inventory management: an ivory dashboard panel with a simple four-tile grid and a compact warm gold inventory parcel in front. Minimal detail, strong readable silhouette."
+    },
+    {
+      "name": "system-sites",
+      "prompt": "Create ONE finished square application icon for an existing GUC enterprise UI. The attached screenshot is only a style reference: match its glossy deep emerald glass rounded-square tiles, beveled green edges, dimensional ivory and warm gold objects, restrained specular highlights. Produce only the standalone icon, not a screenshot or layout. Center a rounded-square deep forest green tile, nearly filling the canvas with approximately 3 percent transparent margin. Front view, coherent soft lighting from upper left, refined small 3D objects with bold clean silhouettes readable at 34 to 48 pixels. No text, letters, digits, brand mark, captions or watermark. Transparent outside the tile. Subject: construction site records: a simple ivory commercial building with green window panels and a small warm gold hard hat at its base. Minimal detail, strong readable silhouette."
+    },
+    {
+      "name": "system-accounting",
+      "prompt": "Create ONE finished square application icon for an existing GUC enterprise UI. The attached screenshot is only a style reference: match its glossy deep emerald glass rounded-square tiles, beveled green edges, dimensional ivory and warm gold objects, restrained specular highlights. Produce only the standalone icon, not a screenshot or layout. Center a rounded-square deep forest green tile, nearly filling the canvas with approximately 3 percent transparent margin. Front view, coherent soft lighting from upper left, refined small 3D objects with bold clean silhouettes readable at 34 to 48 pixels. No text, letters, digits, brand mark, captions or watermark. Transparent outside the tile. Subject: accounting and billing management: a simple ivory receipt sheet beside a compact calculator with gold keys, two small warm gold coins at the base. Minimal detail, strong readable silhouette."
+    }
+  ]
+}
