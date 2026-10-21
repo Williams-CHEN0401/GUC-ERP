@@ -31,6 +31,9 @@ test('開啟新增表單等待施工人員，不在進入前詢問維修品',asy
   const ready=new Promise(resolve=>{release=resolve;});
   const calls=[];
   const context=vm.createContext({
+    PREVIEW_MODE:false,
+    apiRequest:async()=>({construction_plans:[]}),
+    mergeConstructionContext:data=>assert.deepEqual(data,{construction_plans:[]}),
     ensureWorkLogWorkers:()=>ready,
     openModal:(...args)=>calls.push(args),
     confirm:()=>assert.fail('不可出現表單外確認視窗'),

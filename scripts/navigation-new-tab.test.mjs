@@ -12,7 +12,7 @@ test("sidebar pages are real allowlisted links that can use the native new-tab m
     assert.match(html, new RegExp(`<a class="nav-item(?: active)?" data-page="${page}" href="/\\?page=${page}"`));
   }
   assert.doesNotMatch(html, /<button class="nav-item/);
-  assert.doesNotMatch(html, /data-page="backup"/);
+  assert.match(html, /data-tab="backup"[^>]*>系統備份/);
   assert.match(css, /\.nav-item\{[^}]*text-decoration:none/);
   assert.match(js, /requestedPageFromUrl\(\).*PAGE_SCOPES/);
   assert.match(js, /event\.preventDefault\(\);await switchPage\(nav\.hasAttribute\("data-work-group"\)\?workManagementPage\(\):nav\.dataset\.page\)/);

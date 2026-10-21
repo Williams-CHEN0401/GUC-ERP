@@ -21,7 +21,9 @@ function pickerContext(document) {
     esc: (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]),
     byId: (rows, id) => rows.find((row) => row.id === id),
   };
-  vm.runInNewContext(pickerSource, context);
+  vm.createContext(context);
+  for(const name of ['matches','searchValue'])vm.runInContext(appSource.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),context);
+  vm.runInContext(pickerSource, context);
   return context;
 }
 
@@ -78,9 +80,9 @@ test("分類與搜尋會顯示可選客戶，沒有結果時提供明確提示",
 });
 
 test("開啟進貨表單會先確認交易資料並初始化客戶清單", () => {
-  assert.match(appSource, /async function openReceiptModal\(id=""\).*loadScope\("transactions",\{silent:true\}\)/s);
-  assert.match(appSource, /if\(type==="receiptModal"\)refreshReceiptCustomerPicker\(\)/);
-  assert.match(appSource, /open\.dataset\.open==="receiptModal"\)await openReceiptModal\(\)/);
+  assert.match(appSource, /async function openReceiptModal\(id="",kind="receipt"\).*loadScope\("transactions",\{silent:true\}\)/s);
+  assert.match(appSource, /if\(type==="receiptModal"\|\|type==="supplierReturnModal"\)refreshReceiptCustomerPicker\(\)/);
+  assert.match(appSource, /open\.dataset\.open==="receiptModal"\|\|open\.dataset\.open==="supplierReturnModal"\)await openReceiptModal\("",open\.dataset\.open==="receiptModal"\?"receipt":"supplierReturn"\)/);
   assert.match(readFileSync(new URL("../receipt-documents.js",import.meta.url),"utf8"), /customer_ids:\[\.\.\.new FormData\(form\)\.getAll\('receiptCustomerId'\)\]/);
   assert.match(gatewaySource, /transactions: \["customers", "projects", "items", "pickups", "receipts", "suppliers", "categories"\]/);
 });

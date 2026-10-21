@@ -293,7 +293,7 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
@@ -303,7 +303,7 @@ async function hydratePermissions(user:AppUser):Promise<AppUser> {
 }
 function hasPermission(user:AppUser,module:string,action:PermissionAction="VIEW"):boolean {
  if(user.role==="admin")return true;
- if(!user.permissions&&["purchase_prices","accounting_reports","accounting_prices"].includes(module))return false;
+ if(!user.permissions&&["purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
  if(!user.permissions)return ["operator","viewer"].includes(user.role) && (action==="VIEW"||user.role==="operator"&&!["settings","backup","customers","suppliers","inventory","credentials"].includes(module)&&action!=="DELETE");
  return user.permissions.some(p=>p.module===module&&p[`can_${action.toLowerCase()}` as keyof Permission]===true);
 }
@@ -319,7 +319,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups","update_pickup_document","delete_pickup_document"],
- purchases:["delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
+ purchases:["create_supplier_return","update_supplier_return","delete_supplier_return","create_site_return","update_site_return","delete_site_return","cancel_site_return","delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
  repairs:["upsert_repair_item","delete_repair_item"],
  phone:["upsert_phone_system","delete_phone_system","upsert_phone_extension","delete_phone_extension","batch_update_phone_extensions","batch_delete_phone_extensions","import_phone_terminal_rows","create_phone_terminal_version"],
  credentials:["reveal_phone_system_credential","set_phone_system_credential"],
@@ -335,13 +335,13 @@ function operationPermission(operation:string,payload:Row):{module:string;action
  if(!module)return null;
  if((["upsert_project_site_entry","delete_project_site_entry"].includes(operation)&&payload.module==="logs")||(operation==="delete_site_entry"&&payload.entity==="work_log"))module="worklogs";
  let action:PermissionAction=operation==="check_monitoring_ip_conflicts"||operation==="reveal_phone_system_credential"?"VIEW":/^(delete|batch_delete|void)_/.test(operation)?"DELETE":/^(update|bulk_update|batch_update|set|restore)_/.test(operation)?"UPDATE":/^(upsert|save|manage)_/.test(operation)?payload.id||payload.row_version?"UPDATE":"CREATE":"CREATE";
-  if(operation==="deactivate_customer_department")action="DELETE";
+  if(operation==="deactivate_customer_department"||operation==="cancel_site_return")action="DELETE";
   if(["complete_work_assignment","acknowledge_work_assignment","close_work_content"].includes(operation))action="UPDATE";
  if(operation==="save_equipment_history")action=(payload.event as Row)?.id?"UPDATE":"CREATE";
  if(operation==="manage_customer_service")action=({create:"CREATE",update:"UPDATE",delete:"DELETE"} as Record<string,PermissionAction>)[text(payload.action)]||"UPDATE";
  return {module,action};
 }
-function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyAllowed:Role[]) {
+function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyAllowed:Role[]): asserts user is AppUser {
  if(!user)throw new Error("請先以有效帳號登入。");
  const needed=operationPermission(operation,payload);
  if(!needed)throw new Error("您的帳號沒有執行此操作的權限。");
@@ -351,6 +351,14 @@ function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyA
 }
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
+ if(scope==="site_returns"){if(params.has("entity"))throw Error("案場餘料入庫不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
+ if(scope==="system_backup_authorization"){
+  const action=text(params.get("action"));
+  if(!["VIEW","CREATE","UPDATE","DELETE"].includes(action))throw new Error("備份操作不正確。");
+  requirePermission(user,"system_backups",action as PermissionAction);
+  if(user.project_scoped||privateContext.getStore()?.configured&&!privateContext.getStore()?.direct)throw new Error("完整系統備份需要全部資料的專用權限。");
+  return;
+ }
  if(siteRequest)requirePermission(user,"site");
  if(scope==="construction_plans"&&!entity){if(!hasPermission(user,"projects")&&!hasPermission(user,"worklogs"))throw new Error("沒有施工規劃查看權限。");return;}
  if(entity){
@@ -366,7 +374,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   if(user.project_scoped)throw new Error("您的帳號沒有執行此操作的權限。");
   return;
  }
- const modules:Record<string,string[]>={appointments:["appointments"],dashboard:["dashboard"],transactions:["purchases","pickups"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],work_report:["reports"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
+ const modules:Record<string,string[]>={appointments:["appointments"],dashboard:["dashboard"],transactions:["purchases","pickups"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],work_report:["reports"],pending_work_log_items:["worklogs"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
  if(!modules[scope]?.some(module=>hasPermission(user,module)))throw new Error("您的帳號沒有執行此操作的權限。");
 }
 async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
@@ -394,11 +402,11 @@ async function restrictedSnapshot(user:AppUser,scopeName:string,optionsOnly=fals
  if(scopeName==="transactions"&&!hasPermission(user,"purchases")){
   requirePermission(user,"pickups");
   const data=await scopedSnapshot(user,"materials",optionsOnly);
-  return {...data,scope:scopeName,categories:await get(datasets.categories.path),receipts:[],suppliers:[]};
+  return {...data,scope:scopeName,categories:await getAll(datasets.categories.path),receipts:[],suppliers:[]};
  }
  if(scopeName==="transactions"&&!hasPermission(user,"pickups")){
   requirePermission(user,"purchases");
-  const [receipts,customers,suppliers,items,categories]=await Promise.all([getAll(datasets.receipts.path),getAll(datasets.customers.path),getAll(datasets.suppliers.path),getAll("inventory_items?select=id,inventory_code,category_id,item_name,brand,model,unit&order=inventory_code.asc"),get(datasets.categories.path)]);
+  const [receipts,customers,suppliers,items,categories]=await Promise.all([getAll(datasets.receipts.path),getAll(datasets.customers.path),getAll(datasets.suppliers.path),getAll("inventory_items?select=id,inventory_code,category_id,item_name,brand,model,unit&order=inventory_code.asc"),getAll(datasets.categories.path)]);
   return {scope:scopeName,receipts,customers,customer_departments:await customerDepartmentRows(customers),customer_categories:await getAll(datasets.customer_categories.path),suppliers,items,categories,pickups:[],projects:[],current_user:publicUser(user),errors:[]};
  }
  return null;
@@ -430,7 +438,7 @@ const datasets: Record<string, DatasetDefinition> = {
  project_access:{path:"project_workers?can_view=eq.true&select=*&order=user_id.asc,project_id.asc",adminOnly:true,paged:true},
  access_projects:{path:"projects?select=id,name,project_code,customer_id&order=project_code.asc,id.asc",adminOnly:true,paged:true},
   projects: { path: "projects?deleted_at=is.null&select=id,name,project_code,customer_id,department_id,project_type,construction_category,status,project_date,assigned_to,description,estimated_cost,actual_cost,started_on,completed_on,note,created_at,updated_at,row_version,source,updated_by&order=updated_at.desc,id.asc", paged: true },
-  project_workers: { path: "project_workers?is_assignee=eq.true&select=project_id,user_id,created_at&order=created_at.asc" },
+  project_workers: { path: "project_workers?is_assignee=eq.true&select=project_id,user_id,created_at&order=created_at.asc", paged: true },
   items: { path: "inventory_items?select=id,inventory_code,category_id,model,brand,item_name,item_type,unit,opening_quantity,cost_price,sale_price,inventory_status,default_supplier_id,note,created_at,updated_at,row_version,source,updated_by&order=inventory_code.asc,id.asc", paged: true },
   pickups: { path: "pickup_records?select=id,pickup_document_id,pickup_document_no,pickup_date,project_id,inventory_item_id,quantity,note,row_version,created_at,updated_at,source,updated_by,created_by_user_id,created_by_username,work_log_id,request_id,request_row,work_assignment_id,project:projects!pickup_records_project_id_fkey(name,project_code,customer_id,department_id)&order=pickup_date.desc,created_at.desc,id.desc", paged: true },
   receipts: { path: "stock_receipts?select=stock_receipt_customers(customer_id,department_id),id,receipt_document_id,receipt_document_no,receipt_line_no,receipt_date,inventory_item_id,quantity,unit_price,supplier_id,supplier,note,row_version,created_at,updated_at,source,updated_by&order=receipt_date.desc,created_at.desc,id.desc", paged: true },
@@ -440,18 +448,18 @@ const datasets: Record<string, DatasetDefinition> = {
   sync_runs: { path: "sync_runs?select=id,direction,status,source_name,total_records,processed_records,error_message,started_at,finished_at&order=started_at.desc&limit=20" },
   import_batches: { path: "import_batches?select=id,file_name,status,total_rows,valid_rows,error_rows,conflict_rows,created_at,completed_at&order=created_at.desc&limit=20" },
   conflicts: { path: "data_conflicts?select=id,entity_type,entity_id,status,created_at&status=eq.open&order=created_at.desc&limit=20" },
-  suppliers: { path: "suppliers?select=id,name,contact_name,phone,email,address,note,created_at,updated_at,row_version&order=name.asc" },
+  suppliers: { path: "suppliers?select=id,name,contact_name,phone,email,address,note,created_at,updated_at,row_version&order=name.asc", paged: true },
   repair_items: { path: "repair_items?select=id,repair_no,source_maintenance_event_id,received_on,customer_id,department_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,source,updated_by,created_at,updated_at,row_version&order=received_on.desc,created_at.desc,id.desc", paged: true },
   customer_departments: { path: "customer_departments?select=id,customer_id,name,is_active,row_version,created_at,updated_at&order=customer_id.asc,name.asc,id.asc", paged: true },
   customer_categories: { path: "customer_categories?select=id,code,name,row_version&order=sort_order.asc,created_at.asc,id.asc", paged: true },
-  customers: { path: "customers?select=is_private,id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version&order=customer_code.asc,id.asc", paged: true },
+  customers: { path: "customers?select=is_private,id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version,deleted_at&order=customer_code.asc,id.asc", paged: true },
   contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,row_version,created_at,updated_at&order=sort_order.asc,name.asc", paged: true },
-  customer_contract_services: { path: "customer_contract_services?is_active=eq.true&select=customer_id,service_type_id,created_at&order=created_at.asc" },
+  customer_contract_services: { path: "customer_contract_services?is_active=eq.true&select=customer_id,service_type_id,created_at&order=created_at.asc", paged: true },
   customer_contacts: { path: "customer_contacts?select=id,customer_id,name,title,phone,email,is_primary,note,created_at,updated_at,row_version&order=is_primary.desc,name.asc" },
   construction_details: { path: "construction_details?select=project_id,scope,planned_start_on,planned_end_on,actual_start_on,actual_end_on,acceptance_on,acceptance_note" },
   maintenance_details: { path: "maintenance_details?select=project_id,reported_at,scheduled_at,arrived_at,issue_description,resolution,warranty_status" },
   project_costs: { path: "project_costs?select=id,project_id,cost_type,amount,occurred_on,note&order=occurred_on.desc" },
-  accounts: { path: "app_users?select=id,username,display_name,role,is_active,row_version,created_at,updated_at&order=username.asc", adminOnly: true },
+  accounts: { path: "app_users?select=id,username,display_name,role,is_active,row_version,created_at,updated_at&order=username.asc", adminOnly: true, paged: true },
   categories: { path: "product_categories?select=id,name,code_prefix,is_active,row_version,created_at,updated_at&order=name.asc" },
   sites: { path: "sites?select=id,site_code,site_name,customer_id,project_id,contract_service_type_id,contact_id,address,phone,status,notes,row_version,created_at,updated_at&order=site_code.asc" },
   site_floors: { path: "site_floors?select=*&order=site_id.asc,sort_order.asc,floor_code.asc" },
@@ -461,7 +469,7 @@ const datasets: Record<string, DatasetDefinition> = {
   site_route_segments: { path: "site_route_segments?select=*&order=route_id.asc,sequence_no.asc" },
   site_work_logs: { path: "site_work_logs?select=*&deleted_at=is.null&order=log_date.desc,created_at.desc,id.desc", paged: true },
   site_work_log_workers: { path: "site_work_log_workers?select=work_log_id,user_id,created_at&order=created_at.asc,work_log_id.asc,user_id.asc", paged: true },
-  site_workers: { path: "app_users?select=id,display_name,is_active&order=display_name.asc,id.asc", paged: true },
+  site_workers: { path: "app_users?select=id,display_name,is_active,can_work_on_site&order=display_name.asc,id.asc", paged: true },
   site_notes: { path: "site_notes?select=*&order=importance.desc,created_at.desc" },
   site_assets: { path: "site_assets?select=*&order=created_at.desc" },
   phone_systems: { path: "phone_systems?select=id,customer_id,contract_service_type_id,system_name,ip_address,installation_location,device_brand,device_model,notes,credential_configured,source,updated_by,row_version,created_at,updated_at&order=system_name.asc" },
@@ -506,6 +514,24 @@ async function siteCustomerSnapshot(params: URLSearchParams, user: AppUser, isPr
     if (sites.length) result.site_devices = await getAll(`site_devices?site_id=in.(${sites.map(row=>row.id).join(",")})&deleted_at=is.null&select=${MONITORING_DEVICE_SELECT},notes&order=id.asc`);
   }
   return result;
+}
+
+// Audit export reads only metadata, with the same customer/service and private-data boundaries.
+async function phoneSecurityAudit(params: URLSearchParams, user: AppUser) {
+  requireRole(user,["admin"]);
+  for(const module of ["site","phone","audit","data_export"])requirePermission(user,module);
+  const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("service_id"));
+  if(!customerId||!serviceId)throw new Error("請選擇客戶與電話承攬內容。");
+  const page=Number(params.get("page")||1),size=Number(params.get("page_size")||100);
+  if(!Number.isInteger(page)||page<1||page>100000||!Number.isInteger(size)||size<1||size>100)throw new Error("分頁格式不正確。");
+  const [customers,links,services]=await Promise.all([
+    get(`customers?id=eq.${customerId}&deleted_at=is.null&select=id`),
+    get(`customer_contract_services?customer_id=eq.${customerId}&service_type_id=eq.${serviceId}&is_active=eq.true&select=customer_id`),
+    get(`contract_service_types?id=eq.${serviceId}&code=eq.phone_system&is_active=eq.true&select=id`)
+  ]);
+  if(!customers.length||!links.length||!services.length)throw new Error("此客戶沒有可讀取的電話承攬內容。");
+  const {records,total}=await getPage(`phone_credential_access_logs?select=id,phone_system_id,customer_id,contract_service_type_id,action,actor,source,created_at&customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}&order=created_at.desc,id.desc&limit=${size}&offset=${(page-1)*size}`);
+  return {records,pagination:{page,page_size:size,total,page_count:Math.max(1,Math.ceil(total/size))}};
 }
 
 // Option refresh reuses the same scope authorization and row restrictions.
@@ -566,9 +592,55 @@ async function scopedSnapshot(user: AppUser, scopeName: string, optionsOnly = fa
   return withMaintenanceRepairState(result);
 }
 
+async function exportErpData(payload:Row,user:AppUser){
+ const {ERP_EXPORT_SPECS,buildErpExport}=await import('./export-lists.ts');
+ const resource=text(payload.resource),spec=ERP_EXPORT_SPECS[resource];
+ requirePermission(user,'data_export');
+ if(!spec)throw new Error('不支援的匯出清單。');
+ requirePermission(user,spec.module);
+ const prices=hasPermission(user,'purchase_prices');
+ if(payload.describe===true)return buildErpExport(payload,{},prices);
+ // Validate columns/scope before doing any large read. Price columns are denied here too.
+ buildErpExport(payload,{},prices);
+ const filters=payload.scope==='filtered'&&payload.filters&&typeof payload.filters==='object'?payload.filters as Row:{};
+ let snapshot:Row;
+ if(spec.scope==='audit'){
+  const params=new URLSearchParams();for(const field of ['q','actor','module','action','from','to'])if(filters[field])params.set(field,text(filters[field]));params.set('page_size','100');
+  const rows:Row[]=[];let expected=0;
+  for(let page=1;page<=10000;page++){params.set('page',String(page));const result=await auditRecords(params,user);expected=result.pagination.total;rows.push(...result.records);if(page>=result.pagination.page_count)break;if(page===10000)throw new Error('日誌超過匯出範圍，請縮小日期條件。');}
+  if(rows.length!==expected)throw new Error('日誌資料於匯出期間變動，請重新匯出。');
+  snapshot={audit_records:rows.map(r=>({...r,summary:`${r.actor||''} ${r.action||''} ${r.entity_type||''}`}))};
+ }else if(spec.scope==='report'){
+  const from=filters.from?date(filters.from):null,to=filters.to?date(filters.to):null,workType=text(filters.type)||null;
+  if(filters.from&&!from||filters.to&&!to||from&&to&&from>to)throw new Error('日期區間不正確。');
+  const options=await rpc('work_content_report_v1',{p_actor_user_id:user.id,p_project_id:null,p_from:from,p_to:to,p_work_type:workType,p_accounting:false}) as Row;
+  const normalized=(v:unknown)=>text(v).normalize('NFKC').toLocaleLowerCase('zh-Hant');
+  const customers=(options.customers||[]) as Row[];
+  const projects=((options.projects||[]) as Row[]).filter(p=>{const c=customers.find(c=>c.id===p.customer_id);return !p.deleted_at&&!['clerical','site_survey'].includes(text(p.project_type))&&(!filters.project_id||p.id===filters.project_id)&&(!filters.customer_id||p.customer_id===filters.customer_id)&&(!filters.department_id||p.department_id===filters.department_id)&&(!filters.category||c?.customer_category===filters.category)&&(!workType||p.project_type===workType)&&(!filters.q||[p.name,p.project_code,c?.name].some(v=>normalized(v).includes(normalized(filters.q))));});
+  const reports:Row[]=[];for(let start=0;start<projects.length;start+=4){const group=await Promise.all(projects.slice(start,start+4).map(p=>rpc('work_content_report_v1',{p_actor_user_id:user.id,p_project_id:p.id,p_from:from,p_to:to,p_work_type:workType,p_accounting:false}) as Promise<Row>));for(const result of group)if(result.report)reports.push(result.report as Row);}
+  snapshot={reports};
+ }else if(spec.scope==='site_returns'){
+  snapshot={siteReturnData:await rpc('site_return_list_v1',{p_actor_user_id:user.id})};
+ }else if(spec.scope==='construction_plans'){
+  snapshot=await constructionSnapshot(user);
+  snapshot.work_content_types=await rpc('erp_work_content_types_v1',{});
+ }else if(spec.scope==='dashboard')snapshot=await dashboardSnapshot(user,true);
+ else{
+  snapshot=await scopedSnapshot(user,spec.scope) as Row;
+  if(resource==='customer_services')snapshot.customer_contract_services=await getAll('customer_contract_services?select=customer_id,service_type_id,is_active,notes,created_at,updated_at&order=created_at.asc,customer_id.asc,service_type_id.asc');
+  if(spec.scope==='worklogs'){mergeConstructionSnapshot(snapshot,await constructionSnapshot(user));snapshot.can_search_pickups=hasPermission(user,'pickups');}
+  if(Array.isArray(snapshot.items))snapshot.stock_totals=await rpc('erp_stock_totals_v1',{p_actor_user_id:user.id});
+  if(resource==='supplier_returns')Object.assign(snapshot,await rpc('supplier_return_list_v1',{p_actor_user_id:user.id}));
+  if(resource==='receipts'&&prices){const context=await rpc('receipt_document_context_v1',{p_actor_user_id:user.id,p_document_ids:[...new Set(((snapshot.receipts||[]) as Row[]).map(r=>r.receipt_document_id||r.id))]}) as Row;snapshot.receipt_documents=context.documents;}
+ }
+ // Apply the existing privacy boundary BEFORE flattening IDs into human-readable cells.
+ const safe=receiptPriceResponse(privateResponse(snapshot)) as Row;
+ return buildErpExport(payload,safe,prices);
+}
+
 const queryDefinitions: Record<string, { table: string; select: string; search: string[]; sort: Record<string,string> }> = {
   inventory: { table: "inventory_items", select: "id,inventory_code,category_id,model,brand,item_name,item_type,unit,opening_quantity,cost_price,sale_price,inventory_status,default_supplier_id,note,created_at,updated_at,row_version", search: ["inventory_code","item_name","brand","model","item_type"], sort: { code:"inventory_code", name:"item_name", type:"item_type", date:"created_at" } },
-  customers: { table: "customers", select: "id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version", search: ["customer_code","customer_category","name","phone","email","address"], sort: { code:"customer_code", category:"customer_category", name:"name", date:"created_at" } },
+  customers: { table: "customers", select: "id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version,deleted_at", search: ["customer_code","customer_category","name","phone","email","address"], sort: { code:"customer_code", category:"customer_category", name:"name", date:"created_at" } },
   projects: { table: "projects", select: "id,name,project_code,customer_id,department_id,project_type,status,project_date,assigned_to,description,estimated_cost,note,created_at,updated_at,row_version", search: ["project_code","name","assigned_to","status"], sort: { code:"project_code", name:"name", status:"status", date:"created_at" } },
   suppliers: { table: "suppliers", select: "id,name,contact_name,phone,email,address,note,created_at,updated_at,row_version", search: ["name","contact_name","phone","email","address"], sort: { name:"name", date:"created_at" } },
   repairs: { table: "repair_items", select: "id,repair_no,source_maintenance_event_id,received_on,customer_id,department_id,inventory_item_id,quantity,serial_number,issue_description,supplier_id,sent_to_supplier_on,returned_from_supplier_on,returned_to_customer_on,status,supplier_reference,notes,created_at,updated_at,row_version", search: ["repair_no","received_on","serial_number","issue_description","status","supplier_reference"], sort: { code:"repair_no", status:"status", date:"received_on", updated:"updated_at" } },
@@ -584,7 +656,7 @@ async function queryRecords(params: URLSearchParams,user:AppUser) {
   const term = text(params.get("search")).replace(/[,*()]/g, " ").slice(0,80);
   const limit = Math.min(Math.max(Number(params.get("limit")) || 200,1),500);
   let path = `${definition.table}?select=${definition.select}&order=${sortField}.${direction}&limit=${limit}`;
-  if(definition.table==="projects")path += "&deleted_at=is.null";
+  if(["projects","customers"].includes(definition.table))path += "&deleted_at=is.null";
   const customerId = uuid(params.get("customer_id")), departmentId = departmentIdInput(params.get("department_id"));
   if (customerId && ["projects","repair_items"].includes(definition.table)) path += `&customer_id=eq.${customerId}`;
   if (departmentId && ["projects","repair_items"].includes(definition.table)) path += `&department_id=eq.${departmentId}`;
@@ -913,7 +985,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(uuid(payload.id)){
       const records=await get(`site_work_logs?id=eq.${uuid(payload.id)}&select=*`) as Row[];
       const plan=records[0]?.construction_plan_id;
-      if(plan){if(Object.hasOwn(payload,"construction_plan_id")&&payload.construction_plan_id!==plan)throw new Error("不能變更施工日誌的施工規劃關聯。");payload={...payload,construction_plan_id:plan};}
+      if(plan&&!payload.construction_plan_id)payload={...payload,construction_plan_id:plan};
     }
   }
   await enforceWorkLogScope(user!,operation,payload);
@@ -1089,6 +1161,16 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "create_inventory_item_batch") { requireOperation(user,operation,payload,["admin"]); if(!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20) throw new Error("每次必須建立 1 至 20 筆品項。"); const rows=payload.rows.map((value,index)=>{ if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆品項格式不正確。`); const row=value as Row,category_id=uuid(row.category_id),brand=limited(row.brand,120),item_name=limited(row.item_name,200),unit=limited(row.unit,30),model=nullable(row.model,120),opening_quantity=nonNegative(row.opening_quantity); if(!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null||!Number.isInteger(opening_quantity)) throw new Error(`第 ${index+1} 筆品項資料不完整，期初庫存須為 0 以上整數。`); return {category_id,brand,item_name,unit,model:model||null,opening_quantity}; }); const keys=rows.map(row=>[row.category_id,row.item_name,row.brand,row.model||""].map(value=>String(value).trim().toLocaleLowerCase("zh-Hant")).join("|")); if(new Set(keys).size!==keys.length) throw new Error("同一批次中有重複品項，請檢查種類、名稱、品牌與型號。"); return rpc("create_inventory_items_batch_v1",{p_rows:rows,p_actor:actor}); }
   if (operation === "update_inventory_item") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),category_id=uuid(payload.category_id),item_name=limited(payload.item_name,200),brand=limited(payload.brand,120),model=nullable(payload.model,120),unit=limited(payload.unit,30),opening_quantity=nonNegative(payload.opening_quantity),row_version=Number(payload.row_version); if (!id||!category_id||!item_name||!brand||model===null||!unit||opening_quantity===null||!Number.isInteger(opening_quantity)||!Number.isInteger(row_version)||row_version<1) throw new Error("請完整填寫品項資料，期初庫存須為 0 以上整數。"); const categories=await get(`product_categories?id=eq.${category_id}&is_active=eq.true&select=id,name`) as {id:string;name:string}[]; if(categories.length!==1) throw new Error("請選擇有效的貨品種類。"); const response=await db(`inventory_items?id=eq.${id}&row_version=eq.${row_version}`,{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify({item_name,category_id,item_type:categories[0].name,brand,model:model||null,unit,opening_quantity,...meta})}); if (!response.ok) { const failure=await response.json().catch(()=>({})) as {code?:string}; if(failure.code==="23505") throw new Error("相同種類、名稱、品牌與型號的品項已存在。"); throw new Error("品項更新失敗。"); } const rows=await response.json(); if (!Array.isArray(rows)||rows.length!==1) throw new Error("此品項已被其他管理者更新，請重新載入後再編輯。"); return; }
   if (operation === "delete_inventory_item") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),row_version=Number(payload.row_version); if(!id||!Number.isInteger(row_version)||row_version<1) throw new Error("品項資料或版本不正確。"); return rpc("delete_inventory_item",{p_id:id,p_row_version:row_version,p_actor:actor}); }
+  if (["create_site_return","update_site_return","cancel_site_return","delete_site_return"].includes(operation)) {
+    requireOperation(user,operation,payload,["admin","operator"]);
+    const documentId=uuid(payload.document_id),requestId=uuid(payload.request_id),action=operation.split('_')[0];
+    if(!documentId||!requestId||action!=="create"&&(!Number.isInteger(payload.row_version)||Number(payload.row_version)<1))throw Error("入庫單識別碼或版本不正確。");
+    const writing=["create","update"].includes(action);
+    const rows=writing&&Array.isArray(payload.rows)?payload.rows.map((value:unknown)=>{const row=value as Row,id=uuid(row?.inventory_item_id),quantity=Number(row?.quantity);if(!id||!Number.isFinite(quantity)||quantity<=0||Math.abs(quantity*100-Math.round(quantity*100))>0.000001)throw Error("材料品項或入庫數量不正確。");return {inventory_item_id:id,quantity};}):[];
+    if(writing&&(rows.length<1||rows.length>50||!date(payload.return_date)||!uuid(payload.customer_id)||!uuid(payload.project_id)))throw Error("請完整填寫客戶、工作案名、日期與 1 至 50 筆明細。");
+    const note=writing?nullable(payload.note,500):"";if(note===null)throw Error("備註最多 500 字。");
+    return rpc("save_site_return_v1",{p_actor_user_id:user.id,p_document_id:documentId,p_request_id:requestId,p_row_version:action==="create"?null:payload.row_version,p_action:action,p_return_date:writing?date(payload.return_date):null,p_customer_id:writing?uuid(payload.customer_id):null,p_project_id:writing?uuid(payload.project_id):null,p_rows:rows,p_note:note||""});
+  }
   if (operation === "update_pickup_document" || operation === "delete_pickup_document" || operation === "delete_stock_receipt_document") {
     requireOperation(user,operation,payload,operation==="update_pickup_document"?["admin","operator"]:["admin"]);
     const document_id=uuid(payload.document_id);
@@ -1126,20 +1208,43 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   }
   if (operation === "update_pickup") { requireOperation(user,operation,payload,["admin","operator"]); const id=uuid(payload.id),row_version=Number(payload.row_version),pickup_date=date(payload.pickup_date),project_id=uuid(payload.project_id),inventory_item_id=uuid(payload.inventory_item_id),quantity=positive(payload.quantity); if(!id||!Number.isInteger(row_version)||row_version<1||!pickup_date||!project_id||!inventory_item_id||quantity===null) throw new Error("請填寫完整的取貨資料。"); const hasNote=Object.hasOwn(payload,"note"),note=nullable(payload.note,500);if(hasNote&&(note===null||(payload.note!=null&&typeof payload.note!=="string")))throw new Error("取貨備註須為 500 字以內文字。");return rpc(hasNote?"update_pickup_record_v2":"update_pickup_record",{p_id:id,p_row_version:row_version,p_pickup_date:pickup_date,p_project_id:project_id,p_inventory_item_id:inventory_item_id,p_quantity:quantity,...(hasNote?{p_note:note||null}:{}),p_actor:actor}); }
   if (operation === "delete_pickups") { requireOperation(user,operation,payload,["admin"]); const ids=Array.isArray(payload.ids)?payload.ids.map(uuid):[]; if(!ids.length||ids.some(id=>!id)) throw new Error("請選擇有效的取貨紀錄。"); return rpc("delete_pickup_records",{p_ids:ids,p_actor:actor}); }
-  if (operation === "create_stock_receipt_document" || operation === "update_stock_receipt_document") {
+  if(operation==='delete_supplier_return'){
+    requireOperation(user,operation,payload,['admin']);
+    const document_id=uuid(payload.document_id),request_id=uuid(payload.request_id),row_version=payload.row_version;
+    if(!document_id||!request_id||!Number.isInteger(row_version)||Number(row_version)<1)throw Error('退貨單版本不正確，請重新讀取。');
+    return rpc('save_supplier_return_v1',{p_actor_user_id:user!.id,p_action:'delete',p_payload:{document_id,request_id,row_version}});
+  }
+  if (["create_stock_receipt_document","update_stock_receipt_document","create_supplier_return","update_supplier_return"].includes(operation)) {
+    const supplierReturn=operation.endsWith("_supplier_return"),documentLabel=supplierReturn?"退貨":"進貨";
     requireOperation(user,operation,payload,["admin","operator"]);
-    const document_id=uuid(payload.document_id),receipt_date=date(payload.receipt_date),supplier_id=uuid(payload.supplier_id);
-    if(!document_id||!receipt_date||!supplier_id||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20||!Array.isArray(payload.existing)||payload.existing.length>20)throw new Error("請填寫完整的進貨單及 1 至 20 筆明細。");
+    const document_id=uuid(payload.document_id),receipt_date=date(supplierReturn?payload.return_date:payload.receipt_date),supplier_id=uuid(payload.supplier_id);
+    if(!document_id||!receipt_date||!supplier_id||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20||!Array.isArray(payload.existing)||payload.existing.length>20)throw new Error(`請填寫完整的${documentLabel}單及 1 至 20 筆明細。`);
     const rows=payload.rows.map(value=>{const row=value as Row,id=row?.id?uuid(row.id):null,inventory_item_id=uuid(row?.inventory_item_id),quantity=positive(row?.quantity),note=nullable(row?.note,500);
-      if(!row||typeof row!=="object"||Array.isArray(row)||(row.id&&!id)||!inventory_item_id||quantity===null||!Number.isInteger(quantity)||note===null)throw new Error("進貨明細不正確，數量須為正整數。");
+      if(!row||typeof row!=="object"||Array.isArray(row)||(row.id&&!id)||!inventory_item_id||quantity===null||!Number.isInteger(quantity)||note===null)throw new Error(`${documentLabel}明細不正確，數量須為正整數。`);
       if(Object.hasOwn(row,"unit_price")&&row.unit_price!==null&&(typeof row.unit_price!=="number"||!Number.isFinite(row.unit_price)||row.unit_price<0||row.unit_price>=1e12))throw new Error("單價格式不正確。"); return {id,inventory_item_id,quantity,note,...(Object.hasOwn(row,"unit_price")?{unit_price:row.unit_price}:{})};});
-    const existing=payload.existing.map(value=>{const row=value as Row,id=uuid(row?.id),row_version=Number(row?.row_version);if(!id||!Number.isInteger(row_version)||row_version<1)throw new Error("進貨單版本不正確，請重新整理。");return {id,row_version};});
+    const existing=payload.existing.map(value=>{const row=value as Row,id=uuid(row?.id),row_version=Number(row?.row_version);if(!id||!Number.isInteger(row_version)||row_version<1)throw new Error(`${documentLabel}單版本不正確，請重新整理。`);return {id,row_version};});
     const customer_ids=receiptCustomerIds(payload.customer_ids);
-    if(payload.document_no!==undefined&&payload.document_no!==null&&typeof payload.document_no!=="string")throw new Error("進貨單號格式不正確。");
+    if(payload.document_no!==undefined&&payload.document_no!==null&&typeof payload.document_no!=="string")throw new Error(`${documentLabel}單號格式不正確。`);
     const document_no=typeof payload.document_no==="string"?payload.document_no.trim():null;
-    if(document_no&&(document_no.length>64||/[\u0000-\u001f\u007f]/.test(document_no)))throw new Error("進貨單號最多 64 字，不能包含換行或控制字元。");
+    if(document_no&&(document_no.length>64||/[\u0000-\u001f\u007f]/.test(document_no)))throw new Error(`${documentLabel}單號最多 64 字，不能包含換行或控制字元。`);
     const numberArgs=Object.hasOwn(payload,"document_no")?{p_document_no:document_no||null}:{};
-    return rpc(rows.some(row=>Object.hasOwn(row,"unit_price"))?"save_stock_receipt_document_v3":Object.hasOwn(payload,"document_no")?"save_stock_receipt_document_v2":"save_stock_receipt_document_v1",{p_document_id:document_id,p_create:operation==="create_stock_receipt_document",p_existing:existing,...numberArgs,
+    const metadata:Row={};
+    if(Object.hasOwn(payload,"receipt_metadata")){
+      const input=payload.receipt_metadata as Row;
+      if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(k=>!["tax_mode","tax_rate_basis_points","project_id","discount_amount"].includes(k)))throw new Error(`${documentLabel}單設定不正確。`);
+      if(Object.hasOwn(input,"discount_amount")){if(typeof input.discount_amount!=="number"||!Number.isSafeInteger(input.discount_amount)||input.discount_amount<0||input.discount_amount>=1e14)throw new Error("折扣須為非負整數金額。");requirePermission(user,"purchase_prices","VIEW");metadata.discount_amount=input.discount_amount;}
+      if(Object.hasOwn(input,"tax_mode")||Object.hasOwn(input,"tax_rate_basis_points")){
+        if(!["exclusive","inclusive"].includes(String(input.tax_mode))||typeof input.tax_rate_basis_points!=="number"||!Number.isInteger(input.tax_rate_basis_points)||input.tax_rate_basis_points<0||input.tax_rate_basis_points>10000)throw new Error("計價模式或稅率不正確。");
+        requirePermission(user,"purchase_prices","VIEW");metadata.tax_mode=input.tax_mode;metadata.tax_rate_basis_points=input.tax_rate_basis_points;
+      }
+      if(Object.hasOwn(input,"project_id")){if(input.project_id!==null&&!uuid(input.project_id))throw new Error("工作內容編號不正確。");metadata.project_id=input.project_id;}
+    }
+    if(supplierReturn){
+      const request_id=uuid(payload.request_id),create=operation==='create_supplier_return',row_version=payload.row_version;
+      if(!request_id||(create?row_version!=null:!Number.isInteger(row_version)||Number(row_version)<1))throw Error('退貨單版本或重試識別碼不正確。');
+      return rpc('save_supplier_return_v1',{p_actor_user_id:user!.id,p_action:create?'create':'update',p_payload:{document_id,request_id,row_version:row_version??null,document_no:document_no||null,return_date:receipt_date,supplier_id,rows,customer_ids,customer_departments:receiptDepartmentsInput(payload.customer_departments,customer_ids),receipt_metadata:metadata}});
+    }
+    return rpc(Object.hasOwn(payload,"receipt_metadata")?"save_stock_receipt_document_v4":rows.some(row=>Object.hasOwn(row,"unit_price"))?"save_stock_receipt_document_v3":Object.hasOwn(payload,"document_no")?"save_stock_receipt_document_v2":"save_stock_receipt_document_v1",{p_document_id:document_id,p_create:operation==="create_stock_receipt_document",p_existing:existing,...numberArgs,...(Object.hasOwn(payload,"receipt_metadata")?{p_metadata:metadata}:{}),
       p_receipt_date:receipt_date,p_supplier_id:supplier_id,p_rows:rows,p_customer_ids:customer_ids,p_customer_departments:receiptDepartmentsInput(payload.customer_departments,customer_ids),p_actor_user_id:user!.id});
   }
   if (operation === "create_stock_receipt_batch") { requireOperation(user,operation,payload,["admin","operator"]); if(!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20) throw new Error("每次必須登錄 1 至 20 筆進貨資料。"); const rows=payload.rows.map((value,index)=>{ if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆進貨資料格式不正確。`); const row=value as Row,receipt_date=date(row.receipt_date),inventory_item_id=uuid(row.inventory_item_id),quantity=positive(row.quantity),supplier_id=uuid(row.supplier_id),note=nullable(row.note,500); if(!receipt_date||!inventory_item_id||quantity===null||!Number.isInteger(quantity)||!supplier_id||note===null) throw new Error(`第 ${index+1} 筆進貨資料不完整，數量須為正整數。`); return {receipt_date,inventory_item_id,quantity,supplier_id,note:note||null}; }); const duplicateKeys=rows.map(row=>`${row.receipt_date}|${row.supplier_id}|${row.inventory_item_id}|${text(row.note).toLocaleLowerCase("zh-Hant")}`); if(new Set(duplicateKeys).size!==duplicateKeys.length) throw new Error("同一批進貨有重複列，請合併數量。"); if(Object.hasOwn(payload,"customer_departments")){const ids=receiptCustomerIds(payload.customer_ids);return rpc("create_stock_receipts_department_v1",{p_rows:rows,p_customer_ids:ids,p_customer_departments:receiptDepartmentsInput(payload.customer_departments,ids),p_actor_user_id:user!.id});} return Object.hasOwn(payload,"customer_ids")?rpc("create_stock_receipts_with_customers_v1",{p_rows:rows,p_customer_ids:receiptCustomerIds(payload.customer_ids),p_actor_user_id:user!.id}):rpc("create_stock_receipt_records_batch_v2",{p_rows:rows,p_actor:actor}); }
@@ -1276,6 +1381,10 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
         const completed=payload.completed_content,pending=payload.pending_content;
         if(!(completed===null&&pending===null)&&!(typeof completed==="string"&&typeof pending==="string"&&completed.length<=2000&&pending.length<=2000))throw new Error("已完成／未完成內容格式不正確。");
         if(typeof completed==="string"&&typeof pending==="string"&&[completed.trim(),pending.trim()].filter(Boolean).join("\n")!==(summary||""))throw new Error("工作內容與已完成／未完成內容不一致。");
+        if(Object.hasOwn(payload,"reporter_on_site")||Object.hasOwn(payload,"subcontractor_count")||Object.hasOwn(payload,"resolved_pending_items")){
+          if(typeof payload.reporter_on_site!=="boolean"||typeof payload.subcontractor_count!=="number"||!Number.isInteger(payload.subcontractor_count)||payload.subcontractor_count<0||payload.subcontractor_count>1000||!Array.isArray(payload.resolved_pending_items)||payload.resolved_pending_items.length>100)throw new Error("到場、代工人數或待辦資料不正確。");
+          return rpc("save_work_log_workforce_v1",{p_actor_user_id:user!.id,p_payload:{...payload,maintenance_events:parameters.p_maintenance_events}});
+        }
         if(payload.construction_plan_id)return rpc("save_construction_work_log_v1",{p_actor_user_id:user!.id,p_plan_id:uuid(payload.construction_plan_id),p_payload:{...payload,maintenance_events:parameters.p_maintenance_events}});
         return rpc("upsert_work_log_sections_v1",{...parameters,p_completed_content:completed,p_pending_content:pending});
       }
@@ -1543,7 +1652,7 @@ function receiptPriceResponse(body:unknown):unknown{
  if(privateContext.getStore()?.canViewReceiptPrices)return body;
  if(Array.isArray(body))return body.map(receiptPriceResponse);
  if(!body||typeof body!=="object")return body;
- return Object.fromEntries(Object.entries(body as Row).filter(([key])=>key!=="unit_price").map(([key,value])=>[key,receiptPriceResponse(value)]));
+ return Object.fromEntries(Object.entries(body as Row).filter(([key])=>!["unit_price","receipt_financials","receipt_tax_mode","receipt_tax_rate_basis_points","receipt_discount_amount","discount_amount","financials","tax_mode","tax_rate_basis_points"].includes(key)).map(([key,value])=>[key,receiptPriceResponse(value)]));
 }
 function privateResponse(body:unknown):unknown{
  const scope=privateContext.getStore();
@@ -1573,7 +1682,7 @@ function redactAuditValue(value: unknown, depth=0): unknown {
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
-const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_plans","construction_plan_items","construction_details","maintenance_details","project_costs","work_assignment"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
+const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_plans","construction_plan_items","construction_details","maintenance_details","project_costs","work_assignment"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","supplier_return_documents","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
 async function auditRecords(params: URLSearchParams, user: AppUser) {
   if(user.permissions)requirePermission(user,"audit");else requireRole(user,["admin"]);
   const page=Math.max(1,Math.min(10000,Number(params.get("page"))||1)),size=Math.max(1,Math.min(100,Number(params.get("page_size"))||25));
@@ -1588,7 +1697,7 @@ async function auditRecords(params: URLSearchParams, user: AppUser) {
   if(moduleName){if(!AUDIT_ENTITIES[moduleName])throw new Error("日誌模組不正確。");query.set("entity_type",`in.(${AUDIT_ENTITIES[moduleName].join(',')})`);}
   const actions:Record<string,string>={create:"*insert*,*create*,*add*",update:"*update*,*edit*,*set*",delete:"*delete*,*remove*",import:"*import*",export:"*export*",login:"login",logout:"logout",batch:"*batch*,*bulk*"};
   if(action){if(!actions[action])throw new Error("操作類型不正確。");query.set("action",`ilike(any).{${actions[action]}}`);}
-  const safe=(v:string)=>v.replace(/[(),.*{}"\\%_]/g," ").trim().slice(0,100);
+  const safe=(v:string)=>v.normalize('NFKC').replace(/[(),.*{}"\\%_]/g," ").trim().slice(0,100);
   const actor=safe(params.get("actor")||""),keyword=safe(params.get("q")||"");
   if(actor)query.set("actor",`ilike.*${actor}*`);
   // Search only metadata in SQL; JSON casts are not accepted as PostgREST filter columns.
@@ -1652,30 +1761,31 @@ function mergeConstructionSnapshot(snapshot:Row,extra:Row,referencesOnly=false) 
  snapshot.construction_plans=extra.construction_plans||[];
  return snapshot;
 }
-async function dashboardSnapshot(user: AppUser) {
+async function dashboardSnapshot(user: AppUser, allLists=false) {
+  const readList=(path:string)=>allLists?getAll(path.replace(/&limit=\d+(?=&|$)/,"")):get(path);
   const started=performance.now();
   const previousBusinessDate=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(Date.now()-86400000));
   const scoped=user.project_scoped?await privateReadRpc("work_log_scope_v1",{p_user_id:user.id},user) as Row:null;
   const assignmentTypes=[...(hasPermission(user,"worklogs")||hasPermission(user,"projects")?["general"]:[]),...(hasPermission(user,"pickups")?["pickup"]:[]),...(hasPermission(user,"appointments")?["appointment"]:[])];
   const [projects,repairs,logs,pendingAssignments,completedAssignments]=await Promise.all([
-    !hasPermission(user,"projects")?[]:scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,15):get("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
-    !hasPermission(user,"repairs")?[]:get("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
-    !hasPermission(user,"worklogs")?[]:scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):get(`site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
-    !assignmentTypes.length?[]:get(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=in.(pending,in_progress)&order=created_at.asc,id.asc&limit=100`),
-    !assignmentTypes.length?[]:get(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`)
+    !hasPermission(user,"projects")?[]:scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,allLists?undefined:15):readList("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
+    !hasPermission(user,"repairs")?[]:readList("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
+    !hasPermission(user,"worklogs")?[]:scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):getAll(`site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
+    !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=in.(pending,in_progress)&order=created_at.asc,id.asc&limit=100`),
+    !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`)
   ]) as Row[][];
   const unique=(rows:Row[],field:string)=>[...new Set(rows.map(row=>uuid(row[field])).filter(Boolean))];
   const assignments=[...pendingAssignments,...completedAssignments],projectIds=unique([...logs,...assignments],"project_id"),itemIds=unique([...repairs,...assignments],"inventory_item_id"),logIds=unique(logs,"id"),assignmentUserIds=[...new Set([...unique(assignments,"assignee_user_id"),...unique(assignments,"created_by_user_id")])];
   const [relatedProjects,items,workers,assignmentUsers]=await Promise.all([
-    projectIds.length?get(`projects?select=id,project_code,name,customer_id&id=in.(${projectIds})`):[],
-    itemIds.length?get(`inventory_items?select=id,item_name,brand,model&id=in.(${itemIds})`):[],
-    logIds.length?get(`site_work_log_workers?select=work_log_id,user_id&work_log_id=in.(${logIds})`):[],
-    assignmentUserIds.length?get(`app_users?select=id,display_name&id=in.(${assignmentUserIds})`):[]
+    projectIds.length?getAll(`projects?select=id,project_code,name,customer_id&id=in.(${projectIds})&order=id.asc`):[],
+    itemIds.length?getAll(`inventory_items?select=id,item_name,brand,model&id=in.(${itemIds})&order=id.asc`):[],
+    logIds.length?getAll(`site_work_log_workers?select=work_log_id,user_id&work_log_id=in.(${logIds})&order=work_log_id.asc,user_id.asc`):[],
+    assignmentUserIds.length?getAll(`app_users?select=id,display_name&id=in.(${assignmentUserIds})&order=id.asc`):[]
   ]) as Row[][];
   const customerIds=unique([...projects,...repairs,...relatedProjects,...assignments],"customer_id"),workerIds=unique(workers,"user_id");
   const [customers,users]=await Promise.all([
-    customerIds.length?get(`customers?select=id,name&id=in.(${customerIds})`):[],
-    workerIds.length?get(`app_users?select=id,display_name&id=in.(${workerIds})`):[]
+    customerIds.length?getAll(`customers?select=id,name&id=in.(${customerIds})&order=id.asc`):[],
+    workerIds.length?getAll(`app_users?select=id,display_name&id=in.(${workerIds})&order=id.asc`):[]
   ]) as Row[][];
   const lookup=(rows:Row[],id:unknown,field:string)=>rows.find(row=>row.id===id)?.[field]||"—";
   const assignmentProjection=(row:Row)=>{const project=relatedProjects.find(project=>project.id===row.project_id);return {...row,project_code:project?.project_code||"—",project:row.assignment_type==="appointment"?({repair:"客戶報修",site_visit:"預約場刊",quotation:"索取報價",construction:"預約施工"}[String(row.appointment_type)]||"客戶預約事項"):project?.name||"已刪除工作內容",customer:lookup(customers,row.customer_id||project?.customer_id,"name"),assignee:lookup(assignmentUsers,row.assignee_user_id,"display_name"),creator:lookup(assignmentUsers,row.created_by_user_id,"display_name"),item:lookup(items,row.inventory_item_id,"item_name")};};
@@ -1734,9 +1844,11 @@ async function handleRequest(request: Request) {
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
       authorizeRead(user,params,request.headers.get("x-guc-system")==="site");
+      if(params.get("scope")==="system_backup_authorization")return json({current_user:publicUser(user),authorized:true,action:params.get("action"),capabilities:{view:hasPermission(user,"system_backups","VIEW"),create:hasPermission(user,"system_backups","CREATE"),restore:hasPermission(user,"system_backups","UPDATE")}});
       if(params.get("entity")!=="shared_work_log")params.forEach(value=>assertPrivatePayload(value));
       if(params.get("entity")==="shared_work_log"){requirePermission(user,"worklogs");const result=await rpc("read_shared_work_log_v1",{p_actor_user_id:user.id,p_work_log_id:uuid(params.get("id"))});privateContext.getStore()!.sharedResult=true;return json({record:result,current_user:publicUser(user)});}
       const entity = text(params.get("entity"));
+      if(entity === "phone_security_audit")return json(await phoneSecurityAudit(params,user));
       if(entity === "phone_terminal_versions")return json(await phoneTerminalVersions(params));
       if(entity === "audit_logs")return json(await auditRecords(params,user));
        if (entity === "monitoring_devices") return json({...(await monitoringDevices(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
@@ -1750,17 +1862,23 @@ async function handleRequest(request: Request) {
          const customer=uuid(params.get("customer_id")),service=uuid(params.get("service_id"));if(!customer||!service)throw new Error("請選擇客戶與承攬內容。");
          return json({...await privateReadRpc("search_equipment_history_v1",{p_customer_id:customer,p_service_id:service,p_search:text(params.get("search")).slice(0,160),p_type:text(params.get("type")).slice(0,60),p_page:Math.max(1,Number(params.get("page"))||1)},user) as Row,preview_readonly:isPreviewGateway});
        }
-       if (entity === "maintenance_workers") return json({records:await get("app_users?is_active=eq.true&select=id,display_name&order=display_name.asc")});
+       if (entity === "maintenance_workers") return json({records:await get("app_users?is_active=eq.true&can_work_on_site=eq.true&select=id,display_name&order=display_name.asc")});
        if (entity === "equipment_history") return json({...(await equipmentHistory(params,user) as Row),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_options") return json({...(await monitoringDeviceOptions(user,params)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_dashboard") return json({...(await monitoringDeviceDashboard(user)),preview_readonly:isPreviewGateway});
       if (entity === "monitoring_device_imports") return json({...(await monitoringDeviceImports(params)),current_user:publicUser(user),preview_readonly:isPreviewGateway});
       if (params.has("entity")) return json(await queryRecords(params,user));
       const scopeName = text(params.get("scope")) || "dashboard";
+      if(scopeName==="site_returns")return json({...await rpc("site_return_list_v1",{p_actor_user_id:user.id}) as Row,current_user:publicUser(user),errors:[]});
       if(scopeName==="materials"||scopeName==="work_report"){
         const id=params.get("project_id");if(id&&!uuid(id))throw new Error("工作內容編號不正確。");
         const data=await rpc("work_content_report_v1",{p_actor_user_id:user.id,p_project_id:id?uuid(id):null,p_from:date(params.get("from")),p_to:date(params.get("to")),p_work_type:params.get("work_type")||null,p_accounting:false}) as Row;
         return json({...data,scope:scopeName,current_user:publicUser(user),customer_categories:await getAll(datasets.customer_categories.path),customer_departments:await customerDepartmentRows(data.customers),errors:[]});
+      }
+      if(scopeName==="pending_work_log_items"){
+        const project=uuid(params.get("project_id")),day=date(params.get("from")),exclude=uuid(params.get("exclude_id"));
+        if(!project||!day||params.get("exclude_id")&&!exclude)throw new Error("工作內容或日期不正確。");
+        return json(await rpc("pending_work_log_items_v1",{p_actor_user_id:user.id,p_project_id:project,p_log_date:day,p_exclude_id:exclude}));
       }
       if(scopeName==="construction_plans"){
         const projectId=params.get("project_id");if(projectId&&!uuid(projectId))throw new Error("工作內容編號不正確。");
@@ -1770,10 +1888,14 @@ async function handleRequest(request: Request) {
       if (scopeName === "site_customer") return json(await siteCustomerSnapshot(params,user,isPreviewGateway));
       if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
       const snapshot=await scopedSnapshot(user, scopeName, params.get("options_only")==="1") as Row;
+      if((Array.isArray(snapshot.receipts)||scopeName==="transactions")&&hasPermission(user,"purchases")){
+        const context=await rpc("receipt_document_context_v1",{p_actor_user_id:user.id,p_document_ids:[...new Set(((snapshot.receipts||[]) as Row[]).map(r=>r.receipt_document_id||r.id))]}) as Row;
+        if(Array.isArray(snapshot.receipts))snapshot.receipt_documents=context.documents;
+        snapshot.money_settings=context.money_settings;
+        if(scopeName==="transactions"&&params.get("options_only")!=="1")Object.assign(snapshot,await rpc("supplier_return_list_v1",{p_actor_user_id:user.id}));
+      }
       if(scopeName==="worklogs")mergeConstructionSnapshot(snapshot,await constructionSnapshot(user),params.get("options_only")==="1");
-      const privateLedger=privateContext.getStore()?.configured&&!privateContext.getStore()?.direct;
-      const restrictedLedger=["worklogs","inventory"].includes(scopeName)&&(!hasPermission(user,"pickups")||!hasPermission(user,"purchases"));
-      if((privateLedger||restrictedLedger)&&Array.isArray(snapshot.items))snapshot.stock_totals=await rpc("erp_stock_totals_v1",{p_actor_user_id:user.id});
+      if(Array.isArray(snapshot.items))snapshot.stock_totals=await rpc("erp_stock_totals_v1",{p_actor_user_id:user.id});
       return json(snapshot);
     }
     if(request.method !== "POST") return json({error:"僅支援 GET 與 POST。"},405);
@@ -1781,6 +1903,7 @@ async function handleRequest(request: Request) {
     const operation = text(body.operation), payload = body.payload&&typeof body.payload==="object"&&!Array.isArray(body.payload)?body.payload as Row:{};
     if (operation === "login") { const logged = await login(payload); if(request.headers.get("x-guc-system")==="site")requirePermission(logged.user,"site"); if(!isPreviewGateway){Object.assign(auditContext.getStore()!,auditHeaders(request,logged.user));await insert("audit_logs",{entity_type:"session",entity_id:logged.user.id,action:"LOGIN",actor:logged.user.username,source:"web"});} return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
     if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);requirePermission(user,"site");requirePermission(user,"monitoring");assertPrivatePayload(payload);return json(await monitoringIpConflicts(payload));}
+    if(operation==="export_data"){const exportUser=await currentUser(request);if(!exportUser)return json({error:"請先登入。"},401);if(request.headers.get("x-guc-system")==="site")requirePermission(exportUser,"site");return json(await exportErpData(payload,exportUser));}
     if (isPreviewGateway) return json({error:"Preview 環境僅允許登入與讀取；所有寫入均已封鎖。",code:"PREVIEW_READ_ONLY"},403);
     if (operation === "bootstrap_admin") {
       const existing = await get("app_users?select=id&limit=1") as Row[];

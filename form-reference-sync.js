@@ -5,7 +5,7 @@ let formReferenceGeneration = 0;
 function invalidateFormReferences(){formReferenceGeneration++;formReferenceTimes.clear();formReferenceFingerprints.clear();}
 function formReferenceScopes(){
   const modal=document.querySelector('#simpleModal.open');
-  const scopes={customerModal:['crm'],customerCategoryModal:['crm'],customerDepartmentModal:['crm'],contractServiceModal:['crm'],projectModal:['crm'],supplierModal:['crm'],categoryModal:['inventory'],itemModal:['inventory'],pickupModal:['transactions'],receiptModal:['transactions'],repairModal:['repairs'],workLogModal:['worklogs'],workLogPickupModal:['transactions'],workAssignmentModal:['crm','inventory'],accountModal:['settings'],attachmentModal:['worklogs']};
+  const scopes={customerModal:['crm'],customerCategoryModal:['crm'],customerDepartmentModal:['crm'],contractServiceModal:['crm'],projectModal:['crm'],supplierModal:['crm'],categoryModal:['inventory'],itemModal:['inventory'],pickupModal:['transactions'],receiptModal:['transactions'],supplierReturnModal:['transactions'],repairModal:['repairs'],workLogModal:['worklogs'],workLogPickupModal:['transactions'],workAssignmentModal:['crm','inventory'],accountModal:['settings'],attachmentModal:['worklogs']};
   if(modal)return scopes[modal.dataset.type]||[];
   const page=currentPage();return ['inventory','transactions','repairs','crm','projects','worklogs','materials','settings'].includes(page)?[PAGE_SCOPES[page]]:[];
 }
@@ -106,7 +106,7 @@ function refreshFormReferenceChoices(snapshot={}){
     if(!row){row=document.createElement('tr');row.dataset.accessProject=project.id;row.innerHTML='<th scope="row"></th>'+['view','create_work_log','update_work_log','delete_work_log'].map(action=>`<td><input type="checkbox" name="${action}" aria-label="${esc(project.name)} ${action}" ${accessUser?'':'disabled'}></td>`).join('');accessBody.append(row);}
     row.querySelector('th').textContent=project.project_code+'｜'+project.name;
     row.dataset.search=(project.project_code+' '+project.name).toLowerCase();
-    row.hidden=!row.dataset.search.includes((document.querySelector('#projectAccessSearch')?.value||'').trim().toLowerCase());
+    row.hidden=!matches([row.dataset.search],searchValue(document.querySelector('#projectAccessSearch')));
   }
   document.dispatchEvent(new CustomEvent('guc:form-references-updated',{detail:{datasets:Object.keys(snapshot)}}));
   if(!modal||!form)return;
@@ -118,7 +118,7 @@ function refreshFormReferenceChoices(snapshot={}){
   if(fields.customerId&&!form.dataset.constructionPlanId){
     const category=fields.customerCategory?.value,customerId=fields.customerId.value;
     replaceReferenceOptions(fields.customerId,sortRows(state.customers.filter(row=>row.category===category),'code','asc').map(row=>[row.id,`${row.code}｜${row.name}`]),{placeholder:category?'請選擇客戶':'請先選擇客戶分類',disabled:!category});
-    const search=valueText((fields.customerSelectorSearch?.value||'').trim());
+    const search=valueText(searchValue(fields.customerSelectorSearch).trim());
     [...fields.customerId.options].forEach(option=>option.hidden=!!option.value&&option.value!==customerId&&!matches([option.text],search));
     replaceReferenceOptions(fields.departmentId,customerDepartmentRows(customerId,{includeId:fields.departmentId?.value}).map(row=>[row.id,row.name]),{placeholder:customerDepartmentRows(customerId).length?'請選擇科室':'此客戶尚未設定科室',disabled:!customerId||!state.customerDepartmentsReady});
     const host=form.querySelector('[data-customer-selector]');
@@ -142,9 +142,10 @@ function refreshFormReferenceChoices(snapshot={}){
     const query=valueText((row.querySelector('[data-batch-item-search]')?.value||'').trim()),selected=item.value;
     replaceReferenceOptions(item,sortRows(state.inventory.filter(i=>i.categoryId===category.value&&(i.id===selected||matches([i.name,i.brand,i.model,i.code],query))),'name','asc').map(i=>[i.id,`${i.name}｜${i.brand} ${i.model}｜${i.code}`]),{placeholder:'請選擇品項',disabled:!category.value});
   });
-  for(const name of ['workerIds','projectWorkerIds']){const picker=form.querySelector(`.worker-picker:has([name="${name}"]) > div`)||[...form.querySelectorAll('.worker-picker')].find(node=>node.querySelector(`[data-worker-count="${name}"]`))?.querySelector('div');refreshReferenceCheckboxes(picker,name,sortRows(state.siteWorkers,'displayName','asc').map(row=>[row.id,row.displayName,row.active]));}
+  for(const name of ['workerIds','projectWorkerIds']){const picker=form.querySelector(`.worker-picker:has([name="${name}"]) > div`)||[...form.querySelectorAll('.worker-picker')].find(node=>node.querySelector(`[data-worker-count="${name}"]`))?.querySelector('div');refreshReferenceCheckboxes(picker,name,sortRows(state.siteWorkers.filter(row=>name==='projectWorkerIds'||row.canWorkOnSite!==false&&!['老闆娘','joyce'].includes(row.displayName.trim().toLowerCase())),'displayName','asc').map(row=>[row.id,row.displayName,row.active]));}
   refreshReferenceCheckboxes(form.querySelector('.contract-service-picker > div'),'contractServiceCodes',state.contractServiceTypes.filter(row=>row.active).map(row=>[row.code,row.name,true]));
   if(type==='workLogModal'){
+    if(typeof syncReporterAttendance==='function')syncReporterAttendance(form);
     const projects=workLogSelectableProjects(workLogFormCustomerId()),list=form.querySelector('#workLogProjectNames');
     if(list?.tagName==='SELECT')replaceReferenceOptions(list,projects.map(row=>[row.name,`${row.code}｜${row.name}`]),{placeholder:'請選擇授權工作內容'});
     else if(list)list.innerHTML=projects.map(row=>`<option value="${esc(row.name)}">${esc(row.code)}</option>`).join('');
@@ -153,7 +154,8 @@ function refreshFormReferenceChoices(snapshot={}){
     refreshMaintenanceInventoryChoices();renderEquipmentDrawer();
     if(form.dataset.constructionPlanId&&typeof initializeConstructionLog==='function')initializeConstructionLog();
   }
-  if(type==='receiptModal')refreshReceiptReferenceChoices();
+  if(type==='receiptModal'||type==='supplierReturnModal')refreshReceiptReferenceChoices();
+  if(typeof filterModalCustomerSearch==='function')filterModalCustomerSearch();
   if(type==='accountModal')replaceReferenceOptions(fields.role,(state.appRoles||[]).map(row=>[row.code,row.name]),{placeholder:'請選擇角色'});
 }
 function refreshReferenceFilters(){
@@ -168,7 +170,7 @@ function refreshReferenceFilters(){
     replaceReferenceOptions(customer,sortRows(state.customers.filter(row=>category.value&&row.category===category.value),'code','asc').map(row=>[row.id,row.code+'｜'+row.name]),{placeholder:!category.value?'請先選擇客戶分類':all?'此分類全部客戶':'請選擇客戶',disabled:!category.value});
     const department=departmentId&&document.getElementById(departmentId),project=projectId&&document.getElementById(projectId);
     replaceReferenceOptions(department,(state.customerDepartments||[]).filter(row=>row.customerId===customer.value).map(row=>[row.id,row.name]),{placeholder:'全部科室',disabled:!customer.value});
-    replaceReferenceOptions(project,sortRows(state.projects.filter(row=>(projectId!=='materialProject'||reportProjectIncluded(row))&&(all&&!customer.value||row.customerId===customer.value)&&(!all||!category.value||byId(state.customers,row.customerId)?.category===category.value)&&projectMatchesDepartment(row,department?.value||'*')),'code','asc').map(row=>[row.id,row.code+'｜'+row.name]),{placeholder:all?'所有工作內容':'請選擇工作內容',disabled:!all&&!customer.value});
+    replaceReferenceOptions(project,sortRows(state.projects.filter(row=>(projectId!=='materialProject'||reportProjectIncluded(row))&&((all||projectId==='materialProject'&&document.querySelector('#materialKeyword')?.value.trim())&&!customer.value||row.customerId===customer.value)&&(!all||!category.value||byId(state.customers,row.customerId)?.category===category.value)&&projectMatchesDepartment(row,department?.value||'*')),'code','asc').map(row=>[row.id,row.code+'｜'+row.name]),{placeholder:all?'所有工作內容':'請選擇工作內容',disabled:!all&&!customer.value&&!(projectId==='materialProject'&&document.querySelector('#materialKeyword')?.value.trim())});
   }
   replaceReferenceOptions(document.querySelector('#customerCategoryFilter'),customerCategoryChoices(),{placeholder:'所有客戶分類'});
   replaceReferenceOptions(document.querySelector('#categoryFilter'),state.categories.filter(row=>row.active).map(row=>[row.name,row.name]),{placeholder:'所有貨品種類'});

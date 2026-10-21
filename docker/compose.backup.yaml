@@ -1,0 +1,6 @@
+# Add to the existing release Compose file set, preserving HTTPS/NAT overrides.
+# The Windows worker stays bound to 127.0.0.1; do not publish port 18970.
+services:
+  erp:
+    environment:
+      GUC_BACKUP_SERVICE_URL: http://host.docker.internal:18970

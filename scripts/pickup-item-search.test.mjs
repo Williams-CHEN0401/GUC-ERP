@@ -11,7 +11,7 @@ function harness(){
  rows.push(makeRow());
  const container={children:rows,querySelectorAll:()=>rows,get lastElementChild(){return rows.at(-1);}};
  const c=vm.createContext({state:{inventory,categories:[{id:'one',active:true},{id:'two',active:true},{id:'off',active:false}]},document:{querySelector:s=>s==='#transactionBatchRows'?container:s.endsWith('Results')?results:s.endsWith('Status')?status:input,addEventListener(name,fn){events[name]=fn;}},MAX_BATCH_ROWS:3,canModule:()=>true,showToast:s=>notices.push(s),syncBatchItemOptions(){},addTransactionBatchRow(type){addedTypes.push(type);rows.push(makeRow('','1'));}});
- for(const name of ['esc','byId','valueText','matches','sortRows'])vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),c);
+ for(const name of ['esc','byId','valueText','matches','sortRows','searchValue'])vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),c);
  vm.runInContext(app.slice(app.indexOf('function transactionItemSearchFields('),app.indexOf('function itemBatchRow(')),c);
  return {c,rows,notices,status,input,results,events,addedTypes};
 }
@@ -23,8 +23,8 @@ test('search is below pickup rows in both entry forms, never inside pickup item 
  const rowSource=app.split(/\r?\n/).find(line=>line.startsWith('function transactionBatchRow('));
  assert.ok(!rowSource.includes('type="search"'));
  const receiptFields=receipts.slice(receipts.indexOf('function receiptDocumentFields('),receipts.indexOf('function initializeReceiptDocument('));
- assert.ok(receiptFields.indexOf('進貨明細')<receiptFields.indexOf("transactionItemSearchFields('receipt')"));
- assert.ok(receiptFields.indexOf("transactionItemSearchFields('receipt')")<receiptFields.indexOf('receiptCustomerPicker('));
+ assert.ok(receiptFields.indexOf('${label}明細')<receiptFields.indexOf("transactionItemSearchFields('receipt',label)"));
+ assert.ok(receiptFields.indexOf("transactionItemSearchFields('receipt',label)")<receiptFields.indexOf('receiptCustomerPicker('));
  const {c}=harness();
  assert.equal(c.transactionItemSearchFields('receipt').replaceAll('receipt','pickup').replaceAll('進貨','取貨'),c.pickupItemSearchFields());
 });

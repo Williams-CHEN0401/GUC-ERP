@@ -38,11 +38,11 @@ test('sections keep legacy text and preserve split values independently of statu
  const form={elements:{workType:{value:'維護保養'},completedContent:{value:' 完成 '},pendingContent:{value:' 未完 '}}};assert.equal(c.workLogPlainContent(form),'完成\n未完');form.elements.pendingContent.value='字'.repeat(2000);assert.throws(()=>c.workLogPlainContent(form),/2000/);
  form.elements.workType.value='維修紀錄';assert.deepEqual(JSON.parse(JSON.stringify(c.workLogContentSections(form))),{completed_content:null,pending_content:null});
 });
-test('worker exclusions apply only to worklogs; historical selected IDs survive without appearing as choices',()=>{
+test('construction worker exclusions preserve owner selectors; historical selected IDs survive without appearing as choices',()=>{
  const esc=x=>String(x).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
  const ctx=vm.createContext({esc,sortRows:a=>a,state:{siteWorkers:[{id:'a',displayName:'老闆娘',active:true},{id:'b',displayName:'Joyce',active:true},{id:'c',displayName:'正常人員',active:true}]}});
  vm.runInContext(app.split(/\r?\n/).find(x=>x.startsWith('function workerPickerField(')),ctx);
- assert.match(ctx.workerPickerField([]),/老闆娘/);assert.match(ctx.workerPickerField([]),/Joyce/);
+ assert.doesNotMatch(ctx.workerPickerField([]),/老闆娘|Joyce/);assert.match(ctx.workerPickerField([],{constructionOnly:false}),/老闆娘/);assert.match(ctx.workerPickerField([],{constructionOnly:false}),/Joyce/);
  const html=ctx.workerPickerField(['a','c'],{workLogOnly:true});assert.doesNotMatch(html,/老闆娘|Joyce/);assert.match(html,/type="hidden" name="workerIds" value="a"/);assert.match(html,/已選 1 位/);assert.match(html,/正常人員/);
 });
 test('followup cannot close while saving; successful submission can advance it',()=>{

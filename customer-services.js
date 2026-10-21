@@ -12,18 +12,18 @@
       const response = await fetch(`${API_ENDPOINT}?entity=customer_service_management&customer_id=${encodeURIComponent(customerId)}`, {headers:{Authorization:`Bearer ${accessToken}`},cache:"no-store"});
       const body = await response.json(); if (!response.ok) throw new Error(body.error || "承攬內容載入失敗。");
       if(number !== loadNumber || !dialog.open) return;
-      data = body; selected = null; render(); message(readonly() ? "目前可查詢承攬內容；此帳號或測試環境不允許寫入。" : "承攬名稱沿用共用類型；啟停狀態與備註儲存於此客戶的承攬關聯。");
+      data = body; selected = null; dialog.querySelector('[data-service-editor]').hidden=true; render(); message(readonly() ? "目前可查詢承攬內容；此帳號或測試環境不允許寫入。" : "承攬名稱沿用共用類型；啟停狀態與備註儲存於此客戶的承攬關聯。");
     } catch(error) { if(number === loadNumber) message(error.message,true); }
   }
   function render() {
-    const search = dialog.querySelector('[data-service-search]').value.toLocaleLowerCase();
+    const search = searchValue(dialog.querySelector('[data-service-search'));
     const body = dialog.querySelector('tbody');
     body.innerHTML = data.records.filter(record => {
       const service = data.services.find(row => row.id === record.service_type_id);
-      return `${service?.name || ""} ${record.notes || ""}`.toLocaleLowerCase().includes(search);
+      return matches([service?.name,record.notes],search);
     }).map(record => {const service=data.services.find(row=>row.id===record.service_type_id);return `<tr tabindex="0" data-service-row="${esc(record.service_type_id)}" title="雙擊、手機點一下或 Enter 開啟"><td>${esc(service?.name||"未命名承攬")}</td><td>${record.is_active?"啟用":"停用"}${service?.is_active===false?"（類型已停用）":""}</td><td>${esc(format(record.created_at))}</td><td>${esc(format(record.updated_at))}</td><td>${esc(record.notes||"—")}</td><td>${readonly()?"—":`<button type="button" data-service-remove="${esc(record.service_type_id)}">${record.is_active?"刪除／停用":"刪除"}</button>`}</td></tr>`;}).join('') || '<tr><td colspan="6">沒有符合的承攬內容</td></tr>';
     dialog.querySelector('[data-service-add]').disabled = readonly() || busy;
-    dialog.querySelector('[data-service-editor]').hidden = true;
+    // Filtering the list must not close an editor or discard its draft.
   }
   function edit(id) {
     if (!data || busy) return;
@@ -44,8 +44,10 @@
   function ensureDialog() {
     if(dialog)return;
     dialog=document.createElement('dialog');dialog.className='customer-services-dialog';dialog.setAttribute('aria-label','客戶承攬內容');
-    dialog.innerHTML='<header><div><p>客戶 → 承攬內容</p><h2></h2></div><button type="button" data-service-close>關閉</button></header><div class="customer-service-toolbar"><label>搜尋承攬內容<input data-service-search type="search" /></label><button type="button" data-service-add>＋新增承攬內容</button><button type="button" data-service-reload>重新載入</button></div><p data-service-message role="status"></p><div class="customer-service-table"><table><thead><tr><th>名稱／類型</th><th>狀態</th><th>建立日期</th><th>最後更新</th><th>備註</th><th>操作</th></tr></thead><tbody></tbody></table></div><form data-service-editor hidden></form>';
+    dialog.innerHTML='<header><div><p>客戶 → 承攬內容</p><h2></h2></div><button type="button" data-service-close>關閉</button></header><div class="customer-service-toolbar"><label>搜尋承攬內容<input data-service-search type="search" /></label><button type="button" data-service-add>＋新增承攬內容</button><button type="button" data-service-reload>重新載入</button></div><p data-service-message role="status"></p><div class="customer-service-table"><table><thead><tr><th>名稱／類型</th><th>狀態</th><th>建立日期</th><th>更新時間</th><th>備註</th><th>操作</th></tr></thead><tbody></tbody></table></div><form data-service-editor hidden></form>';
     document.body.append(dialog);
+    const exportButton=document.createElement('button');exportButton.type='button';exportButton.textContent='匯出 Excel';exportButton.dataset.exportResource='customer_services';exportButton.hidden=!canModule('data_export');dialog.querySelector('.customer-service-toolbar').append(exportButton);
+    exportButton.addEventListener('click',()=>GucErpExportUI.open('customer_services','customers',{customer_id:customerId,q:dialog.querySelector('[data-service-search]').value}));
     dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
     dialog.addEventListener('close',()=>{loadNumber++;});
     dialog.addEventListener('input',event=>{if(event.target.matches('[data-service-search]')&&data)render();});

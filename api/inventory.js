@@ -18,7 +18,7 @@ module.exports = async function handler(request, response) {
 
   if (process.env.VERCEL_ENV !== 'production' && request.method === 'POST') {
     const operation = request.body && typeof request.body === 'object' ? request.body.operation : '';
-    if (operation !== 'login' && operation !== 'check_monitoring_ip_conflicts') {
+    if (!['login', 'check_monitoring_ip_conflicts', 'export_data'].includes(operation)) {
       return response.status(403).json({ error: '安全預覽模式禁止寫入正式資料庫。' });
     }
   }
