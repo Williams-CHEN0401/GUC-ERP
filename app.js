@@ -930,6 +930,7 @@ function applyWorkContentReportLink(){
   const id=new URLSearchParams(location.search).get("work_content_id");if(!id)return;
   const project=state.projects.find(row=>row.id===id),customer=byId(state.customers,project?.customerId);
   if(!project||!customer){document.querySelector("#materialProject").value="";renderProjectReport();showToast("找不到此工作內容，或您沒有檢視權限。","無法開啟報表");return;}
+  if(["construction","repair"].includes(project.rawType))document.querySelector("#materialWorkType").value=project.rawType;
   document.querySelector("#materialCustomerCategory").value=customer.category;
   updateMaterialCustomers(true);document.querySelector("#materialCustomer").value=customer.id;
   syncDepartmentFilter("#materialCustomer","#materialDepartment");document.querySelector("#materialDepartment").value=project.departmentId||"";updateMaterialProjects(true);document.querySelector("#materialProject").value=project.id;
