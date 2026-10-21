@@ -1,0 +1,13 @@
+https://guc-erp.theworkpc.com:8888 {
+ import domain_tls
+ reverse_proxy feedback:3000 {
+  header_up X-Forwarded-For {remote_host}
+ }
+}
+
+https://125.229.116.234:8888 {
+ import public_ip_tls
+ reverse_proxy feedback:3000 {
+  header_up X-Forwarded-For {remote_host}
+ }
+}
