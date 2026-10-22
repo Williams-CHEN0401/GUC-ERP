@@ -10,7 +10,7 @@ function harness(){
  const makeRow=(item='',quantity='4')=>{const fields={'[data-batch-item]':{value:item},'[data-batch-category]':{value:''},'[name="batchNote"]':{value:'保留備註'},'[name="batchQuantity"]':{value:quantity,focus(){this.focused=true;}}};return {querySelector:s=>fields[s]};};
  rows.push(makeRow());
  const container={children:rows,querySelectorAll:()=>rows,get lastElementChild(){return rows.at(-1);}};
- const c=vm.createContext({state:{inventory,categories:[{id:'one',active:true},{id:'two',active:true},{id:'off',active:false}]},document:{querySelector:s=>s==='#transactionBatchRows'?container:s.endsWith('Results')?results:s.endsWith('Status')?status:input,addEventListener(name,fn){events[name]=fn;}},MAX_BATCH_ROWS:3,canModule:()=>true,showToast:s=>notices.push(s),syncBatchItemOptions(){},addTransactionBatchRow(type){addedTypes.push(type);rows.push(makeRow('','1'));}});
+ const c=vm.createContext({state:{inventory,categories:[{id:'one',active:true},{id:'two',active:true},{id:'off',active:false}]},document:{querySelector:s=>s==='#receiptItemSearchScope'?null:s==='#transactionBatchRows'?container:s.endsWith('Results')?results:s.endsWith('Status')?status:input,addEventListener(name,fn){events[name]=fn;}},MAX_BATCH_ROWS:3,canModule:()=>true,showToast:s=>notices.push(s),syncBatchItemOptions(){},addTransactionBatchRow(type){addedTypes.push(type);rows.push(makeRow('','1'));}});
  for(const name of ['esc','byId','valueText','matches','sortRows','searchValue'])vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),c);
  vm.runInContext(app.slice(app.indexOf('function transactionItemSearchFields('),app.indexOf('function itemBatchRow(')),c);
  return {c,rows,notices,status,input,results,events,addedTypes};

@@ -1,4 +1,6 @@
 // One UI document, existing stock rows as its lines. Legacy rows stay separate.
+function receiptDeliveryBadge(id){const d=receiptHeader(id,'receipt');return d?.delivery_state==='pending'?'待確認送達（未入庫）':d?.delivery_state==='site'?`直送案場｜取貨 ${d.delivery_pickup_no||''}`:'公司入庫';}
+function receiptDeliveryAction(id){const d=receiptHeader(id,'receipt');return d?.delivery_state==='pending'&&d.can_confirm_delivery?`<button type="button" class="outline" data-receipt-delivery="${esc(id)}">確認送達位置</button>`:'';}
 function receiptEditorKind(){return document.querySelector('#simpleModal')?.dataset.type==='supplierReturnModal'?'supplierReturn':'receipt';}
 function receiptSourceRows(kind='receipt'){return kind==='supplierReturn'?(state.supplierReturnDocuments||[]).flatMap(d=>(d.lines||[]).map(l=>({id:l.id,documentId:d.id,documentNo:d.document_no,date:d.return_date,supplierId:d.supplier_id,itemId:l.inventory_item_id,quantity:Number(l.quantity),unitPrice:l.unit_price??'',lineNo:l.line_no,note:l.note,customerIds:d.customer_departments.map(c=>c.customer_id),customerDepartments:d.customer_departments,rowVersion:d.row_version}))):state.receipts;}
 function receiptDocumentRows(id,kind='receipt'){return receiptSourceRows(kind).filter(row=>(row.documentId||row.id)===id).sort((a,b)=>(a.lineNo||0)-(b.lineNo||0)||String(a.id).localeCompare(String(b.id)));}
@@ -15,7 +17,7 @@ function renderReceiptDocuments(kind='receipt'){
       note:lines.map(line=>line.note).filter(Boolean).join('；')};
   }).filter(row=>matches([row.documentNo,row.date,row.supplier,row.item,row.customers,row.note],config.search)&&transactionDocumentFilter(kind,row));
   const page=tablePage(kind,sortRows(rows,config.sortKey||'date',config.direction||'desc'));
-  document.querySelector('#'+kind+'Table').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes(kind==='receipt'?'receiptModal':'supplierReturnModal',row.id,canModule('purchases','UPDATE'))}><td>${esc(row.documentNo)||'舊單（未編號）'}</td><td>${esc(row.date)}</td><td>${esc(row.supplier)}</td><td>${row.itemNames.slice(0,2).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>2?`<small>另有 ${row.itemNames.length-2} 筆明細</small>`:''}</td><td>${row.itemCount} 筆</td><td>${esc(row.customers)||'—'}</td><td>${esc(row.note)}</td><td class="actions">${canModule('purchases','DELETE')?`<button data-delete-${kind==='receipt'?'receipt':'supplier-return'}="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(8);
+  document.querySelector('#'+kind+'Table').innerHTML=page.rows.map(row=>`<tr${editableRowAttributes(kind==='receipt'?'receiptModal':'supplierReturnModal',row.id,canModule('purchases','UPDATE'))}><td>${esc(row.documentNo)||'舊單（未編號）'}</td><td>${esc(row.date)}</td><td>${esc(row.supplier)}</td><td>${row.itemNames.slice(0,2).map(name=>`<small>${esc(name)}</small>`).join('')}${row.itemNames.length>2?`<small>另有 ${row.itemNames.length-2} 筆明細</small>`:''}</td><td>${row.itemCount} 筆</td><td>${esc(row.customers)||'—'}</td><td>${esc(row.note)}${kind==='receipt'?`<small>${esc(receiptDeliveryBadge(row.id))}</small>`:''}</td><td class="actions">${kind==='receipt'?receiptDeliveryAction(row.id):''}${canModule('purchases','DELETE')?`<button data-delete-${kind==='receipt'?'receipt':'supplier-return'}="${esc(row.id)}">刪除整單</button>`:''}</td></tr>`).join('')||emptyRow(8);
   renderPagination(kind,kind+'Pagination',page.total);
 }
 function receiptDocumentFields(id,kind='receipt'){
@@ -33,7 +35,7 @@ function initializeReceiptDocument(id,kind='receipt'){
     element.querySelector('[data-remove-batch-row]').hidden=!canModule('purchases','DELETE');
   }
   if(!lines.length)addTransactionBatchRow('receipt');
-  syncReceiptProjectOptions();updateReceiptMoneySummary();
+  syncReceiptProjectOptions();updateReceiptMoneySummary();if(kind==='receipt')void loadReceiptSupplierItems();
 }
 async function saveReceiptDocument(form,id,data){
   const rows=collectTransactionBatchRows('receipt'),elements=[...form.querySelectorAll('[data-batch-row]')],snapshot=form._receiptDocument;
@@ -44,7 +46,7 @@ async function saveReceiptDocument(form,id,data){
     rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,note:row.note,...receiptPricePayload(elements[index])}))
   };
   if(isReturn){payload.return_date=payload.receipt_date;delete payload.receipt_date;payload.row_version=snapshot.rowVersion;payload.request_id=snapshot.requestId;const signature=JSON.stringify({...payload,request_id:null});if(snapshot.signature&&snapshot.signature!==signature)payload.request_id=snapshot.requestId=uid();snapshot.signature=signature;}
-  await mutate(operation,payload,isReturn?(id?'整張退貨單已修改':'退貨單已建立'):(id?'整張進貨單已修改':'進貨單已建立'));
+  return await (isReturn?mutate:receiptMutation)(operation,payload,isReturn?(id?'整張退貨單已修改':'退貨單已建立'):(id?'整張進貨單已修改':'進貨單已建立'));
 }
 function receiptPriceField(row){
   if(!canModule('purchase_prices','VIEW'))return '';
@@ -67,7 +69,7 @@ function receiptFinancialFields(id,kind='receipt'){
  const money=receiptHeader(id,kind).receipt_financials,settings=state.moneySettings;
  const editable=canModule('purchase_prices',money?.mode?'UPDATE':'CREATE');
  const mode=money?.mode??(id||!editable?'':'exclusive'),rate=money?.tax_rate_basis_points??settings?.default_tax_rate_basis_points;
- return `<fieldset class="receipt-money span-2"><legend>${kind==='receipt'?'進貨':'退貨'}計價</legend><label>計價方式<select name="receiptTaxMode" ${editable?'':'disabled'}>${!mode?'<option value="">未設定計稅（保留原單價）</option>':''}<option value="exclusive" ${mode==='exclusive'?'selected':''}>未稅</option><option value="inclusive" ${mode==='inclusive'?'selected':''}>含稅</option></select></label><label>稅率（%）<input name="receiptTaxRate" type="number" min="0" max="100" step="0.01" value="${rate==null?'':esc(rate/100)}" ${editable?'':'readonly'}></label><label>整單折扣（元）<input name="receiptDiscount" type="number" min="0" max="99999999999999" step="1" value="${esc(money?.discount_amount||0)}" ${editable?'':'readonly'}></label><p>折扣先從整單輸入金額扣除，再依含稅／未稅方式計稅。單價依所選計價方式輸入；TWD 品項小計及整單稅額四捨五入至整元。</p><div id="receiptMoneySummary" aria-live="polite"></div></fieldset>`;
+ return `<fieldset class="receipt-money ${kind==='receipt'?'receipt-money-compact':''} span-2"><legend>${kind==='receipt'?'進貨':'退貨'}計價</legend><label>計價方式<select name="receiptTaxMode" ${editable?'':'disabled'}>${!mode?'<option value="">未設定計稅（保留原單價）</option>':''}<option value="exclusive" ${mode==='exclusive'?'selected':''}>未稅</option><option value="inclusive" ${mode==='inclusive'?'selected':''}>含稅</option></select></label><label>稅率（%）<input name="receiptTaxRate" type="number" min="0" max="100" step="0.01" value="${rate==null?'':esc(rate/100)}" ${editable?'':'readonly'}></label><label>整單折扣（元）<input name="receiptDiscount" type="number" min="0" max="99999999999999" step="1" value="${esc(money?.discount_amount||0)}" ${editable?'':'readonly'}></label><p>折扣先從整單輸入金額扣除，再依含稅／未稅方式計稅。單價依所選計價方式輸入；TWD 品項小計及整單稅額四捨五入至整元。</p><div id="receiptMoneySummary" aria-live="polite"></div></fieldset>`;
 }
 function receiptProjectField(id,kind='receipt'){
  const projectId=receiptHeader(id,kind).receipt_project_id||'';
