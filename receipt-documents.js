@@ -139,7 +139,7 @@ function initializePickupDocument(id){
 function pickupDocumentPayload(form,data){
   const rows=collectTransactionBatchRows('pickup'),elements=[...form.querySelectorAll('[data-batch-row]')];
   return {document_id:form._pickupDocument.id,existing:form._pickupDocument.existing,pickup_date:data.date,project_id:data.projectId,customer_id:data.customerId,
-    rows:rows.map((row,index)=>({id:elements[index].dataset.pickupId||null,inventory_item_id:row.itemId,quantity:row.quantity,note:row.note}))};
+    rows:rows.map((row,index)=>({id:elements[index].dataset.pickupId||null,inventory_item_id:row.itemId,quantity:row.quantity,note:row.note,quantity_unit:row.quantityUnit||"package"}))};
 }
 function renderPickupDocuments(){
   const config=tableState.pickup,groups=new Map();for(const line of state.pickups){const id=line.documentId||line.id;if(!groups.has(id))groups.set(id,[]);groups.get(id).push(line);}
