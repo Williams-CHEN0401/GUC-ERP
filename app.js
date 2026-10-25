@@ -62,7 +62,7 @@ const tableState = Object.fromEntries(["pickup","receipt","supplierReturn","repa
 const siteTableState = {};
 
 const pageMeta = {
-  performance: ["績效管理", "每月評核、工作佐證與成長紀錄"],
+  performance: ["績效管理", ""],
   appointments: ["客戶預約事項", "客戶報修、預約場刊、索取報價與預約施工"],
   dashboard: ["首頁 Dashboard", "掌握工作內容、庫存與進出貨現況"], transactions: ["進出貨管理", "取貨、進貨與帳號追蹤"],
   repairs: ["維修品管理", "連動客戶、商品與供應商，追蹤送修進度"],
