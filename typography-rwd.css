@@ -1,0 +1,89 @@
+/* Shared reading contract: keep the existing typefaces and colors.
+   The report owns its SVG label geometry and uses these same size tokens. */
+:root {
+  --guc-text-size: 12pt;
+  --guc-title-size: 16pt;
+  --guc-panel-title-size: var(--guc-title-size);
+  --guc-table-size: var(--guc-text-size);
+  --guc-label-size: var(--guc-text-size);
+  --guc-caption-size: var(--guc-text-size);
+  --guc-note-size: var(--guc-text-size);
+  --guc-text-line: 1.6;
+  --guc-title-line: 1.4;
+}
+html { font-size: var(--guc-text-size); }
+body { font-size: var(--guc-text-size); line-height: var(--guc-text-line); }
+/* Legacy modules have explicit sizes, including inline styles. Normalize text
+   once here rather than repeating overrides in every page. Decorative icons
+   and responsive report SVG text keep their own geometry. */
+body :is(div, section, article, header, footer, aside, nav, main, form, fieldset,
+  p, span, a, button, input, select, option, optgroup, textarea, label, legend,
+  summary, small, strong, b, em, ul, ol, li, th, td, dt, dd, time, output,
+  code, pre, figcaption, caption):not(:where(
+    .guc-report, .guc-report *, svg *, [aria-hidden="true"], [aria-hidden="true"] *,
+    .brand-mark, .avatar, .user-avatar, .brand-seal, .nav-icon-shell, .nav-icon-shell *,
+    .nav-icon-frame, .nav-icon-frame *, .service-icon, .kpi-icon, .metric-icon, .login-logo
+  )) {
+  font-size: var(--guc-text-size) !important;
+  line-height: var(--guc-text-line);
+}
+body :is(h1, h2, h3, h4, h5, h6, [role="heading"], [data-guc-heading]),
+body :is(h1, h2, h3, h4, h5, h6, [role="heading"], [data-guc-heading]) :not(svg, svg *) {
+  font-size: var(--guc-title-size) !important;
+  line-height: var(--guc-title-line);
+}
+button, input, select, textarea { max-width: 100%; }
+button, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select {
+  min-height: 44px;
+}
+input, select, textarea { min-width: 0; }
+fieldset { min-width: 0; }
+:is(h1, h2, h3, h4, h5, h6, p, label, summary) { overflow-wrap: anywhere; }
+:is(.table-card, .table-wrap) { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+:is(.form-grid, .filterbar, .panel-head, .page-actions, .pagination-bar) > * { min-width: 0; }
+:is(.form-grid, .filterbar) :is(input, select, textarea) { max-width: 100%; }
+.sidebar { overflow-y: auto; }
+.sidebar :is(.brand, .sidebar-foot) { flex-shrink: 0; }
+.brand > div { min-width: 0; overflow-wrap: anywhere; }
+.main, .content, .page, .panel, .dashboard-focus > *, .dashboard-pair > * { min-width: 0; }
+.topbar { height: auto; min-height: 104px; padding-block: 14px; gap: 16px; flex-wrap: wrap; }
+.topbar > div:not(.top-actions) { min-width: 0; }
+.top-actions { flex-wrap: wrap; }
+.top-actions .secondary::first-letter { font-size: inherit; }
+.panel-head, .page-actions, .filterbar, .batch-submit, .pagination-bar { flex-wrap: wrap; }
+.filterbar > .search { min-width: min(260px, 100%); }
+.filterbar > select { min-width: 0; max-width: 100%; }
+.pagination-bar label, .pagination-bar > div { flex-wrap: wrap; }
+.section-tabs { max-width: 100%; }
+.modal-card, .audit-dialog { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+.modal-card :is(form, fieldset, label, .form-grid, .form-grid > *) { min-width: 0; }
+.toast { max-width: calc(100vw - 32px); overflow-wrap: anywhere; }
+
+@media (max-width: 780px) {
+  .topbar { min-height: 78px; gap: 8px; padding-block: 12px; }
+  .topbar > div:not(.top-actions) { flex: 1; }
+  .top-actions { flex-basis: 100%; justify-content: flex-end; }
+  .top-actions .secondary { padding: 8px 12px; }
+  .form-grid, .customer-department-selector { grid-template-columns: minmax(0, 1fr); }
+  .form-grid > *, .customer-department-selector > * { grid-column: auto; }
+  .search { min-width: 0; width: 100%; }
+  .panel-head > *, .page-actions > * { max-width: 100%; }
+  .modal-head { gap: 12px; }
+  .modal-head > div { min-width: 0; }
+  .modal-head > button { flex-shrink: 0; }
+  .modal-card { width: calc(100% - 24px); margin: 12px auto; }
+  .system-choice-grid { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-focus, .dashboard-pair, .dashboard-grid, .backup-grid, .site-grid { grid-template-columns: minmax(0, 1fr); }
+  .project-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+  .activity-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .activity-row time { grid-column: 2; }
+  .details div { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .details dd { overflow-wrap: anywhere; }
+}
+@media (max-width: 430px) {
+  .top-actions { justify-content: stretch; }
+  .top-actions > button { flex: 1; }
+  .kpi-grid, .material-kpis { grid-template-columns: minmax(0, 1fr); }
+  .page-actions > button { width: 100%; }
+  .login-card { padding: 28px 22px; }
+}

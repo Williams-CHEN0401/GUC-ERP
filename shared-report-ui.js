@@ -1,8 +1,10 @@
 // Rendering adapters only. ERP and Accounting both consume work_content_report_v1.
 const sharedReportCache=new Map(),sharedReportPending=new Set();
+
 let sharedReportGeneration=0;
 function invalidateSharedReports(){
  sharedReportGeneration++;sharedReportCache.clear();sharedReportPending.clear();
+
  if(currentPage()==='materials')queueMicrotask(renderProjectReport);
 }
 function reportProjectIncluded(project){
@@ -35,7 +37,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 // A different browser/tab may update logs or plans. Refresh visible reports on
 // focus and every 30 seconds, without touching an open editing form.
-function refreshVisibleReport(){const id=document.querySelector('#materialProject')?.value;if(id&&currentPage()==='materials'&&document.visibilityState==='visible'&&!document.querySelector('#simpleModal.open'))sharedProjectReport(id,true);}
+function refreshVisibleReport(){const id=document.querySelector('#materialProject')?.value;if(currentPage()==='materials'&&document.visibilityState==='visible'&&!document.querySelector('#simpleModal.open')){if(id)sharedProjectReport(id,true);}}
 window.addEventListener('focus',refreshVisibleReport);
 document.addEventListener('visibilitychange',refreshVisibleReport);
 setInterval(refreshVisibleReport,30000);

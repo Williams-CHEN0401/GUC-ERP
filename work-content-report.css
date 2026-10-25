@@ -89,3 +89,45 @@
 @media(max-width:780px){.guc-report{--gr-body-size:var(--guc-text-size,16px);--gr-title-size:var(--guc-title-size,26px);--gr-card-size:var(--guc-panel-title-size,21px)}}
 .guc-report .gr-filter-fields input,.guc-report .gr-filter-fields select{font-weight:500}
 @media(max-width:780px){.guc-report .gr-filter-fields input,.guc-report .gr-filter-fields select{font-size:16px}}
+
+/* Canonical typography and monitor layout shared by ERP / Accounting. Text is
+   never shrunk at mobile widths; plots and wide tables scroll inside themselves. */
+.guc-report{--gr-body-size:var(--guc-text-size,12pt);--gr-title-size:var(--guc-title-size,16pt);--gr-card-size:var(--guc-panel-title-size,16pt);--gr-table-size:var(--guc-text-size,12pt);--gr-label-size:var(--guc-text-size,12pt);--gr-caption-size:var(--guc-text-size,12pt);--gr-note-size:var(--guc-text-size,12pt)}
+.guc-report h3,.guc-report .gr-chart-card h3,.guc-report .gr-material-category>h3{font-size:var(--gr-card-size)}
+.guc-report p,.guc-report small,.guc-report label,.guc-report select,.guc-report input,.guc-report .gr-progress p,.guc-report .report-filter-hint,.guc-report th button span{font-size:var(--gr-body-size)}
+.guc-report .gr-columns{font-size:var(--gr-body-size);max-width:none}
+.guc-report .gr-gantt svg{width:auto;max-width:none;font-size:var(--gr-body-size)}
+.guc-report .gr-gauge-caption{font-family:var(--gr-font);font-size:var(--gr-body-size)}
+.guc-report .gr-gauge-readout{display:grid;justify-items:center;gap:5px;overflow-wrap:anywhere;text-align:center}
+.guc-report .gr-donut-layout{max-width:100%;overflow:auto;align-items:flex-start}
+.guc-report .gr-donut-figure,.guc-report .gr-dashboard [data-gr-category-donut] .gr-donut-figure{position:relative;width:300px;min-width:300px;max-width:300px;flex-shrink:0;margin-inline:auto}
+.guc-report .gr-donut-svg{display:block;width:300px;height:280px;fill:var(--gr-ink);font-family:var(--gr-font)}
+.guc-report .gr-donut-center{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;pointer-events:none;padding:28%;line-height:1.5;overflow-wrap:anywhere}
+.guc-report .gr-donut-center>span{font-size:var(--gr-body-size)}
+.guc-report .gr-donut-label{font-size:var(--gr-body-size)}
+.guc-report .gr-contract{margin-top:14px;border-top:1px solid var(--gr-line);padding-top:12px}
+.guc-report .gr-contract-overdue{background:#f8e9e2;border:1px solid #dbb3a6;border-radius:7px;padding:12px}
+.guc-report .gr-contract-overdue p{color:#913e2c}
+.guc-report .gr-monitor-plan{border:1px solid var(--gr-line);border-radius:10px;background:var(--gr-surface);padding:20px;min-width:0}
+.guc-report .gr-monitor-plan+.gr-monitor-plan{margin-top:16px}
+.guc-report .gr-progress-warning{background:#fbefeb;border-color:#dfb6ab}
+.guc-report .gr-monitor-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;min-width:0}
+.guc-report .gr-monitor-header>div{min-width:0;overflow-wrap:anywhere}
+.guc-report .gr-monitor-header h3{font-family:var(--gr-display);font-size:var(--gr-card-size);color:var(--gr-ink)}
+.guc-report .gr-monitor-header p{margin-top:6px;color:var(--gr-muted)}
+.guc-report .gr-alert-badge{background:#f2d8cf;color:#913e2c;border:1px solid #dfb6ab;white-space:normal}
+.guc-report .gr-monitor-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:24px 0}
+.guc-report .gr-monitor-metrics>div{min-width:0;display:grid;gap:5px;overflow-wrap:anywhere}
+.guc-report .gr-monitor-metrics span,.guc-report .gr-monitor-metrics small{color:var(--gr-muted);font-size:var(--gr-body-size)}
+.guc-report .gr-monitor-metrics strong{font-size:var(--gr-card-size);line-height:1.5}
+.guc-report .gr-monitor-warning{display:grid;gap:8px;margin:16px 0;color:#913e2c;overflow-wrap:anywhere}
+.guc-report .gr-monitor-warning p{color:#754d40}
+.guc-report .gr-progress-warning progress{accent-color:#a64b37}
+.guc-report .gr-progress-warning progress::-webkit-progress-value{background:#a64b37}
+.guc-report .gr-monitor-plan>.gr-plan{margin-top:20px}
+.guc-report .gr-monitor-plan>.gr-plan>summary:before{order:2}
+.guc-report .gr-gantt-card>.gr-progress-warning{padding:0 12px;border-radius:8px}
+.guc-report .gr-performance-card{margin:18px 0}
+.guc-report .gr-price-dialog{max-height:calc(100dvh - 32px);overflow:auto}
+@media(max-width:780px){.guc-report .gr-monitor-header{flex-wrap:wrap}.guc-report .gr-monitor-plan{padding:16px}.guc-report .gr-monitor-metrics{gap:14px}.guc-report .gr-heading .gr-status{white-space:normal}.guc-report .gr-plan>summary>b{white-space:normal;overflow-wrap:anywhere}}
+@media(max-width:560px){.guc-report .gr-monitor-metrics{grid-template-columns:minmax(0,1fr);gap:16px}.guc-report .gr-monitor-metrics>div{grid-template-columns:minmax(0,1fr) auto;gap:4px 12px}.guc-report .gr-monitor-metrics small{grid-column:1/-1}.guc-report .gr-monitor-plan{padding:14px}.guc-report .gr-monitor-header .gr-status{max-width:100%}}

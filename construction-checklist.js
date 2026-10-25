@@ -1,14 +1,22 @@
 // Workday positions are the sorted distinct logged dates, not elapsed calendar days.
 // SQL supplies these aggregates; the browser does not infer progress from partial logs.
 let activeConstructionItemId="";
+function constructionMetric(value){return Number(value||0).toLocaleString('zh-TW',{maximumFractionDigits:1});}
 function constructionChecklistProgress(plan){
- const worked=Number(plan.worked_days||0),planned=Number(plan.planned_days||0),total=Number(plan.item_count||0),done=Number(plan.completed_item_count||0),percent=Number(plan.completion_percent||0),over=Math.max(worked-planned,0);
- const number=value=>Number(value||0).toLocaleString('zh-TW',{maximumFractionDigits:2});
- return `<div class="construction-progress ${planned&&over?"overrun":""}"><p>預計 ${planned||"未設定"} 天｜已執行 ${worked} 天</p><progress max="100" value="${Math.min(Math.max(percent,0),100)}" aria-label="施工完成率">${percent}%</progress><strong>${percent}%${total?`（${done}/${total} 項完成）`:''}</strong>${planned?`<p>完成工期 ${number(plan.completed_days)} 天｜剩餘工期 ${number(plan.remaining_days)} 天</p>`:''}<small>${total?'依勾選完成的子項目預計天數加權；日誌天數只計施工投入。':'尚無子項目；依整筆規劃的完成狀態計算。'}</small>${planned&&over?`<p>已超出預計施工天數 ${over} 天</p>`:""}</div>`;
+ const worked=Number(plan.worked_days||0),planned=Number(plan.planned_days||0),total=Number(plan.item_count||0),done=Number(plan.completed_item_count||0),percent=total&&plan.completion_percent!=null?Number(plan.completion_percent):null,over=planned?Math.max(worked-planned,0):0;
+ return `<dl class="construction-monitor-metrics"><div><dt>施工項目</dt><dd>${done} / ${total}</dd><small>已完成 ${done} 項</small></div><div><dt>工程完成度</dt><dd>${percent===null?'尚未設定項目':constructionMetric(percent)+'%'}</dd><small>${plan.warning_min_progress!=null?'目標 '+constructionMetric(plan.warning_min_progress)+'%':'依完成項目數計算'}</small></div><div><dt>工期執行</dt><dd>${worked} / ${planned||'未設定'} 天</dd><small>已施工 ${worked} 個不同日期</small></div></dl>${percent!==null?`<div class="construction-monitor-progress-line"><span>施工項目完成度</span><strong>${constructionMetric(percent)}%</strong></div><progress max="100" value="${Math.min(100,Math.max(0,percent))}" aria-label="施工項目完成度">${percent}%</progress>`:'<p class="form-sync-hint">尚無有效施工項目，完成度暫不計算。</p>'}${over?`<p class="construction-monitor-alert" role="status">已超出預計施工天數 ${over} 天</p>`:''}`;
 }
 function constructionWarning(plan){
- if(!plan.needs_attention)return "";
- return `<div class="construction-warning" role="status"><strong>施工進度提醒：仍有子項目未開始</strong><p>已執行 ${Number(plan.worked_days)}／${Number(plan.planned_days)} 天，已達 80% 警示門檻（第 ${Number(plan.warning_after_days)} 天）。</p><p>尚無工作日誌：${(plan.unstarted_items||[]).map(i=>esc(i.title)).join("、")}。請確認施工安排。</p></div>`;
+ if(!plan.progress_alert)return '';
+ return `<div class="construction-monitor-alert" role="status"><strong>⚠ 施工進度未達目標</strong><p>設定：${Number(plan.warning_work_days)} 個實際施工日須達 ${constructionMetric(plan.warning_min_progress)}%。目前已施工 ${Number(plan.worked_days)} 天，完成 ${constructionMetric(plan.completion_percent)}%，落後 ${constructionMetric(plan.progress_gap)} 個百分點。</p></div>`;
+}
+function constructionContractSummary(plan){
+ const overdue=!!plan.contract_overdue;
+ return `<div class="construction-monitor-contract"><span>履約開始：${esc(plan.contract_start_date||'未設定')}</span><span>履約截止：${esc(plan.contract_end_date||'未設定')}</span>${plan.contract_remaining_days!=null?`<span>${overdue?'⚠ 已逾履約期限 '+Math.abs(Number(plan.contract_remaining_days))+' 個日曆天':Number(plan.contract_remaining_days)<0?'履約截止日已過 '+Math.abs(Number(plan.contract_remaining_days))+' 個日曆天':'剩餘履約 '+Number(plan.contract_remaining_days)+' 個日曆天'}</span>`:''}</div>${overdue?'<p class="construction-monitor-alert" role="status">履約期限已過，工程尚未完成。</p>':''}`;
+}
+function constructionMonitorBadges(plan){
+ const status=CONSTRUCTION_PLAN_STATUSES.find(([value])=>value===plan.status)?.[1]||plan.status||'進行中';
+ return `<div class="construction-monitor-badges"><span>${esc(status)}</span>${plan.progress_alert?'<span class="is-warning">施工進度落後</span>':''}${plan.contract_overdue?'<span class="is-warning">履約逾期</span>':''}</div>`;
 }
 function constructionItemEditorRow(item={},index=0){
  return `<div class="construction-item-editor" data-item-id="${esc(item.id||uid())}"><label class="construction-item-title">子項目名稱<input data-item-title maxlength="200" required value="${esc(item.title||"")}" placeholder="例如：A 棟配管施工" aria-label="子項目 ${index+1} 名稱"></label><label>起始工作日<input data-item-start type="number" min="1" max="3650" required value="${Number(item.start_day)||1}" aria-label="子項目 ${index+1} 起始工作日"></label><label>預計施工天數<input data-item-days type="number" min="1" max="3650" required value="${Number(item.planned_days)||1}" aria-label="子項目 ${index+1} 預計天數"></label><button type="button" class="outline danger" data-remove-construction-item ${item.is_completed||item.worked_days?'disabled title="已有日誌或已完成的子項目須保留"':""}>移除</button></div>`;
@@ -34,7 +42,7 @@ function constructionChecklist(plan){
 function constructionGantt(plan){
  const items=plan.items||[],dates=plan.work_dates||[];
  if(!items.length)return "";
- const days=Math.max(Number(plan.planned_days)||1,dates.length),left=180,width=700,rowHeight=38,top=42,height=top+items.length*rowHeight+8,step=Math.max(1,Math.ceil(days/14)),cell=width/days;
+ const days=Math.max(Number(plan.planned_days)||1,dates.length),left=240,width=700,rowHeight=38,top=42,height=top+items.length*rowHeight+8,step=Math.max(1,Math.ceil(days/14)),cell=width/days;
  const dateIndex=new Map(dates.map((date,i)=>[date,i]));
  const ticks=[...new Set([1,...Array.from({length:Math.ceil(days/step)},(_,i)=>i*step+1),days])].filter(d=>d<=days);
  return `<details class="construction-gantt" open><summary>工期甘特圖（工作日序）</summary><p class="form-sync-hint">灰藍色：預計安排；綠色：有日誌的工作日。日期依所有日誌排序，同一天只佔一格；空檔不算工作天。進行中、已完成的日誌皆計入，未來日期不計入實際天數。</p><div class="construction-gantt-scroll" tabindex="0" aria-label="可左右捲動的工期甘特圖"><svg viewBox="0 0 ${left+width+12} ${height}" width="${left+width+12}" height="${height}" role="img" aria-label="${esc(plan.content)}，預計 ${Number(plan.planned_days)} 天，已執行 ${dates.length} 天"><title>${esc(plan.content)} 工期甘特圖</title>${ticks.map(day=>`<line x1="${left+(day-1)*cell}" x2="${left+(day-1)*cell}" y1="24" y2="${height}" class="gantt-grid"/><text x="${left+(day-1)*cell+2}" y="16" class="gantt-axis">${day}</text>`).join("")}${items.map((item,i)=>{
