@@ -1120,6 +1120,22 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "create_work_assignment") {
     requireOperation(user,operation,payload,["admin"]);
     if(user!.role!=="admin")throw new Error("只有管理員可以建立工作指派。");
+    if(Object.prototype.hasOwnProperty.call(payload,"assignee_user_ids")){
+      const ids=Array.isArray(payload.assignee_user_ids)?payload.assignee_user_ids.map(value=>uuid(value)):[];
+      const requestId=uuid(payload.request_id),mode=text(payload.project_mode)||"existing",type=text(payload.assignment_type),instructions=limited(payload.instructions,2000);
+      const planId=uuid(payload.construction_plan_id),planItemId=uuid(payload.construction_item_id),projectId=uuid(payload.project_id);
+      const itemId=uuid(payload.inventory_item_id),quantity=payload.pickup_quantity==null||payload.pickup_quantity===""?null:positive(payload.pickup_quantity);
+      if(!requestId||ids.length<1||ids.length>30||ids.some(id=>!id)||new Set(ids).size!==ids.length||text(payload.assignee_user_id))throw new Error("請選擇 1 至 30 位不同的指派人員並重新開啟表單。");
+      if(!["existing","manual"].includes(mode)||!["general","pickup"].includes(type)||!instructions||(type==="pickup"&&(!itemId||quantity===null))||(type==="general"&&(text(payload.inventory_item_id)||quantity!==null)))throw new Error("請完整填寫有效的指派資料。");
+      if((text(payload.construction_plan_id)&&!planId)||(text(payload.construction_item_id)&&!planItemId)||(planItemId&&!planId))throw new Error("請選擇有效的施工規劃與子項目。");
+      const normalized:Row={project_mode:mode,project_id:projectId,assignee_user_ids:ids,assignment_type:type,instructions,inventory_item_id:itemId,pickup_quantity:quantity,construction_plan_id:planId,construction_item_id:planItemId};
+      if(mode==="manual"){
+        const name=limited(payload.project_name,120),customerId=uuid(payload.customer_id),projectType=text(payload.project_type),projectDate=date(payload.project_date);
+        if(text(payload.project_id)||planId||planItemId||!name||!customerId||!projectDate||!["construction","repair","maintenance","delivery","clerical","site_survey"].includes(projectType))throw new Error("請填寫新工作內容名稱、客戶、工作日期與類型；新工作尚無施工規劃。");
+        Object.assign(normalized,{project_name:name,customer_id:customerId,department_id:departmentIdInput(payload.department_id),project_type:projectType,project_date:projectDate});
+      }else if(!projectId)throw new Error("請選擇尚未完成的工作內容。");
+      return rpc("create_work_assignments_v1",{p_actor_user_id:user!.id,p_actor:actor,p_request_id:requestId,p_payload:normalized});
+    }
     const projectId=uuid(payload.project_id),assigneeId=uuid(payload.assignee_user_id),assignmentType=text(payload.assignment_type),instructions=limited(payload.instructions,2000),itemId=text(payload.inventory_item_id)?uuid(payload.inventory_item_id):null,quantity=payload.pickup_quantity==null||payload.pickup_quantity===""?null:positive(payload.pickup_quantity);
     const mode=text(payload.project_mode)||"existing";
     if(!["existing","manual"].includes(mode)||!assigneeId||!["general","pickup"].includes(assignmentType)||!instructions||(assignmentType==="pickup"&&(!itemId||quantity===null))||(assignmentType==="general"&&(itemId!==null||quantity!==null)))throw new Error("請完整填寫工作內容、責任人與有效的指派資料。");
@@ -1776,8 +1792,8 @@ async function dashboardSnapshot(user: AppUser, allLists=false) {
     !hasPermission(user,"projects")?[]:scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,allLists?undefined:15):readList("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
     !hasPermission(user,"repairs")?[]:readList("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
     !hasPermission(user,"worklogs")?[]:scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):getAll(`site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
-    !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=in.(pending,in_progress)&order=created_at.asc,id.asc&limit=100`),
-    !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`)
+    !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,construction_plan_id,construction_item_id,construction_plan_title,construction_item_title,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=in.(pending,in_progress)&order=created_at.asc,id.asc&limit=100`),
+    !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,project_id,customer_id,appointment_type,appointment_date,construction_plan_id,construction_item_id,construction_plan_title,construction_item_title,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`)
   ]) as Row[][];
   const unique=(rows:Row[],field:string)=>[...new Set(rows.map(row=>uuid(row[field])).filter(Boolean))];
   const assignments=[...pendingAssignments,...completedAssignments],projectIds=unique([...logs,...assignments],"project_id"),itemIds=unique([...repairs,...assignments],"inventory_item_id"),logIds=unique(logs,"id"),assignmentUserIds=[...new Set([...unique(assignments,"assignee_user_id"),...unique(assignments,"created_by_user_id")])];

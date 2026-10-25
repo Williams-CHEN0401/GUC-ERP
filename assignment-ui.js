@@ -119,9 +119,43 @@ function syncAssignmentProjectOptions(reset=true){
  const projects=sortRows(state.projects.filter(p=>p.status!=='completed'&&assignmentProjectMatches(p,form)),'code','asc');
  select.innerHTML='<option value="">'+(projects.length?'請選擇工作內容':'沒有符合條件的既有工作')+'</option>'+projects.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.code)+'｜'+esc(p.name)+'</option>').join('');
  select.value=projects.some(p=>p.id===current)?current:'';
+ syncAssignmentPlanningFields();
  const department=form.elements.departmentId;if(department&&!department.value&&department.options.length)department.options[0].textContent='全部科室';
 }
 document.addEventListener('change',event=>{if(event.target.closest('#modalForm')&&['customerCategory','customerId','departmentId'].includes(event.target.name))queueMicrotask(()=>syncAssignmentProjectOptions(true));});
 // Reference refresh rebuilds shared selects synchronously; reapply this form's
 // filter afterward while preserving any still-valid project selection.
 document.addEventListener('guc:form-references-updated',()=>queueMicrotask(()=>syncAssignmentProjectOptions(false)));
+
+function syncAssignmentPlanningFields(){
+ const form=document.querySelector('#modalForm');
+ if(document.querySelector('#simpleModal')?.dataset.type!=='workAssignmentModal')return;
+ const planSelect=form.elements.assignmentPlanId,itemSelect=form.elements.assignmentPlanItemId;
+ if(!planSelect||!itemSelect)return;
+ const projectId=form.elements.assignmentProjectMode.value==='existing'?form.elements.assignmentProjectId.value:'';
+ const plans=(state.constructionPlans||[]).filter(plan=>plan.project_id===projectId&&!plan.deleted_at&&['pending','in_progress'].includes(plan.status));
+ const currentPlan=planSelect.value,currentItem=itemSelect.value;
+ planSelect.innerHTML=`<option value="">${!projectId?'請先選擇既有工作內容':plans.length?'不關聯施工規劃':'此工作沒有未完成的施工規劃'}</option>`+plans.map(plan=>`<option value="${esc(plan.id)}">${esc(plan.construction_date)}｜${esc(plan.content)}</option>`).join('');
+ planSelect.disabled=!projectId||!plans.length;
+ planSelect.value=plans.some(plan=>plan.id===currentPlan)?currentPlan:'';
+ const items=(plans.find(plan=>plan.id===planSelect.value)?.items||[]).filter(item=>!item.deleted_at&&!item.is_completed);
+ itemSelect.innerHTML=`<option value="">${!planSelect.value?'請先選擇施工規劃':items.length?'整筆規劃（不指定子項目）':'此規劃沒有未完成子項目'}</option>`+items.map(item=>`<option value="${esc(item.id)}">${esc(item.title)}</option>`).join('');
+ itemSelect.disabled=!planSelect.value||!items.length;
+ itemSelect.value=items.some(item=>item.id===currentItem)?currentItem:'';
+ syncAssignmentPickupSummary();
+}
+function syncAssignmentPickupSummary(){
+ const form=document.querySelector('#modalForm'),hint=form.querySelector('#assignmentPickupSummary');if(!hint)return;
+ const count=form.querySelectorAll('[name="assigneeUserIds"]:checked').length,quantity=Number(form.elements.pickupQuantity.value)||0;
+ const unit=byId(state.inventory,form.elements.inventoryItemId.value)?.unit||'';
+ hint.textContent=`每位人員完成取貨指派時，各扣減 ${quantity} ${unit}；已選 ${count} 位，合計 ${quantity*count} ${unit}。若只需一人取貨，請另外建立單人取貨指派。`;
+}
+function assignmentPlanningSummary(row){
+ return row.construction_plan_title?`<p class="form-sync-hint">施工規劃：${esc(row.construction_plan_title)}${row.construction_item_title?` ／ ${esc(row.construction_item_title)}`:''}</p>`:'';
+}
+document.addEventListener('change',event=>{
+ if(!event.target.closest('#modalForm')||document.querySelector('#simpleModal')?.dataset.type!=='workAssignmentModal')return;
+ if(['assignmentProjectId','assignmentProjectMode','assignmentPlanId'].includes(event.target.name))syncAssignmentPlanningFields();
+ if(['assigneeUserIds','pickupQuantity','inventoryItemId','assignmentType'].includes(event.target.name))syncAssignmentPickupSummary();
+});
+document.addEventListener('input',event=>{if(event.target.name==='pickupQuantity')syncAssignmentPickupSummary();});
