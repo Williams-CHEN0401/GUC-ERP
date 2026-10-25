@@ -25,6 +25,22 @@ test('legacy existing-project assignment keeps its original RPC contract',async(
  const h=harness();assert.equal((await h.write({project_id:id,assignee_user_id:id,assignment_type:'general',instructions:'選既有工作'})).status,201);
  assert.equal(h.calls[0].name,'create_work_assignment_v1');assert.equal(h.calls[0].args.p_project_id,id);assert.ok(!('p_project_name' in h.calls[0].args));
 });
+test('multi-person assignment uses one atomic request with trusted actor and planning links',async()=>{
+ const h=harness(),request='40000000-0000-4000-8000-000000000001';
+ const p={project_id:id,request_id:request,assignee_user_ids:[id,customer],assignment_type:'general',instructions:' 雙人配管 ',construction_plan_id:id,construction_item_id:customer,created_by_user_id:customer,actor:'forged'};
+ assert.equal((await h.write(p)).status,201);assert.equal(h.calls.length,1);
+ const {name,args}=h.calls[0];assert.equal(name,'create_work_assignments_v1');assert.equal(args.p_actor_user_id,id);assert.equal(args.p_actor,'fixture-admin');assert.equal(args.p_request_id,request);
+ assert.equal(args.p_payload.instructions,'雙人配管');assert.equal(args.p_payload.assignee_user_ids.length,2);assert.equal(args.p_payload.construction_item_id,customer);assert.equal(args.p_payload.created_by_user_id,undefined);
+});
+test('multi-person validation rejects ambiguous users, stale form identifiers and malformed planning links',async()=>{
+ const p={project_id:id,request_id:id,assignee_user_ids:[id,customer],assignment_type:'general',instructions:'test'};
+ for(const extra of [{assignee_user_ids:[]},{assignee_user_ids:[id,id]},{assignee_user_ids:['invalid']},{assignee_user_ids:'invalid'},{assignee_user_ids:Array(31).fill(id)},{assignee_user_id:id},{request_id:null},{construction_plan_id:'invalid'},{construction_item_id:id},{construction_plan_id:id,construction_item_id:'bad'},{project_mode:'manual',construction_plan_id:id},{inventory_item_id:'bad'},{assignment_type:'pickup',inventory_item_id:id,pickup_quantity:0}]){
+  const h=harness();assert.equal((await h.write({...p,...extra})).status,400,JSON.stringify(extra));assert.equal(h.calls.length,0);
+ }
+});
+test('multi-person assignment preserves the administrator-only write boundary',async()=>{
+ for(const options of [{role:'viewer'},{role:'operator'},{anonymous:true},{preview:true}]){const h=harness(options);assert.ok([401,403].includes((await h.write({project_id:id,request_id:id,assignee_user_ids:[id],assignment_type:'general',instructions:'test'})).status));assert.equal(h.calls.length,0);}
+});
 test('invalid manual inputs are rejected before SQL',async()=>{
  for(const extra of [{project_mode:'other'},{project_name:' '},{project_name:'x'.repeat(121)},{customer_id:'invalid'},{department_id:'invalid'},{project_type:'unknown'},{project_date:'not-a-date'},{project_id:id},{assignee_user_id:'invalid'},{assignment_type:'pickup'}]){
   const h=harness();assert.equal((await h.write({...payload,...extra})).status,400);assert.equal(h.calls.length,0);
