@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-10-25T09:39:06.051Z",
+  "status": "PASS",
+  "results": [
+    "Current source differs from frozen snapshot; revocation and soft deletion deny source endpoint and redact snapshot.",
+    "Designated supervisor can assign a task only to approved employee/month; person options match relationship.",
+    "Missing mandatory template field rejected.",
+    "14 performance tables: RLS enabled, no anonymous/authenticated direct reads."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-10-25T09:41:48.738Z",
+  "status": "PASS",
+  "checks": [
+    "Current-source dialog reauthorizes and preserves frozen snapshot",
+    "28 weight inputs, invalid sum rejected without losing edits",
+    "Valid template persisted and reread",
+    "390px settings no overflow"
+  ],
+  "errors": []
+}

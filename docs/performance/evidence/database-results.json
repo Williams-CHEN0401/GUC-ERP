@@ -1,0 +1,122 @@
+{
+  "checkedAt": "2026-10-25T09:36:22.145Z",
+  "environment": "guc-performance-test / PostgreSQL 17.6 / real GoTrue / Edge Runtime / PostgREST",
+  "productionWrites": 0,
+  "results": [
+    {
+      "id": "AT-01",
+      "status": "PASS",
+      "details": "Employee cannot read another employee or unpublished draft ratings; limited own draft progress is separate."
+    },
+    {
+      "id": "AT-02",
+      "status": "PASS",
+      "details": "Unassigned supervisor denied read and creation through Gateway."
+    },
+    {
+      "id": "AT-03",
+      "status": "PASS",
+      "details": "Four roles, seven distinct criteria each; 100% required and invalid template rejected."
+    },
+    {
+      "id": "AT-04",
+      "status": "PASS",
+      "details": "All four roles compute 80.00/B from all-4 ratings; persisted RPC result agrees."
+    },
+    {
+      "id": "AT-05",
+      "status": "PASS",
+      "details": "Unassigned training accepts reasoned N/A; assigned-but-unperformed cannot claim unassigned N/A."
+    },
+    {
+      "id": "AT-06",
+      "status": "PASS",
+      "details": "25/20 active weights rescale to persisted 88.89."
+    },
+    {
+      "id": "AT-07",
+      "status": "PASS",
+      "details": "60%×78 + 40%×86 persists as 81.20/B with unrounded role intermediates."
+    },
+    {
+      "id": "AT-08",
+      "status": "PASS",
+      "details": "90% allocation rejected atomically; previous 100% allocation and score preserved."
+    },
+    {
+      "id": "AT-09",
+      "status": "PASS",
+      "details": "All N/A or any positive-allocation NO_DATA role makes whole month null and blocks submission."
+    },
+    {
+      "id": "AT-10",
+      "status": "PASS",
+      "details": "Forged score, employee scoring, and admin self-approval assignment rejected."
+    },
+    {
+      "id": "AT-11",
+      "status": "PASS",
+      "details": "Actual worker is an evidence candidate; a reporter absent from worker links is not."
+    },
+    {
+      "id": "AT-12",
+      "status": "PASS",
+      "details": "Shared assignment is candidate-only and does not grant per-person points."
+    },
+    {
+      "id": "AT-13",
+      "status": "PASS",
+      "details": "Nonproject task created, completed, independently verified; project count unchanged."
+    },
+    {
+      "id": "AT-14",
+      "status": "PASS",
+      "details": "Published source snapshot/score immutable; explicit second revision keeps previous current version."
+    },
+    {
+      "id": "AT-15",
+      "status": "PASS",
+      "details": "Ratings, reply, approval, publication record actor/time/before/after/request; no session tokens."
+    },
+    {
+      "id": "AT-16",
+      "status": "PASS",
+      "details": "Eight simultaneous tasks and six reviews create one row per request; changed payload conflicts."
+    },
+    {
+      "id": "AT-17",
+      "status": "PASS",
+      "details": "Stale row_version returns HTTP 409 without overwriting the latest saved score."
+    },
+    {
+      "id": "AT-18",
+      "status": "PASS",
+      "details": "No attendance/work-count inputs enter calculation; forged leave-days rejected without score change."
+    },
+    {
+      "id": "AT-19",
+      "status": "PASS",
+      "details": "Private source, frozen summary and source identifiers hidden after permission revocation, including supervisor."
+    },
+    {
+      "id": "AT-21",
+      "status": "PASS",
+      "details": "Export uses same server-side per-review scope; employee export contains no peer data or notes."
+    },
+    {
+      "id": "AT-23",
+      "status": "PASS",
+      "details": "L1–L4 validates evidence and assessor, keeps versions, and denies employee self-edit."
+    },
+    {
+      "id": "AT-24",
+      "status": "PASS",
+      "details": "Quarter uses two valid published samples (84.45), reports 50%/month and missing month; NO_DATA excluded."
+    },
+    {
+      "id": "EXTRA",
+      "status": "PASS",
+      "details": "Direct anon/authenticated denial, fractional rating rejection, rounding/grade boundaries, workday deadline and disabled-session denial."
+    }
+  ]
+}

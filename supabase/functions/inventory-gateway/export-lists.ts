@@ -92,7 +92,7 @@ export function buildErpExport(payload:Row,snapshot:Row,canPrices:boolean){
  else if(resource==='dashboard_projects')rows=list(snapshot.dashboard||{},'projects').map(r=>({code:r.project_code,name:r.name,customer:r.customer,owner:r.assigned_to,status:r.status==='completed'?'已結案':'進行中'}));
  else if(resource==='dashboard_worklogs')rows=list(snapshot.dashboard||{},'worklogs').map(r=>({date:r.log_date,customer:r.customer,project:r.project||r.title,workers:r.workers,summary:r.summary}));
  else if(resource==='dashboard_repairs')rows=list(snapshot.dashboard||{},'repairs').map(r=>({date:r.received_on,code:r.repair_no,customer:r.customer,item:r.item,issue:r.issue_description,status:status(r.status)}));
- else if(resource==='dashboard_construction')rows=list(snapshot.dashboard||{},'construction_progress').map(r=>({project:r.project,content:r.content,date:r.construction_date,planned_days:numeric(r.planned_days),worked_days:numeric(r.worked_days),completion_percent:numeric(r.completion_percent),attention:r.needs_attention?'仍有子項目未開始':''}));
+ else if(resource==='dashboard_construction')rows=list(snapshot.dashboard||{},'construction_progress').map(r=>({project:r.project,content:r.content,date:r.construction_date,planned_days:numeric(r.planned_days),worked_days:numeric(r.worked_days),completion_percent:numeric(r.completion_percent),attention:r.needs_attention?'施工進度落後':''}));
  else if(resource==='audit')rows=list(snapshot,'audit_records').map(r=>({date:r.created_at,actor:r.actor,action:r.action,entity:r.entity_type,summary:r.summary||''}));
  else if(resource.startsWith('report_'))for(const report of list(snapshot,'reports')){
   const label=report.project?.name||report.project?.projectName||report.project?.title||'';

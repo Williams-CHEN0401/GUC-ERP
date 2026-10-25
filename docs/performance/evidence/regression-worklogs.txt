@@ -1,0 +1,3 @@
+(node:22324) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS HTTP: actual Gateway validation -> restricted service_role RPC -> PostgreSQL rows -> PostgREST-shaped reload; replay and malformed department rejection

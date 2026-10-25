@@ -1,0 +1,35 @@
+.construction-monitor-card { border:1px solid var(--border,#d9ddcf); border-radius:12px; padding:20px; margin-top:16px; background:var(--surface,#fffefa); min-width:0; }
+.construction-monitor-card.is-warning { background:#fff3ee; border-color:#d2a69a; }
+.construction-monitor-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.construction-monitor-heading h3,.construction-monitor-heading h4 { margin:0 0 8px; font-size:var(--guc-title-size,16pt); overflow-wrap:anywhere; }
+.construction-monitor-heading p { margin:4px 0 16px; }
+.construction-monitor-badges { display:flex; gap:8px; flex-wrap:wrap; }
+.construction-monitor-badges span { border-radius:20px; padding:6px 12px; background:#e5eadf; color:#3f5942; }
+.construction-monitor-badges .is-warning { background:#f7dcd3; color:#913e30; }
+.construction-monitor-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:12px 0 20px; }
+.construction-monitor-metrics div { min-width:0; }
+.construction-monitor-metrics dt,.construction-monitor-metrics dd { margin:0; }
+.construction-monitor-metrics dd { font-weight:700; margin:8px 0; overflow-wrap:anywhere; }
+.construction-monitor-metrics small { display:block; color:var(--muted,#65705f); }
+.construction-monitor-card progress { width:100%; accent-color:var(--primary,#4b6348); height:14px; }
+.construction-monitor-card.is-warning progress { accent-color:#a74c38; }
+.construction-monitor-progress-line { display:flex; gap:12px; justify-content:space-between; flex-wrap:wrap; margin:8px 0; }
+.construction-monitor-alert { border-left:4px solid #aa5942; padding:10px 14px; margin:14px 0; color:#873b2b; background:#fae7df; }
+.construction-monitor-alert p { margin:6px 0; }
+.construction-monitor-contract { display:flex; flex-wrap:wrap; gap:8px 20px; padding:12px 0; margin:12px 0; border-top:1px solid #d9ddcf; }
+.construction-monitor-card>.construction-plan-fold { border:0; border-top:1px solid #d9ddcf; margin-top:16px; background:transparent; padding:12px 0 0; }
+.construction-monitor-settings { padding:16px; border:1px solid var(--border,#d9ddcf); border-radius:10px; min-width:0; }
+.construction-monitor-settings h3 { margin-top:0; }
+.construction-monitor-settings input { min-width:0; width:100%; }
+/* Match the 240 + 700 + 12 viewBox: keep text at its reading size and scroll
+   within the chart on small screens instead of shrinking the SVG. */
+.construction-gantt svg { width:952px; min-width:952px; max-width:none; height:auto; }
+.construction-gantt :is(.gantt-label,.gantt-axis) { font-size:var(--guc-text-size,12pt); }
+@media(max-width:600px){
+ .construction-monitor-card { padding:16px; }
+ .construction-monitor-metrics { grid-template-columns:1fr; gap:12px; }
+ .construction-monitor-metrics div { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:4px 12px; padding-bottom:10px; border-bottom:1px solid #d9ddcf; }
+ .construction-monitor-metrics dd { margin:0; text-align:right; }
+ .construction-monitor-metrics small { grid-column:1/-1; }
+ .construction-monitor-settings .form-grid { grid-template-columns:1fr; }
+}

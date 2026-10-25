@@ -1,0 +1,3 @@
+(node:25756) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS: old rows; Gateway -> SQL -> reread; multi-row notes; linked pickup; old clients; edit/clear; stock/version/audit; replay; duplicate/length/type/role guards; service-only ACL.

@@ -7,11 +7,11 @@ vm.runInContext(readFileSync(new URL('../work-content-report.js',import.meta.url
 const render=context.GUCWorkContentReport.render;
 function report(){return {project:{name:'工程 <img src=x onerror=alert(1)>',code:'T1',createdAt:'2026-09-01T16:30:00Z'},kpis:{},materialStats:[],materialRows:[],workerStats:[],dailyRows:[],constructionPlans:[{id:'p1',project_id:'work1',content:'未開始',status:'pending',planned_days:7,completed_days:0,remaining_days:7,progress_percent:0,items:[],logs:[],assignees:[]}],constructionSummary:{planCount:1,plannedDays:7,completedDays:0,remainingDays:7,projectDays:0,overdueItemCount:0}};}
 test('shared dashboard retains zero-log plans and escapes API text',()=>{
- const html=render({report:report()});assert.match(html,/data-report-plan="p1"/);assert.match(html,/0 \/ 7 天/);assert.doesNotMatch(html,/<img|onerror="/);assert.match(html,/&lt;img/);assert.match(html,/2026-09-02/);
+ const html=render({report:report()});assert.match(html,/data-report-plan="p1"/);assert.match(html,/工期執行：0天\/7天/);assert.doesNotMatch(html,/<img|onerror="/);assert.match(html,/&lt;img/);assert.match(html,/2026-09-02/);
 });
 test('dashboard displays server completion percentage and excess days without client recomputation',()=>{
- const r=report();Object.assign(r.constructionPlans[0],{completed_days:9,planned_days:7,progress_percent:128.6,remaining_days:0,overrun_days:2});
- const html=render({report:r});assert.match(html,/128.6%/);assert.match(html,/超出預計施工天數 2 天/);assert.match(html,/value="100"/);
+ const r=report();Object.assign(r.constructionPlans[0],{completed_days:9,worked_days:9,planned_days:7,item_count:7,completed_item_count:1,progress_percent:14.3,remaining_days:0,overrun_days:2});
+ const html=render({report:r});assert.match(html,/14.3%/);assert.match(html,/超出預計施工天數 2 天/);assert.match(html,/value="14.3"/);assert.doesNotMatch(html,/128.6%|value="100"/);
 });
 test('unknown planned duration never renders NaN or infinity',()=>{
  const r=report();r.constructionPlans[0].planned_days=null;r.constructionSummary.plannedDays=0;
@@ -82,13 +82,13 @@ test('material categories with mixed units keep separate quantity axes and never
  assert.match(rollChart,/2 捲/);assert.doesNotMatch(rollChart,/data-gr-item-id="wire"/);
  assert.doesNotMatch(html,/data-chart-value="(?:152|157)"|152 米|152 捲/);
 });
-test('accounting 12pt column charts reserve axis and multi-line label space without changing ERP geometry',()=>{
+test('ERP and accounting 12pt charts use the same readable axis and multi-line label geometry',()=>{
  const r=materialReport();r.materialStats[0].name='測試使用三行顯示的材料品項名稱與品牌';r.materialStats[0].quantity=12345.67;
  const erp=render({report:r,tab:'materials'}),accounting=render({report:r,tab:'materials',accounting:true});
  const firstSvg=html=>html.match(/<svg\b[^>]*class="gr-columns"[\s\S]*?<\/svg>/)[0];
  const a=firstSvg(accounting),e=firstSvg(erp),width=svg=>Number(svg.match(/viewBox="0 0 ([\d.]+) 258"/)[1]);
- assert.match(e,/class="gr-baseline" x1="42" y1="184"/);assert.match(e,/dy="15"/);
- assert.match(a,/class="gr-baseline" x1="[\d.]+" y1="170"/);assert.match(a,/dy="25"/);assert(width(a)>width(e));
+ assert.equal(a,e);assert.equal(width(a),width(e));
+ assert.match(a,/class="gr-baseline" x1="[\d.]+" y1="170"/);assert.match(a,/dy="25"/);
  assert(Number(a.match(/class="gr-baseline" x1="([\d.]+)"/)[1])>42);
  assert.deepEqual(itemColumns(accounting).map(({id,value})=>[id,value]),itemColumns(erp).map(({id,value})=>[id,value]));
 });
@@ -136,7 +136,7 @@ test('category changes filter item charts, summary, detail and distribution with
  const renderer=isolated.GUCWorkContentReport.render,r=materialReport();
  renderer({report:r});
  const select={value:'supplies',closest(){return host;}};
- const change=()=>listeners.change({target:{closest(){return select;}}});
+ const change=()=>listeners.change({target:{closest(selector){return selector==='[data-gr-material-category]'?select:null;}}});
  change();
  assert.deepEqual(itemColumns(regions['[data-gr-category-chart]'].innerHTML).map(({id,value})=>[id,value]),[['white-tie',3],['black-tie',1]]);
  for(const name of ['table','rows']){

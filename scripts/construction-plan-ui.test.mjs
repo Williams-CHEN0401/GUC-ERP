@@ -5,15 +5,31 @@ import vm from 'node:vm';
 const source=readFileSync(new URL('../construction-plan-ui.js',import.meta.url),'utf8');
 function fixture(){
  const c=vm.createContext({document:{addEventListener(){}},state:{currentUser:{id:'A'},projectWorkers:[],constructionPlans:[],siteData:{logs:[]}},byId:(rows,id)=>rows.find(r=>r.id===id),canModule:()=>true,canAdmin:()=>false,esc:String,invalidatePrivateCache:()=>true,lastSnapshot:{}});
- c.hydrateSnapshot=value=>c.merged=value;vm.runInContext(source,c);return c;
+ c.hydrateSnapshot=value=>c.merged=value;vm.runInContext(readFileSync(new URL('../construction-checklist.js',import.meta.url),'utf8'),c);vm.runInContext(source,c);return c;
 }
-test('progress shows accurate days and caps overrun bar without completing the plan',()=>{
+test('item completion is separate from actual days and exceeding duration does not complete a plan',()=>{
  const c=fixture();
- const normal=c.constructionProgress({planned_days:7,completed_days:1,remaining_days:6,progress_percent:14.3,overrun_days:0});
- assert.match(normal,/已完成 1 天｜剩餘 6 天/);assert.match(normal,/14.3%/);
- const over=c.constructionProgress({planned_days:2,completed_days:3,remaining_days:0,progress_percent:150,overrun_days:1});
- assert.match(over,/overrun/);assert.match(over,/value="100"/);assert.match(over,/150%/);assert.match(over,/超出預計施工天數 1 天/);
+ const normal=c.constructionProgress({planned_days:7,worked_days:3,item_count:7,completed_item_count:1,completion_percent:14.3});
+ assert.match(normal,/3 \/ 7 天/);assert.match(normal,/14.3%/);assert.match(normal,/1 \/ 7/);
+ const over=c.constructionProgress({planned_days:7,worked_days:8,item_count:7,completed_item_count:1,completion_percent:14.3});
+ assert.match(over,/value="14.3"/);assert.doesNotMatch(over,/100%/);assert.match(over,/超出預計施工天數 1 天/);
  assert.doesNotMatch(c.constructionProgress({}),/<progress/);
+});
+test('contract dates accept optional fields and reject impossible or inverted dates',()=>{
+ const c=fixture();
+ for(const pair of [['',''],['','2026-12-31'],['2026-10-01',''],['2026-10-01','2026-12-31']])assert.doesNotThrow(()=>c.validateProjectContractDates(...pair));
+ for(const pair of [['2026-02-30',''],['2026-11-01','2026-10-31']])assert.throws(()=>c.validateProjectContractDates(...pair),/履約/);
+ const form={elements:{contractStartDate:{value:'2026-10-01'},contractEndDate:{value:'2026-12-31'}}};
+ const project={contractStartDate:'2026-10-01',contractEndDate:'2026-12-31',rowVersion:4};
+ assert.deepEqual(JSON.parse(JSON.stringify(c.collectProjectContractChange(form,project,true))),{});
+ form.elements.contractEndDate.value='2026-11-30';assert.equal(c.collectProjectContractChange(form,project,true).project_row_version,4);
+});
+test('warning input requires both valid fields or neither; zero-percent target is valid',()=>{
+ const c=fixture(),form=(d,p)=>({elements:{warningWorkDays:{value:d},warningMinProgress:{value:p}}});
+ assert.equal(c.collectConstructionWarning(form('','')).warning_work_days,null);
+ assert.equal(c.collectConstructionWarning(form('3','0')).warning_min_progress,0);
+ assert.equal(c.collectConstructionWarning(form('3','30')).warning_work_days,3);
+ for(const [d,p]of [['3',''],['','30'],['0','30'],['1.5','30'],['3651','30'],['3','101'],['3','NaN']])assert.throws(()=>c.collectConstructionWarning(form(d,p)));
 });
 test('construction eligibility uses stable enums, not display text',()=>{
  const c=fixture();

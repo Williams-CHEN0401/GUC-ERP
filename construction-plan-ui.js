@@ -3,9 +3,31 @@
 let activeConstructionLogPlanId="",constructionViewProjectId="";
 const CONSTRUCTION_PLAN_STATUSES=[["pending","未開始"],["in_progress","施工中"],["completed","已完成"],["cancelled","取消"]];
 function constructionProgress(plan){
- if(Object.hasOwn(plan,"worked_days"))return constructionChecklistProgress(plan);
- const days=Number(plan.completed_days||0),planned=Number(plan.planned_days||0),percent=Number(plan.progress_percent||0),over=Number(plan.overrun_days||0);
- return `<div class="construction-progress ${over?"overrun":planned&&days>=planned?"at-plan":""}"><p>預計 ${planned||"未設定"} 天｜已完成 ${days} 天${planned?"｜剩餘 "+Number(plan.remaining_days||0)+" 天":""}</p>${planned?`<progress max="100" value="${Math.min(Math.max(percent,0),100)}" aria-label="施工進度">${percent}%</progress><strong>${percent}%</strong>`:""}${over?`<p role="status">已超出預計施工天數 ${over} 天</p>`:""}</div>`;
+ return constructionChecklistProgress(plan);
+}
+function projectContractFields(project={},options={}){
+ return `<section class="span-2 construction-monitor-settings"><h3>履約期限</h3><p class="form-sync-hint">${options.planning?'共用此工作內容的履約日期；修改後所有施工規劃與報表一併更新。':'依日曆日期判斷履約期限，與實際施工天數分開計算。'}可留空。</p><div class="form-grid">${inputField('contractStartDate','履約開始日期','date',false,project.contractStartDate||'')}${inputField('contractEndDate','履約截止日期','date',false,project.contractEndDate||'')}</div></section>`;
+}
+function validateProjectContractDates(start,end){
+ for(const value of [start,end])if(value&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value+'T00:00:00Z'))||new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value))throw new Error('請輸入有效的履約日期。');
+ if(start&&end&&start>end)throw new Error('履約截止日期不可早於開始日期。');
+}
+function collectProjectContractChange(form,project,planning=false){
+ const start=String(form.elements.contractStartDate?.value||''),end=String(form.elements.contractEndDate?.value||'');
+ validateProjectContractDates(start,end);
+ if(project&&start===(project.contractStartDate||'')&&end===(project.contractEndDate||''))return {};
+ return {contract_start_date:start||null,contract_end_date:end||null,...(planning?{project_row_version:project?.rowVersion}:{} )};
+}
+function constructionWarningFields(plan){
+ return `<section class="span-2 construction-monitor-settings"><h3>施工進度告警</h3><p class="form-sync-hint">累積達指定的實際施工天數，且施工項目完成度低於目標時提醒。兩欄同時留空即可停用。</p><div class="form-grid"><label>告警檢查天數<input name="warningWorkDays" type="number" min="1" max="3650" step="1" value="${esc(plan.warning_work_days??'')}" placeholder="例如 3"></label><label>最低完成度（%）<input name="warningMinProgress" type="number" min="0" max="100" step="0.1" value="${esc(plan.warning_min_progress??'')}" placeholder="例如 30"></label></div></section>`;
+}
+function collectConstructionWarning(form){
+ const days=form.elements.warningWorkDays.value.trim(),minimum=form.elements.warningMinProgress.value.trim();
+ if(!days&&!minimum)return {warning_work_days:null,warning_min_progress:null};
+ if(!days||!minimum)throw new Error('請同時設定告警檢查天數與最低完成度，或兩欄皆留空。');
+ if(!Number.isInteger(Number(days))||Number(days)<1||Number(days)>3650)throw new Error('告警檢查天數須為 1 至 3650 的整數。');
+ if(!Number.isFinite(Number(minimum))||Number(minimum)<0||Number(minimum)>100)throw new Error('最低完成度須介於 0% 至 100%。');
+ return {warning_work_days:Number(days),warning_min_progress:Number(minimum)};
 }
 let planningGeneration=0;
 function renderPlanningProjects(){
@@ -18,8 +40,9 @@ function renderPlanningProjects(){
  renderPagination('planning','planningPagination',page.total);
 }
 function constructionPlanningCard(plan){
+ const project=byId(state.projects,plan.project_id),customer=byId(state.customers,project?.customerId);
  const logs=state.siteData.logs.filter(log=>log.construction_plan_id===plan.id&&!log.deleted_at).sort((a,b)=>a.log_date.localeCompare(b.log_date));
- return `<details class="construction-plan-card construction-plan-fold" data-planning-plan="${esc(plan.id)}"><summary><span>${esc(plan.content)}<small>${esc(plan.construction_date)} · ${esc(CONSTRUCTION_PLAN_STATUSES.find(([value])=>value===plan.status)?.[1]||plan.status)}</small></span><small>完成 ${Number(plan.completion_percent||0)}%｜已執行 ${Number(plan.worked_days||0)} 天</small></summary><div class="construction-plan-body">${constructionWarning(plan)}${constructionProgress(plan)}${constructionChecklist(plan)}${constructionGantt(plan)}<p>施工人員：${esc((plan.assignee_user_ids||[]).map(id=>byId(state.siteWorkers,id)?.displayName||"停用使用者").join("、")||"未指派")}${plan.subcontractor_count?`、代工 ${Number(plan.subcontractor_count)} 人`:""}</p>${plan.notes?`<p class="construction-content">備註：${esc(plan.notes)}</p>`:""}<div class="construction-plan-actions">${plan.can_manage?`<button type="button" class="outline" data-edit-construction-plan="${esc(plan.id)}">修改規劃</button><button type="button" class="outline danger" data-delete-construction-plan="${esc(plan.id)}">刪除規劃</button>`:""}${plan.can_create_log?`<button type="button" class="primary" data-construction-log="${esc(plan.id)}">填寫工作日誌</button>`:""}</div><details class="construction-log-list"><summary>相關工作日誌（${logs.length}）</summary>${logs.map(log=>`<article><div><strong>${esc(log.log_date)} · ${esc(plan.items?.find(i=>i.id===log.construction_item_id)?.title||"原有未分類日誌")} · ${esc(byId(state.siteWorkers,log.access_creator_user_id)?.displayName||"原建立人")}</strong><p class="construction-content">${esc(log.summary||"—")}</p></div><div class="construction-plan-actions"><button type="button" class="outline" data-construction-open-log="${esc(log.id)}">${canWorkLog("UPDATE",log.id)?"修改日誌":"查看日誌"}</button>${canWorkLog("DELETE",log.id)?`<button type="button" class="outline danger" data-construction-delete-log="${esc(log.id)}">刪除日誌</button>`:""}</div></article>`).join("")||'<p>尚無可查看的工作日誌。</p>'}</details></div></details>`;
+ return `<article class="construction-monitor-card ${plan.progress_alert||plan.contract_overdue?'is-warning':''}"><header class="construction-monitor-heading"><div><h4>${esc(plan.content)}</h4><p>${esc(customer?.name||'')}｜${esc(project?.name||'')} · ${esc(plan.construction_date)}</p></div>${constructionMonitorBadges(plan)}</header>${constructionProgress(plan)}${constructionWarning(plan)}${constructionContractSummary(plan)}<details class="construction-plan-card construction-plan-fold" data-planning-plan="${esc(plan.id)}"><summary><span>施工規劃明細</span><small>預計${plan.planned_days||'未設定'}天完成｜已完成${Number(plan.completed_item_count||0)}項</small></summary><div class="construction-plan-body">${constructionChecklist(plan)}${constructionGantt(plan)}<p>指派施工人員：${esc((plan.assignee_user_ids||[]).map(id=>byId(state.siteWorkers,id)?.displayName||'停用使用者').join('、')||'未指派')}${plan.subcontractor_count?'、代工 '+Number(plan.subcontractor_count)+' 人':''}</p>${plan.notes?`<p class="construction-content">備註：${esc(plan.notes)}</p>`:''}<div class="construction-plan-actions">${plan.can_manage?`<button type="button" class="outline" data-edit-construction-plan="${esc(plan.id)}">修改規劃</button><button type="button" class="outline danger" data-delete-construction-plan="${esc(plan.id)}">刪除規劃</button>`:''}${plan.can_create_log?`<button type="button" class="primary" data-construction-log="${esc(plan.id)}">填寫工作日誌</button>`:''}</div><details class="construction-log-list"><summary>相關工作日誌（${logs.length}）</summary>${logs.map(log=>`<article><div><strong>${esc(log.log_date)} · ${esc(plan.items?.find(i=>i.id===log.construction_item_id)?.title||'原有未分類日誌')} · ${esc(byId(state.siteWorkers,log.access_creator_user_id)?.displayName||'原建立人')}</strong><p class="construction-content">${esc(log.summary||'—')}</p></div><div class="construction-plan-actions"><button type="button" class="outline" data-construction-open-log="${esc(log.id)}">${canWorkLog('UPDATE',log.id)?'修改日誌':'查看日誌'}</button>${canWorkLog('DELETE',log.id)?`<button type="button" class="outline danger" data-construction-delete-log="${esc(log.id)}">刪除日誌</button>`:''}</div></article>`).join('')||'<p>尚無可查看的工作日誌。</p>'}</details></div></details></article>`;
 }
 async function refreshConstructionPane(){
  const host=document.querySelector('#constructionPlanningList');if(!host)return;
@@ -30,11 +53,11 @@ async function refreshConstructionPane(){
 document.addEventListener('input',event=>{if(event.target.id==='planningSearch'){tableState.planning.search=event.target.value;tableState.planning.page=1;renderPlanningProjects();}});
 document.addEventListener('change',event=>{if(event.target.id.startsWith('planningFilter')){tableState.planning.page=1;renderPlanningProjects();}});
 function renderConstructionDashboard(){
- let host=document.querySelector("#constructionProgressDashboard");if(!host){host=document.createElement("article");host.id="constructionProgressDashboard";host.className="panel";document.querySelector("#dashboard")?.append(host);}
+ let host=document.querySelector('#constructionProgressDashboard');if(!host){host=document.createElement('article');host.id='constructionProgressDashboard';host.className='panel';document.querySelector('#dashboard')?.append(host);}
  const expanded=new Set([...host.querySelectorAll('[data-dashboard-plan][open]')].map(row=>row.dataset.dashboardPlan));
  const plans=state.dashboard?.construction_progress||[];host.hidden=!plans.length;
- host.innerHTML='<h2>負責的施工規劃進度</h2>'+[...plans].sort((a,b)=>Number(b.needs_attention)-Number(a.needs_attention)).map(p=>`<details class="construction-plan-card construction-plan-fold" data-dashboard-plan="${esc(p.id)}"${expanded.has(p.id)?' open':''}><summary><span>${esc(p.project)}－${esc(p.content)}<small>${esc(p.construction_date)}${p.needs_attention?' · 仍有子項目未開始':''}</small></span><small>完成 ${Number(p.completion_percent||0)}%｜已執行 ${Number(p.worked_days||0)} 天</small></summary><div class="construction-plan-body">${constructionWarning(p)}${constructionProgress(p)}<button type="button" class="outline" data-construction-project="${esc(p.project_id)}">查看施工規劃</button></div></details>`).join("");
- if(plans.some(p=>p.needs_attention))document.querySelector('#dashboard')?.prepend(host);
+ host.innerHTML='<h2>負責的施工規劃進度</h2>'+[...plans].sort((a,b)=>Number(b.progress_alert||b.contract_overdue)-Number(a.progress_alert||a.contract_overdue)).map(p=>`<article class="construction-monitor-card ${p.progress_alert||p.contract_overdue?'is-warning':''}"><header class="construction-monitor-heading"><div><h3>${esc(p.content)}</h3><p>${esc(p.project)} · ${esc(p.construction_date)}</p></div>${constructionMonitorBadges(p)}</header>${constructionProgress(p)}${constructionWarning(p)}${constructionContractSummary(p)}<details class="construction-plan-card construction-plan-fold" data-dashboard-plan="${esc(p.id)}"${expanded.has(p.id)?' open':''}><summary><span>施工規劃明細</span><small>預計${p.planned_days||'未設定'}天完成｜已完成${Number(p.completed_item_count||0)}項</small></summary><div class="construction-plan-body"><button type="button" class="outline" data-construction-project="${esc(p.project_id)}">查看施工規劃</button></div></details></article>`).join('');
+ if(plans.some(p=>p.progress_alert||p.contract_overdue))document.querySelector('#dashboard')?.prepend(host);
 }
 async function refreshConstructionProgressViews(){
  invalidateSharedReports();
@@ -78,13 +101,13 @@ function constructionPlanListFields(){
 function constructionPlanEditFields(id){
  const plan=constructionPlanById(id)||{},project=byId(state.projects,constructionViewProjectId);
  if(!canManageConstruction(project))throw new Error("沒有管理施工規劃的權限。");
- return `<p class="span-2">${esc(project?.code)}｜${esc(project?.name)}</p>`+inputField("constructionDate","施工日期","date",true,plan.construction_date||today())+`<label>預計施工天數<input name="plannedDays" type="number" min="1" max="3650" step="1" value="${esc(plan.planned_days??"")}"></label>`+selectField("planStatus","施工狀態",CONSTRUCTION_PLAN_STATUSES,plan.status||"pending")+inputField("planContent","施工標題","textarea",true,plan.content||"","span-2")+constructionChecklistEditor(plan)+workerPickerField(plan.assignee_user_ids||[],{name:"constructionAssignees",legend:"指派施工人員",description:"可指派一人或多人；移除人員仍保留其歷史日誌。"})+subcontractorFields(plan.subcontractor_count||0)+inputField("planNotes","備註","textarea",false,plan.notes||"","span-2")+`<div class="form-submit"><button type="button" class="outline" data-construction-project="${esc(constructionViewProjectId)}">返回規劃</button><button class="primary" type="submit">儲存施工規劃</button></div>`;
+ return `<p class="span-2">${esc(project?.code)}｜${esc(project?.name)}</p>`+inputField("constructionDate","施工日期","date",true,plan.construction_date||today())+`<label>預計施工天數<input name="plannedDays" type="number" min="1" max="3650" step="1" value="${esc(plan.planned_days??"")}"></label>`+selectField("planStatus","施工狀態",CONSTRUCTION_PLAN_STATUSES,plan.status||"pending")+inputField("planContent","施工標題","textarea",true,plan.content||"","span-2")+projectContractFields(project,{planning:true})+constructionWarningFields(plan)+constructionChecklistEditor(plan)+workerPickerField(plan.assignee_user_ids||[],{name:"constructionAssignees",legend:"指派施工人員",description:"可指派一人或多人；移除人員仍保留其歷史日誌。"})+subcontractorFields(plan.subcontractor_count||0)+inputField("planNotes","備註","textarea",false,plan.notes||"","span-2")+`<div class="form-submit"><button type="button" class="outline" data-construction-project="${esc(constructionViewProjectId)}">返回規劃</button><button class="primary" type="submit">儲存施工規劃</button></div>`;
 }
 async function saveConstructionPlan(form,id){
  if(PREVIEW_MODE)throw new Error("此預覽未連接隔離儲存服務，不能儲存施工規劃。");
  const values=new FormData(form),plan=constructionPlanById(id),assignees=values.getAll("constructionAssignees");
  if(!assignees.length&&!collectSubcontractorCount(form))throw new Error("請至少選擇一位施工人員。");
- const payload={id:plan?.id||form.dataset.planRequestId||uid(),row_version:plan?.row_version??null,project_id:constructionViewProjectId,construction_date:values.get("constructionDate"),planned_days:values.get("plannedDays")===""?null:Number(values.get("plannedDays")),content:String(values.get("planContent")||"").trim(),status:values.get("planStatus"),notes:String(values.get("planNotes")||"").trim(),assignee_user_ids:assignees,subcontractor_count:collectSubcontractorCount(form),items:collectConstructionItems(form)};
+ const payload={id:plan?.id||form.dataset.planRequestId||uid(),row_version:plan?.row_version??null,project_id:constructionViewProjectId,construction_date:values.get("constructionDate"),planned_days:values.get("plannedDays")===""?null:Number(values.get("plannedDays")),content:String(values.get("planContent")||"").trim(),status:values.get("planStatus"),notes:String(values.get("planNotes")||"").trim(),assignee_user_ids:assignees,subcontractor_count:collectSubcontractorCount(form),items:collectConstructionItems(form),...collectConstructionWarning(form),...collectProjectContractChange(form,byId(state.projects,constructionViewProjectId),true)};
  form.dataset.planRequestId=payload.id;
  await apiRequest({operation:"save_construction_plan",payload});
  await refreshConstructionProgressViews();closeModal(true);await openConstructionPlans(payload.project_id);showToast("施工規劃已儲存並重新讀取");

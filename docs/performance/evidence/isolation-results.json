@@ -1,0 +1,101 @@
+{
+  "checkedAt": "2026-10-25T09:45:06.003Z",
+  "passed": true,
+  "services": [
+    {
+      "service": "db",
+      "networks": [
+        "guc-performance-test_default"
+      ],
+      "mounts": [
+        {
+          "type": "volume",
+          "target": "/var/lib/postgresql/data",
+          "writable": true
+        }
+      ],
+      "publishedPorts": {
+        "5432/tcp": []
+      }
+    },
+    {
+      "service": "auth",
+      "networks": [
+        "guc-performance-test_default"
+      ],
+      "mounts": [],
+      "publishedPorts": {}
+    },
+    {
+      "service": "rest",
+      "networks": [
+        "guc-performance-test_default"
+      ],
+      "mounts": [],
+      "publishedPorts": {
+        "3000/tcp": null
+      }
+    },
+    {
+      "service": "api-gw",
+      "networks": [
+        "guc-performance-test_default"
+      ],
+      "mounts": [
+        {
+          "type": "bind",
+          "target": "/workspace",
+          "writable": false
+        }
+      ],
+      "publishedPorts": {
+        "3000/tcp": null
+      }
+    },
+    {
+      "service": "gateway",
+      "networks": [
+        "guc-performance-test_default"
+      ],
+      "mounts": [
+        {
+          "type": "bind",
+          "target": "/home/deno/functions",
+          "writable": false
+        }
+      ],
+      "publishedPorts": {}
+    },
+    {
+      "service": "erp",
+      "networks": [
+        "guc-performance-test_browser",
+        "guc-performance-test_default"
+      ],
+      "mounts": [
+        {
+          "type": "bind",
+          "target": "/test-output",
+          "writable": true
+        },
+        {
+          "type": "bind",
+          "target": "/workspace",
+          "writable": false
+        }
+      ],
+      "publishedPorts": {
+        "3000/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "4268"
+          }
+        ]
+      }
+    }
+  ],
+  "productionNetworks": 0,
+  "productionVolumes": 0,
+  "productionCredentials": 0,
+  "attachmentDestinations": 0
+}

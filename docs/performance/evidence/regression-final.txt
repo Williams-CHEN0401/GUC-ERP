@@ -1,0 +1,590 @@
+
+> guc-erp-vercel-rebuild@1.0.0 check
+> node scripts/check.mjs && node --test scripts/*.test.mjs
+
+ERP preview verification passed.
+✔ assignment date defaults to Taiwan today and legacy creation day, never appointment date (63.225ms)
+✔ assignment date is editable with existing appointment permission, read-only viewers unchanged (18.5845ms)
+✔ form save sends assigned_date separately and never sends editable creation time (3.3041ms)
+✔ preview retains selected assignment date on older-client updates and cancellation (11.8364ms)
+✔ list sorts the displayed effective assignment date, cancellation explicitly preserves it (2.3342ms)
+✔ completion waits for persisted response then offers existing pages; no follow-up record created (17.6759ms)
+✔ completion double click sends once and cannot navigate before saved (3.0718ms)
+✔ RPC failure is visible, keeps pending and allows retry, no success/navigation (2.4838ms)
+✔ uncertain timeout and malformed success never claim completion (4.1451ms)
+✔ committed save with failed reread stays completed and never resubmits (6.3661ms)
+✔ drains older dashboard request before fresh reread (2.0704ms)
+✔ pickup assignments offer view only; navigation selects pickup tab without creating records (2.3204ms)
+✔ general pickup navigation, permission denial and page failure preserve completion (7.4512ms)
+✔ creator completing their own assignment gets a notice only once (3.6839ms)
+✔ acknowledgement failure is visible and reread failure does not restore acknowledged notice (4.8675ms)
+✔ dashboard polling is scoped to visible selected dashboard, not login/chooser/other pages or modal (2.7665ms)
+✔ cancel closes without writing; Escape cannot dismiss a save in progress (2.7592ms)
+✔ migration replaces only the completion audit action and preserves signature/body/ACL (4.2797ms)
+✔ XHR reports real computable transport only and preserves auth, timeout, multipart and HTTP status (65.9256ms)
+✔ parallel direct/chunk progress is byte weighted, retry-safe and complete only after indexing (99.54ms)
+✔ partial index failure, conflict cancellation and prepare failure never claim all files succeeded (9.3462ms)
+✔ renderer escapes file names/errors, preserves partial results on failure and scrolls only once (6.765ms)
+✔ completion and consumed workdays are independent metrics (66.6582ms)
+✔ warning displays configurable authoritative threshold and never falls back to fixed 80 percent (3.1786ms)
+✔ Gantt uses a common workday index and includes unique dated actual marks (3.4181ms)
+✔ checklist respects completion permission and escapes the item title (2.5277ms)
+✔ form rejects incomplete and out-of-range schedules before sending (3.6272ms)
+✔ reference-style card separates item counts, execution days and contract calendar (72.6979ms)
+✔ server alert boundary states render without a second client calculation (66.2035ms)
+✔ deadline and progress warning stay independent; unset thresholds do not manufacture warnings (38.8853ms)
+✔ overall project uses backend item total ratio and never averages individual plans (41.5357ms)
+✔ zero effective items preserve unknown completion and never derive it from spent days (4.0774ms)
+✔ manager statistics expose traceable authorized rows and suppress unavailable rates (3.2342ms)
+✔ manager selector filters both statistics and source projects without widening scope (5.7684ms)
+✔ item completion is separate from actual days and exceeding duration does not complete a plan (59.2039ms)
+✔ contract dates accept optional fields and reject impossible or inverted dates (8.1298ms)
+✔ warning input requires both valid fields or neither; zero-percent target is valid (3.1013ms)
+✔ construction eligibility uses stable enums, not display text (2.6616ms)
+✔ plan affordances require existing project owner and module permissions (2.5894ms)
+✔ new plan logs inherit date and project without prefilled notes or reporter attendance (5.4212ms)
+✔ reread removes archived/unauthorized logs and obsolete owners from cached project (3.2941ms)
+✔ new work-log initial and refreshed choices exclude completed while preserving customer and grants (6.2145ms)
+✔ classification uses a separate sub-tab and preserves original list and shared project type (6.5421ms)
+(node:25224) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ contract catalog create uses existing customers permission and trusted actor (127.4538ms)
+✔ contract catalog update uses existing customers permission and trusted actor (30.0692ms)
+✔ contract catalog delete uses existing customers permission and trusted actor (47.5439ms)
+✔ preview gateway rejects all catalog writes even with permissions (12.6449ms)
+✔ invalid and anonymous catalog changes never call SQL (21.7212ms)
+✔ shared catalog comes from the same paged dataset across CRM/worklogs/site navigation (17.9743ms)
+✔ empty snapshots clear stale choices; old schema/errors disable writes and new names keep IDs (2.5093ms)
+✔ nested catalog UI keeps existing customer tabs and RBAC mapping (1.8705ms)
+✔ 工作日誌先依客戶類型篩選，再選擇客戶 (15.6123ms)
+✔ 工作日誌雙擊整列開啟內容，操作選單不再包含內容入口 (0.9503ms)
+✔ Preview NAS 檢查不讀取正式帳密或呼叫 NAS API (0.409ms)
+✔ 正式附件送出會重試 NAS 健康檢查並保留真正錯誤原因 (1.1225ms)
+✔ 承攬關聯 migration 具備外鍵索引與發布前資料防護 (0.8842ms)
+✔ all customer category selectors include social welfare and cleaning team (2.5856ms)
+✔ category display uses persisted values and treats blanks as government (2.0678ms)
+✔ legacy migration preserves the four original categories; gateway uses database membership (0.5587ms)
+✔ migration classifies existing names without inventing customers (0.5901ms)
+(node:3576) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ customer classification create enforces the existing customer grant (129.0074ms)
+✔ customer classification update enforces the existing customer grant (21.6836ms)
+✔ customer classification delete enforces the existing customer grant (15.0279ms)
+✔ classification malformed input and anonymous writes never reach the database (22.024ms)
+✔ CRM classification lookup follows view permissions, including delegated users (12.975ms)
+✔ customer save accepts new category codes and leaves membership to the foreign key (3.9339ms)
+(node:26192) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ department create follows individual customers RBAC and version contract (124.6295ms)
+✔ department update follows individual customers RBAC and version contract (12.504ms)
+✔ department deactivate follows individual customers RBAC and version contract (11.764ms)
+✔ department input/anonymous errors never reach a write and names cannot shift customers (22.3141ms)
+✔ project and repair writes use one atomic department RPC while omitted field retains legacy RPC (29.9736ms)
+✔ department work log preserves request id and handling_process in one database transaction (8.38ms)
+✔ department project update distinguishes omitted construction classification from explicit null (12.8575ms)
+✔ new department wrappers consistently lock customer before business row and retain versioned legacy calls (1.5383ms)
+✔ multi-customer receipts require exact mapping and preserve both customers atomically (33.5501ms)
+✔ department snapshots are restricted to visible customers and no-department grants remain read-only (25.0443ms)
+✔ department choices are scoped to stable customer ID and preserve only the original inactive relation (6.4764ms)
+✔ department preview CRUD validates names, concurrency, ownership and soft-deactivates (2.6153ms)
+✔ ERP mutation payloads include departments and existing receipt multi-customer shape remains (8.5104ms)
+(node:25424) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ site navigation reads shared customer/category/service catalogs without loading equipment or history (106.1611ms)
+✔ selected customer phone request scopes every equipment read and never fetches monitoring/history (9.2451ms)
+✔ customer CRUD is admin only and actor identity comes from verified session (26.0286ms)
+✔ history writers keep authenticated identity; viewers and preview cannot mutate (16.039ms)
+✔ department labels distinguish missing master data from actual legacy NULL (8.6882ms)
+✔ editing a work log retains customer title options without an editable customer field (3.9372ms)
+✔ work-log defaults never come from another department with a typed title (33.459ms)
+✔ new repair keeps its selected type and status when a same-name construction exists (2.9783ms)
+✔ maintenance retains shared title across departments and preserves a new free-text title (3.1385ms)
+✔ scoped dropdown keeps an allowed selection when refreshed and removes cross-department selection (2.8763ms)
+✔ editing a pickup preserves its completed project while new pickups cannot select it (3.1957ms)
+✔ department/quotation guard reuses existing protected tracking boundary and keeps linked-quote refusal (2.9901ms)
+✔ repair department wrapper has no protected-table write and always restores transaction context (0.8396ms)
+(node:9304) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ credential API requires fresh existing-user password; client flags cannot unlock (393.0673ms)
+✔ valid step-up revokes only its temporary session before revealing; never returns Auth tokens (78.0776ms)
+✔ anonymous, preview, unauthorized, changed identity/scope and failed auth cleanup cannot reveal (360.7369ms)
+✔ shared registry preserves source UUIDs and all maintenance tables use restrictive foreign keys (3.2539ms)
+✔ tables are private to the service role and history cannot be physically deleted (1.0566ms)
+✔ work log and equipment events save through one atomic database function (1.4809ms)
+✔ ERP form supports multiple events, multi-device drawer and preview-only simulation (6.1212ms)
+✔ work log content is shared with maintenance event descriptions (0.863ms)
+✔ confirmed empty categories migrate to government without introducing a category foreign key (0.6691ms)
+✔ 附件承攬內容只由所選客戶關聯動態產生 (2.9178ms)
+✔ 附件缺少承攬內容或工作內容時前後端都拒絕 (0.5923ms)
+✔ NAS 新附件使用客戶、承攬內容、工作內容、日期完整路徑 (0.7397ms)
+✔ 一般承攬附件維持既有關聯；日誌入口可驗證並使用原日誌 ID (0.9154ms)
+✔ 登入成功後先顯示系統選擇且案場網址未設定時不跳轉 (0.7408ms)
+✔ 案場網站使用集中設定且正式環境缺少變數時仍有安全預設網址 (0.3799ms)
+✔ ERP 內部案場資料模組已移除但獨立網站入口仍保留 (0.587ms)
+✔ 案場資料以新分頁開啟並以嚴格來源交接現有登入 (1.2564ms)
+✔ Preview proxy forwards authenticated read-only export and continues blocking mutations (89.6037ms)
+(node:28656) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ field API sends blank and duplicate numbers to the canonical database matcher (118.026ms)
+✔ field API keeps existing viewer, unauthenticated and preview restrictions (16.2489ms)
+✔ system import retains duplicate-number rejection (5.7017ms)
+✔ field API rejects malformed location data before calling the database (4.8057ms)
+✔ customer search precedes category/customer/department in the shared selector and receipt picker (6.9501ms)
+✔ reference refresh uses authorized scope, is deduplicated and keeps form rendering separate (9.3912ms)
+✔ late responses after logout, account change or a save do not replace current data (6.1055ms)
+✔ hidden page, login chooser, no selected system and preview never poll production (2.8895ms)
+✔ unchanged responses do not rebuild option nodes; unauthorized session logs out (2.6099ms)
+✔ editing version remains pinned while reference records refresh (2.0794ms)
+✔ all ERP entry forms resolve the existing authorized scope, including both assignment datasets (4.0076ms)
+✔ save-in-progress and changed page ignore an in-flight reference response (3.9371ms)
+✔ option replacement preserves selected/removed IDs, blank selection and disabled state (2.5346ms)
+✔ role/project-grant forms keep their original versions while reference data changes (1.442ms)
+✔ BFF forwards the option-only query and never caches authenticated reference data (0.6651ms)
+✔ inventory search combines case-insensitive name/brand/model/code and Chinese name-first order (58.0749ms)
+✔ 已登錄維修品的事件品項仍可獨立編輯，保留停用的歷史種類 (4.5426ms)
+✔ 事件欄位權限與類型限制保留，但不因來源維修品而鎖定 (5.1099ms)
+✔ 預覽不再覆寫來源維修品日期或綁定客戶／品項，保留設備保護 (1.0512ms)
+✔ migration 僅替換三個既有函式，保留資料與權限，基準不符時中止 (1.1162ms)
+✔ declining close never mutates the work or log (4.6142ms)
+✔ explicit close sends a narrow versioned action; daily status is unchanged (17.6442ms)
+✔ unauthorized, project-scoped and already closed work never submits (10.8503ms)
+✔ closure failure does not re-save the log or repeat submission (2.4769ms)
+✔ pickup save or cancellation clears the followup before invoking it (1.8133ms)
+✔ pickup writers lock request/log before pickup/inventory; reassignment keeps history and versions (3.5437ms)
+✔ soft-delete fix changes only the invalid audit action, not security or history behavior (1.5133ms)
+✔ preview detaches only changed pickup ownership and log links without relying on unloaded logs (0.9657ms)
+✔ 商品與庫存可由管理員新增貨品種類 (7.0535ms)
+✔ 盤點校正必須先選貨品種類再選品項 (1.9524ms)
+✔ 盤點校正在資料庫交易內鎖定、執行並驗證即時庫存 (4.2027ms)
+✔ similar names match Chinese substrings, normalized Latin/width/spacing and multiple keywords across categories (41.0506ms)
+✔ suggestions escape text, mark same names, cap long lists and clear independently without replacing draft input (10.2395ms)
+✔ name input updates its row and Enter does not submit the batch or interfere with IME composition (4.9338ms)
+✔ 維修明細處理流程使用獨立欄位並完整通過表單、快照與閘道 (2.4237ms)
+✔ 資料庫只擴充既有維修事件，保留原 RPC 權限與原子儲存流程 (1.7696ms)
+✔ 設備履歷回傳處理流程，供案場承攬系統後續與故障原因對照 (2.0672ms)
+{"service":"erp-nas","event":"batch_prepared","request_id":"de5a5946-573e-4d47-b246-31763faff833","file_count":4,"timing":{"auth_ms":4,"form_ms":5,"root_ms":12,"context_ms":87,"nas_preflight_ms":8,"total_ms":120}}
+{"service":"erp-nas","event":"folder_ready","request_id":"98207add-b86f-4d13-a1b1-89075e07ab8d","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"98207add-b86f-4d13-a1b1-89075e07ab8d","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":5,"timing":{"read_ms":0,"conflict_ms":0,"put_ms":0,"verify_ms":1,"hash_ms":0,"total_ms":1}}
+{"service":"erp-nas","event":"upload_completed","request_id":"98207add-b86f-4d13-a1b1-89075e07ab8d","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":0,"form_ms":2,"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0,"files_ms":3,"total_ms":7,"file_timings":[{"read_ms":0,"conflict_ms":0,"put_ms":0,"verify_ms":1,"hash_ms":0,"total_ms":1}]}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"63ace2cf-3df3-48d5-baf3-101d9e6cc747","bytes":5242951,"chunks":1,"inline_tail_bytes":4194304,"nas_payload_bytes":7340245,"timing":{"auth_ms":1,"form_ms":6,"context_ms":1,"chunk_read_ms":8,"final_write_ms":48,"total_ms":101}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"c707e826-19ee-416d-96bc-ed0e3497eac0","bytes":5242951,"chunks":1,"inline_tail_bytes":4194304,"nas_payload_bytes":7340245,"timing":{"auth_ms":1,"form_ms":6,"context_ms":1,"chunk_read_ms":8,"final_write_ms":46,"total_ms":100}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"61d43b7a-51b0-4bec-900b-ba0b97199695","bytes":20971520,"chunks":6,"inline_tail_bytes":4194304,"nas_payload_bytes":54525952,"timing":{"auth_ms":1,"form_ms":5,"context_ms":0,"chunk_read_ms":52,"final_write_ms":203,"total_ms":393}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"a0d71b95-7e47-494e-be0f-a6a86d33249e","file_count":4,"timing":{"auth_ms":1,"form_ms":0,"root_ms":0,"context_ms":2,"nas_preflight_ms":7,"total_ms":11}}
+{"service":"erp-nas","event":"folder_ready","request_id":"929a1f08-eb56-40e5-bf19-f365c1c2fb29","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"929a1f08-eb56-40e5-bf19-f365c1c2fb29","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":5,"timing":{"read_ms":0,"conflict_ms":1,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":1}}
+{"service":"erp-nas","event":"upload_completed","request_id":"929a1f08-eb56-40e5-bf19-f365c1c2fb29","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":1,"form_ms":0,"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0,"files_ms":2,"total_ms":6,"file_timings":[{"read_ms":0,"conflict_ms":1,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":1}]}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"4e501297-e108-4a3a-a086-97c1d6812d9c","bytes":5242951,"chunks":1,"inline_tail_bytes":4194304,"nas_payload_bytes":7340245,"timing":{"auth_ms":0,"form_ms":8,"context_ms":3,"chunk_read_ms":28,"final_write_ms":38,"total_ms":112}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"88e2a272-7083-4b5c-84b6-a9a669d4054f","bytes":5242951,"chunks":1,"inline_tail_bytes":4194304,"nas_payload_bytes":7340245,"timing":{"auth_ms":1,"form_ms":6,"context_ms":2,"chunk_read_ms":8,"final_write_ms":40,"total_ms":94}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"4e49f3b8-2065-4039-840b-df3bf27f4bf5","bytes":20971520,"chunks":6,"inline_tail_bytes":4194304,"nas_payload_bytes":54525952,"timing":{"auth_ms":1,"form_ms":6,"context_ms":1,"chunk_read_ms":41,"final_write_ms":98,"total_ms":249}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"92e9b9e4-da49-4066-8238-564a305dd303","file_count":2,"timing":{"auth_ms":1,"form_ms":0,"root_ms":0,"context_ms":1,"nas_preflight_ms":2,"total_ms":4}}
+{"service":"erp-nas","event":"folder_ready","request_id":"71eba09d-7e84-48f4-afb6-908aebb39488","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"71eba09d-7e84-48f4-afb6-908aebb39488","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":1,"timing":{"read_ms":0,"conflict_ms":0,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":0}}
+{"service":"erp-nas","event":"upload_completed","request_id":"71eba09d-7e84-48f4-afb6-908aebb39488","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":0,"form_ms":0,"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0,"files_ms":0,"total_ms":2,"file_timings":[{"read_ms":0,"conflict_ms":0,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":0}]}}
+{"service":"erp-nas","event":"folder_ready","request_id":"8cade7d7-8ada-496f-a505-94285632dd3c","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":0,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"8cade7d7-8ada-496f-a505-94285632dd3c","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":1,"timing":{"read_ms":0,"conflict_ms":0,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":0}}
+{"service":"erp-nas","event":"upload_completed","request_id":"8cade7d7-8ada-496f-a505-94285632dd3c","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":0,"form_ms":1,"ticket_ms":0,"fallback_validation_ms":0,"folder_ms":0,"files_ms":0,"total_ms":2,"file_timings":[{"read_ms":0,"conflict_ms":0,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":0}]}}
+{"service":"erp-nas","event":"request_failed","request_id":"b47c2b14-1d26-4800-a8ed-34490515e0d0","code":"PREFLIGHT_TICKET_INVALID","status":409}
+{"service":"erp-nas","event":"request_failed","request_id":"d37b8326-cbd9-4823-9c62-ecf274aa079b","code":"PREFLIGHT_TICKET_INVALID","status":409}
+{"service":"erp-nas","event":"request_failed","request_id":"c495f579-c45f-4520-a990-14ef3851a104","code":"CHUNK_INVALID","status":400}
+{"service":"erp-nas","event":"preflight_completed","request_id":"d4ba624b-96a2-40eb-b8d8-91b5b2a6d269","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"conflict_count":0,"timing":{"auth_ms":1,"form_ms":0,"root_ms":0,"context_ms":1,"nas_preflight_ms":1,"total_ms":3}}
+{"service":"erp-nas","event":"request_failed","request_id":"d844d834-5910-433c-a9dc-57fac142c739","code":"CHUNK_MISSING","status":409}
+{"service":"erp-nas","event":"request_failed","request_id":"17825d91-ac3c-4bfb-9d80-13173e26d232","code":"FILE_HASH_MISMATCH","status":409}
+{"service":"erp-nas","event":"request_failed","request_id":"b4ef56f4-f6ca-427e-8cdd-d16b583b0941","code":"ROLE_FORBIDDEN","status":403}
+{"service":"erp-nas","event":"batch_prepared","request_id":"685bfa8e-5e83-4995-8752-2238c0e01a32","file_count":1,"timing":{"auth_ms":0,"form_ms":1,"root_ms":0,"context_ms":0,"nas_preflight_ms":1,"total_ms":2}}
+{"service":"erp-nas","event":"folder_ready","request_id":"aae25c7d-7571-45b2-85af-013d296080a8","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":1,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"aae25c7d-7571-45b2-85af-013d296080a8","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":6,"timing":{"read_ms":0,"conflict_ms":0,"put_ms":1,"verify_ms":0,"hash_ms":0,"total_ms":1}}
+{"service":"erp-nas","event":"upload_completed","request_id":"aae25c7d-7571-45b2-85af-013d296080a8","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":0,"form_ms":1,"ticket_ms":1,"fallback_validation_ms":0,"folder_ms":0,"files_ms":1,"total_ms":3,"file_timings":[{"read_ms":0,"conflict_ms":0,"put_ms":1,"verify_ms":0,"hash_ms":0,"total_ms":1}]}}
+{"service":"erp-nas","event":"request_failed","request_id":"f00733ff-79a1-427d-804f-2089cf3644ef","code":"ROLE_FORBIDDEN","status":403}
+✔ 手機原檔逐檔分段上傳：平台限制、HEIC、重試、校驗、權限與部分失敗 (2431.9208ms)
+(node:5932) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ batch edits send only selected fields and verified identity to one RPC (113.4386ms)
+✔ single device save uses customer scope and accepts blank optional fields without resolution/FPS (12.483ms)
+✔ invalid batch patches and selections are rejected before writes (93.6909ms)
+✔ viewer, unauthenticated and preview bulk writes remain forbidden (13.1906ms)
+✔ monitoring credentials use AES-256-GCM in the Edge Function and never decrypt (3.5836ms)
+✔ monitoring credential key is generated in Vault and exposed only to the service role (2.2773ms)
+✔ preview gateway blocks mutation POSTs at the Edge boundary (1.153ms)
+✔ gateway enforces monitoring roles and does not expose credential material (0.9285ms)
+✔ migration extends site_devices, enables RLS, and keeps import atomic (24.5001ms)
+✔ import history stores only sanitized credential indicators (0.65ms)
+(node:12056) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 117 preview-ready customer rows commit through v3 with real credential encryption and ports (354.7162ms)
+✔ all device types accept optional IP/details and omitted or username-only credentials; obsolete columns are ignored (6.9383ms)
+✔ bad metadata and invalid rows never call an import RPC (62.4993ms)
+✔ inactive customer relation, operators, viewers, unauthenticated requests and Preview cannot import (27.913ms)
+{"service":"erp-nas","event":"batch_prepared","request_id":"ee676041-5692-40ec-a57c-69cf7f3ef44c","file_count":1,"timing":{"auth_ms":8,"form_ms":18,"root_ms":1,"context_ms":55,"nas_preflight_ms":6,"total_ms":90}}
+{"service":"erp-nas","event":"folder_ready","request_id":"5464f50c-383b-4ae3-8bf1-6c6d67c400af","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":3,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"5464f50c-383b-4ae3-8bf1-6c6d67c400af","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":6291456,"timing":{"read_ms":7,"conflict_ms":0,"put_ms":4,"verify_ms":1,"hash_ms":42,"total_ms":54}}
+{"service":"erp-nas","event":"upload_completed","request_id":"5464f50c-383b-4ae3-8bf1-6c6d67c400af","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":1,"form_ms":34,"ticket_ms":3,"fallback_validation_ms":0,"folder_ms":0,"files_ms":56,"total_ms":94,"file_timings":[{"read_ms":7,"conflict_ms":0,"put_ms":4,"verify_ms":1,"hash_ms":42,"total_ms":54}]}}
+✔ HTTP LAN browser uploads files over 4 MiB through authenticated Docker direct upload (286.1748ms)
+{"service":"erp-nas","event":"batch_prepared","request_id":"3f04a2d0-8f95-46bb-b94c-f306ff50de58","file_count":3,"timing":{"auth_ms":3,"form_ms":4,"root_ms":3,"context_ms":63,"nas_preflight_ms":24,"total_ms":100}}
+{"service":"erp-nas","event":"folder_ready","request_id":"2f773222-ee62-4199-b28c-7be9bd7fea0d","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":3,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"2f773222-ee62-4199-b28c-7be9bd7fea0d","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":4194304,"timing":{"read_ms":5,"conflict_ms":1,"put_ms":2,"verify_ms":1,"hash_ms":22,"total_ms":31}}
+{"service":"erp-nas","event":"upload_completed","request_id":"2f773222-ee62-4199-b28c-7be9bd7fea0d","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":1,"form_ms":11,"ticket_ms":3,"fallback_validation_ms":0,"folder_ms":0,"files_ms":33,"total_ms":48,"file_timings":[{"read_ms":5,"conflict_ms":1,"put_ms":2,"verify_ms":1,"hash_ms":22,"total_ms":31}]}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"a6969b5d-f23a-4e18-851a-545b7e73d4a2","bytes":6291456,"chunks":1,"inline_tail_bytes":4194304,"nas_payload_bytes":10485760,"timing":{"auth_ms":1,"form_ms":5,"context_ms":1,"chunk_read_ms":10,"final_write_ms":62,"total_ms":123}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"2a73e564-54a9-4188-b19f-dc718f9d8588","bytes":5242880,"chunks":1,"inline_tail_bytes":4194304,"nas_payload_bytes":7340032,"timing":{"auth_ms":0,"form_ms":9,"context_ms":1,"chunk_read_ms":11,"final_write_ms":36,"total_ms":95}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"3a29cd25-c821-4c52-a2be-1df5959a9dec","file_count":3,"timing":{"auth_ms":0,"form_ms":0,"root_ms":1,"context_ms":1,"nas_preflight_ms":2,"total_ms":5}}
+{"service":"erp-nas","event":"folder_ready","request_id":"9356ca57-27e2-40de-9797-028da4f8cc56","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":1,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"9356ca57-27e2-40de-9797-028da4f8cc56","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":4194304,"timing":{"read_ms":4,"conflict_ms":4,"put_ms":6,"verify_ms":0,"hash_ms":21,"total_ms":35}}
+{"service":"erp-nas","event":"upload_completed","request_id":"9356ca57-27e2-40de-9797-028da4f8cc56","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":1,"form_ms":5,"ticket_ms":1,"fallback_validation_ms":0,"folder_ms":0,"files_ms":37,"total_ms":45,"file_timings":[{"read_ms":4,"conflict_ms":4,"put_ms":6,"verify_ms":0,"hash_ms":21,"total_ms":35}]}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"16c3867a-a2da-423d-9c01-8a292dcadebd","bytes":5242880,"chunks":1,"inline_tail_bytes":4194304,"nas_payload_bytes":7340032,"timing":{"auth_ms":1,"form_ms":6,"context_ms":1,"chunk_read_ms":9,"final_write_ms":50,"total_ms":101}}
+{"service":"erp-nas","event":"chunk_upload_completed","request_id":"05b1c6c2-7bbc-4b98-a48b-bf77900a3411","bytes":6291456,"chunks":1,"inline_tail_bytes":4194304,"nas_payload_bytes":10485760,"timing":{"auth_ms":1,"form_ms":6,"context_ms":2,"chunk_read_ms":12,"final_write_ms":49,"total_ms":115}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"64fe2f3e-b439-4dcc-b0e5-a598883b63b8","file_count":1,"timing":{"auth_ms":0,"form_ms":1,"root_ms":1,"context_ms":1,"nas_preflight_ms":2,"total_ms":5}}
+{"service":"erp-nas","event":"folder_ready","request_id":"81788444-1edf-4315-bc60-133dee05f64c","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"81788444-1edf-4315-bc60-133dee05f64c","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":8,"timing":{"read_ms":0,"conflict_ms":0,"put_ms":0,"verify_ms":0,"hash_ms":1,"total_ms":1}}
+{"service":"erp-nas","event":"upload_completed","request_id":"81788444-1edf-4315-bc60-133dee05f64c","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":0,"form_ms":1,"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0,"files_ms":1,"total_ms":4,"file_timings":[{"read_ms":0,"conflict_ms":0,"put_ms":0,"verify_ms":0,"hash_ms":1,"total_ms":1}]}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"a6131c52-5897-4bcf-9f56-1648b0228c1e","file_count":1,"timing":{"auth_ms":0,"form_ms":1,"root_ms":0,"context_ms":1,"nas_preflight_ms":2,"total_ms":4}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"77e9941a-8157-4097-81b8-a757db7fe482","file_count":1,"timing":{"auth_ms":0,"form_ms":0,"root_ms":0,"context_ms":1,"nas_preflight_ms":3,"total_ms":5}}
+{"service":"erp-nas","event":"folder_ready","request_id":"cf5b645f-5f9f-4710-8b65-21be820171c9","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"cf5b645f-5f9f-4710-8b65-21be820171c9","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":7,"timing":{"read_ms":1,"conflict_ms":0,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":1}}
+{"service":"erp-nas","event":"upload_completed","request_id":"cf5b645f-5f9f-4710-8b65-21be820171c9","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":1,"form_ms":0,"ticket_ms":2,"fallback_validation_ms":0,"folder_ms":0,"files_ms":1,"total_ms":4,"file_timings":[{"read_ms":1,"conflict_ms":0,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":1}]}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"40b1924c-b9af-4cc4-8661-2a51c639cd8f","file_count":1,"timing":{"auth_ms":0,"form_ms":1,"root_ms":1,"context_ms":1,"nas_preflight_ms":1,"total_ms":4}}
+{"service":"erp-nas","event":"folder_ready","request_id":"42994c04-8e8b-4151-a402-301072f35060","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":1,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"42994c04-8e8b-4151-a402-301072f35060","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":11,"timing":{"read_ms":0,"conflict_ms":1,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":1}}
+{"service":"erp-nas","event":"upload_completed","request_id":"42994c04-8e8b-4151-a402-301072f35060","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":0,"form_ms":1,"ticket_ms":1,"fallback_validation_ms":0,"folder_ms":0,"files_ms":1,"total_ms":3,"file_timings":[{"read_ms":0,"conflict_ms":1,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":1}]}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"2a3f273f-0b40-4659-8852-674144b5c366","file_count":1,"timing":{"auth_ms":3,"form_ms":0,"root_ms":1,"context_ms":1,"nas_preflight_ms":10,"total_ms":15}}
+{"service":"erp-nas","event":"preflight_completed","request_id":"b0f8d544-3e0a-4e55-8b9a-dec42f650c1f","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"conflict_count":0,"timing":{"auth_ms":0,"form_ms":0,"root_ms":1,"context_ms":1,"nas_preflight_ms":2,"total_ms":5}}
+{"service":"erp-nas","event":"folder_ready","request_id":"94006aea-3584-4d40-91f5-06b3ee12efb9","actor":"fixture","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":1,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"94006aea-3584-4d40-91f5-06b3ee12efb9","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","file_index":1,"bytes":1,"timing":{"read_ms":0,"conflict_ms":5,"put_ms":1,"verify_ms":0,"hash_ms":0,"total_ms":6}}
+{"service":"erp-nas","event":"upload_completed","request_id":"94006aea-3584-4d40-91f5-06b3ee12efb9","folder":"/GUC-ERP/測試客戶/維護保養/測試專案/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":3,"form_ms":2,"ticket_ms":1,"fallback_validation_ms":0,"folder_ms":0,"files_ms":6,"total_ms":12,"file_timings":[{"read_ms":0,"conflict_ms":5,"put_ms":1,"verify_ms":0,"hash_ms":0,"total_ms":6}]}}
+{"service":"erp-nas","event":"batch_prepared","request_id":"baea747f-67e7-4291-b938-9645ba9390f2","file_count":1,"timing":{"auth_ms":0,"form_ms":1,"root_ms":0,"context_ms":3,"nas_preflight_ms":2,"total_ms":6}}
+{"service":"erp-nas","event":"request_failed","request_id":"6347d0b4-d3c7-459b-9f59-e3567a0a2bf6","code":"DUPLICATE_FILE_NAME","status":400}
+{"service":"erp-nas","event":"request_failed","request_id":"5f1c7930-e383-4cb9-9783-a3ea72c80148","code":"CHUNK_TAIL_INVALID","status":409}
+{"service":"erp-nas","event":"batch_prepared","request_id":"ad93a175-f1ea-4eae-9812-6bb6937d29bf","file_count":1,"timing":{"auth_ms":0,"form_ms":0,"root_ms":0,"context_ms":1,"nas_preflight_ms":9,"total_ms":11}}
+{"service":"erp-nas","event":"request_failed","request_id":"5a45f936-714c-410f-92e9-bd9c8400991c","code":"FILE_HASH_MISMATCH","status":409}
+{"service":"erp-nas","event":"batch_prepared","request_id":"f4c64072-657d-42ea-9111-91eff2ff794c","file_count":1,"timing":{"auth_ms":0,"form_ms":1,"root_ms":0,"context_ms":1,"nas_preflight_ms":2,"total_ms":4}}
+{"service":"erp-nas","event":"request_failed","request_id":"1d8a4198-da5c-4b13-ad30-4993def100e7","code":"PREFLIGHT_TICKET_INVALID","status":409}
+{"service":"erp-nas","event":"request_failed","request_id":"ed640423-d5fe-4539-bdb8-e9663e41c5c8","code":"PREFLIGHT_TICKET_INVALID","status":409}
+{"service":"erp-nas","event":"request_failed","request_id":"7b3f7526-bed2-47ad-92a5-052af158a42e","code":"CONTRACT_NOT_FOUND","status":400}
+✔ batch uploads reduce NAS bytes, share folder checks and bound parallel transfers without changing originals (1806.6244ms)
+✔ 前端沿用簽章預檢票證並顯示分階段進度 (8.0472ms)
+✔ 保留中文並清理 WebDAV 非法字元 (0.7034ms)
+✔ 資料夾時間採台灣時區且序號規則固定 (76.6451ms)
+✔ 建立資料夾前檢查同層重名並改用時間名稱 (49.8106ms)
+✔ 依客戶、承攬內容、專案、日期逐層檢查並建立固定資料夾 (3.9631ms)
+✔ 正式上傳可安全略過預檢已確認存在的資料夾層級 (1.4277ms)
+✔ 短效預檢票證綁定登入權杖、使用者、案場與檔名 (9.988ms)
+{"service":"erp-nas","event":"preflight_completed","request_id":"719b4a52-fbab-4640-9d88-0b0db8a8261d","actor":"operator","folder":"/GUC-ERP/高雄中學/監視系統/校園更新/2026-10-25","file_count":1,"conflict_count":0,"timing":{"auth_ms":5,"form_ms":4,"root_ms":0,"context_ms":2,"nas_preflight_ms":2,"total_ms":15}}
+✔ 多檔工作最多三個並行且維持輸入順序 (21.7604ms)
+{"service":"erp-nas","event":"folder_ready","request_id":"14dbd18a-70ae-4703-85d4-21ca8bb32938","actor":"operator","folder":"/GUC-ERP/高雄中學/監視系統/校園更新/2026-10-25","file_count":1,"preflight_ticket_reused":true,"timing":{"ticket_ms":0,"fallback_validation_ms":0,"folder_ms":0}}
+{"service":"erp-nas","event":"file_verified","request_id":"14dbd18a-70ae-4703-85d4-21ca8bb32938","folder":"/GUC-ERP/高雄中學/監視系統/校園更新/2026-10-25","file_index":1,"bytes":5,"timing":{"read_ms":0,"conflict_ms":1,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":2}}
+{"service":"erp-nas","event":"upload_completed","request_id":"14dbd18a-70ae-4703-85d4-21ca8bb32938","folder":"/GUC-ERP/高雄中學/監視系統/校園更新/2026-10-25","uploaded":1,"failed":0,"preflight_ticket_reused":true,"timing":{"auth_ms":1,"form_ms":7,"ticket_ms":0,"fallback_validation_ms":0,"folder_ms":0,"files_ms":3,"total_ms":12,"file_timings":[{"read_ms":0,"conflict_ms":1,"put_ms":0,"verify_ms":0,"hash_ms":0,"total_ms":2}]}}
+✔ 正式上傳沿用票證時仍重新驗證登入，但不重複查詢案場 (43.0453ms)
+✔ 預檢會明確回報承攬內容目標資料夾是否存在 (8.323ms)
+✔ 同名檔案另存新檔採用可預期序號且不覆蓋 (1.418ms)
+✔ 預檢拒絕同批重複檔名 (0.7204ms)
+✔ MKCOL 競態碰撞時不覆寫並繼續換名 (1.9331ms)
+✔ HEAD 不支援時以 PROPFIND 驗證檔案存在與大小 (1.1967ms)
+✔ 拒絕空白檔案 (0.3598ms)
+✔ 拒絕超大檔案與超量多檔 (0.6521ms)
+✔ WebDAV 逾時回傳可辨識錯誤且不洩漏連線資訊 (5.3571ms)
+✔ NAS 設定缺少時只列出變數名稱且不洩漏密碼 (0.932ms)
+✔ ERP primary pages use the supplied local navigation images (11.2906ms)
+✔ sidebar pages are real allowlisted links that can use the native new-tab menu (10.7487ms)
+✔ deep-linked pages keep tokens out of the URL and lazy-load only their page scope (3.3694ms)
+✔ each opened ERP page uses its current navigation name as the browser tab title (0.5144ms)
+(node:26328) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ dashboard limits summary cards but returns every previous-day log and current-user assignments (129.6315ms)
+✔ dashboard export removes both summary and assignment page limits and reads every database page (13.5935ms)
+✔ audit endpoint is admin-only, server-paginated, ordered, bounded, filtered, and redacts nested credentials (14.4133ms)
+✔ audit header ordering is allowlisted, stable and applied before server pagination (5.6664ms)
+✔ each concurrent write forwards only its verified actor context (22.0175ms)
+✔ preview allows authenticated conflict lookups but blocks all mutations before the write handler (9.4284ms)
+✔ new XLSX and encrypted backup entries preserve imports without restoring old unsafe export routes (4.5809ms)
+✔ every ERP list starts with its business date descending and resolves equal dates consistently (7.7363ms)
+✔ audit detail resolves worker and contract IDs to names without losing original identifiers (3.475ms)
+✔ phone schema stays linked to the customer contract and indexed (4.243ms)
+✔ phone location migration is additive and keeps legacy rows compatible (0.7734ms)
+✔ phone Excel import is row-rollback safe, logged, service-role only, and prevents orphan field endpoints (4.513ms)
+✔ source terminal fields reuse frame columns through an additive v3 RPC (1.6326ms)
+✔ credentials are encrypted and inaccessible through the regular snapshot (1.3928ms)
+✔ gateway enforces phone module RBAC (3.6064ms)
+✔ void RPC success responses do not become false failures (3.918ms)
+✔ phone system updates preserve useful database errors (1.5604ms)
+✔ editing a pickup initially selects its original work even after that work has closed (9.2663ms)
+✔ editing still selects an in-progress original instead of the placeholder (6.0056ms)
+✔ the closed-work exception is limited to the original selected work (4.3078ms)
+✔ new pickups keep a blank default and exclude all closed work (4.3336ms)
+✔ a selected ID does not bypass customer ownership or invent a missing work (12.2226ms)
+✔ search is below pickup rows in both entry forms, never inside pickup item label (15.0041ms)
+✔ receipt search fills category and item, preserves quantity/notes, appends receipt rows and focuses duplicates (19.0969ms)
+✔ receipt search respects row cap and CREATE permission, without overwriting an existing line (6.2116ms)
+✔ pickup: input/Enter and reference refresh render results without submitting; empty, no match and result cap (60.3076ms)
+✔ pickup: click event uses its own result identifier (13.7263ms)
+✔ receipt: input/Enter and reference refresh render results without submitting; empty, no match and result cap (19.2348ms)
+✔ receipt: click event uses its own result identifier (6.175ms)
+✔ search matches across active categories by name/brand/model/code; empty query stays empty (7.9871ms)
+✔ click fills first blank preserving quantity; subsequent item appends; duplicate and inactive IDs do not overwrite (6.457ms)
+✔ maximum rows is enforced without replacing completed selections (6.4141ms)
+✔ both batch types show a safely escaped optional last note, before delete (11.7468ms)
+✔ row collector preserves each note, trims blank, rejects overlong and duplicate pickups (10.5599ms)
+✔ both pickup submit paths send notes, hydrate and edit retain them, Gateway selects them (9.0874ms)
+✔ note-aware edit keeps the original locks, inventory/link logic and versioned single update (1.2524ms)
+✔ pickup grid can shrink while receipt layout remains explicitly scoped (1.5296ms)
+(node:22828) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ large private exclusions use bounded table RPC with trusted actor and preserve query options (124.8433ms)
+✔ appointments use Taiwan day, exact reminder boundary and only open statuses (72.6555ms)
+✔ private cache drops stale responses and clears cross-page records when ACL changes (3.8585ms)
+✔ custom role controls pages, worklog actions and readonly appointment form (10.2847ms)
+✔ new-item tab exposes an admin-only product-category flow (4.6766ms)
+✔ gateway and database restrict category creation to the trusted admin path (1.7857ms)
+✔ shared dashboard retains zero-log plans and escapes API text (96.7751ms)
+✔ dashboard displays server completion percentage and excess days without client recomputation (4.7555ms)
+✔ unknown planned duration never renders NaN or infinity (3.8214ms)
+✔ Accounting preserves cents; price edit controls follow existing permissions (16.6097ms)
+✔ report geometry remains usable under production CSP without inline styles (9.1871ms)
+✔ material quantity chart keeps white and black CV-180 ties as independent item columns (22.4833ms)
+✔ material categories with mixed units keep separate quantity axes and never create a summed unit (14.7753ms)
+✔ ERP and accounting 12pt charts use the same readable axis and multi-line label geometry (21.4352ms)
+✔ category and item identities remain distinct when their display names are identical (10.2561ms)
+✔ accounting item amounts and unpriced states follow price-view permission without using category totals (51.1195ms)
+✔ category labels and unknown category data never create fake item groupings (6.1131ms)
+✔ category changes filter item charts, summary, detail and distribution without replacing plan state (57.3721ms)
+✔ overview keeps the project heading and five KPIs before the requested five report rows (13.8033ms)
+✔ report dates use creation and completion, not editable project date or last update (63.6726ms)
+✔ unfinished, unknown legacy completion and no selection leave the end unbounded (2.6646ms)
+✔ completion is stable across edits, resets on reopening, and dates use Taipei midnight (2.1979ms)
+✔ date defaults reset on selection/status changes but survive tab switches and manual filtering (8.0133ms)
+✔ 人員依 UUID 分組，同日多日誌只計一施工天與一人次 (48.296ms)
+✔ 日期區間含起訖日，且不混入其他專案 (0.9553ms)
+✔ 不同材料單位分別彙總，不製造跨單位假總量 (1.2708ms)
+✔ 反向日期不產生假統計 (0.3687ms)
+✔ project statistics keeps the existing route and exposes the requested tabs (5.3664ms)
+✔ materials scope includes work-log worker data and paginates growing datasets (3.8855ms)
+✔ report blocks incomplete scope, compares material quantities per unit, and avoids account enumeration (2.1846ms)
+✔ large snapshot hydration uses lookup maps instead of nested full scans (0.5547ms)
+✔ 庫存校正保留表單引用，不在 await 後讀取失效的 currentTarget (2.7304ms)
+✔ 工作內容負責人使用與施工人員相同的系統使用者複選器 (0.8014ms)
+✔ Preview 庫存校正同步更新瀏覽器暫存數量 (2.3943ms)
+✔ 新增工作日誌只帶入類型，狀態與人員獨立 (1.274ms)
+✔ project_workers 關聯具備外鍵、RLS、service role 限制與原子 RPC (0.4262ms)
+✔ Gateway 只接受 UUID 負責人並以狀態同步 RPC 儲存專案 (0.7119ms)
+✔ project and work-log types share labels while preserving canonical database values (3.0236ms)
+✔ work-log work-content selection preloads type without changing status (0.7705ms)
+✔ preview keeps daily types independent while keeping status independent (2.5661ms)
+✔ new work log offers the existing pickup workflow (0.6868ms)
+✔ migration enforces bidirectional project-level synchronization (0.6514ms)
+✔ ERP 只為白名單使用者顯示報價入口並以 nonce SSO 交接 (3.3893ms)
+✔ 報價公開設定採精確 host 白名單且只在正式環境啟用正式入口 (4.869ms)
+✔ Preview BFF 在 Edge 前阻擋所有 login 以外的 POST (2.3008ms)
+✔ Gateway 僅接受精確函式路徑並核對 Auth UUID 與 app_users (0.6574ms)
+✔ Migration 有狀態機、金額、版本、稽核、RLS 與最小權限防線 (0.8932ms)
+✔ 訂貨客戶選擇器沿用既有客戶 UUID 與分類 (9.9481ms)
+✔ 分類與搜尋會顯示可選客戶，沒有結果時提供明確提示 (5.1717ms)
+✔ 開啟進貨表單會先確認交易資料並初始化客戶清單 (2.2902ms)
+✔ 勾選框維持固定尺寸且與客戶名稱同列 (1.866ms)
+✔ a slow previous supplier response cannot replace the current supplier or entered lines (7.163ms)
+✔ all-items fallback retains supplier priority and excludes inactive categories (4.872ms)
+✔ exclusive and inclusive modes do not compound tax when switching (8.4052ms)
+✔ receipt rounding matches TWD line rounding and positive half-away tax (0.7644ms)
+✔ unknown legacy mode and missing prices remain unknown, zero is a price (0.5369ms)
+✔ invalid monetary input is rejected without float rounding (1.2335ms)
+✔ whole-document discount reduces the input before exclusive or inclusive tax (0.5554ms)
+✔ discount validation and missing prices never invent totals (0.6178ms)
+✔ receipt price UI denies hidden/readonly writes and keeps unrelated fields untouched (12.9657ms)
+✔ audit action migration preserves existing actions and permits every repair RPC action (5.8227ms)
+✔ audit constraint change is atomic, bounded and schema-only (1.4748ms)
+✔ ERP navigation exposes repair management and renames transaction management (2.3525ms)
+✔ repair UI links customer and product categories to canonical records (1.3423ms)
+✔ gateway loads and validates the repair workflow with least-privilege roles (1.1761ms)
+✔ repair migration keeps master data canonical, versioned, audited and private (0.7154ms)
+✔ resolved repair suffix passes save reread; source payload is not mutated (10.8978ms)
+✔ repair save rejects wrong customer, department, naming, workers and reread identity (29.904ms)
+✔ older backend response and edit responses retain strict existing checks (4.9932ms)
+✔ preview naming mirrors backend date and same-day suffix rules (6.4707ms)
+✔ reload restores unchanged report after loading, failure, empty selection, or missing datasets (21.8001ms)
+✔ stale report responses cannot replace a newer reload; malformed replies settle as errors (9.5194ms)
+(node:27252) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ option-only refresh uses existing scope permissions and excludes history queries (145.0174ms)
+✔ equipment testing is accepted by the existing log gateway and invalid work types remain denied (35.8553ms)
+✔ product category CRUD uses inventory grants and stale versions reach the atomic RPC (32.4833ms)
+✔ NAS context uses the existing upload grants and only bounded selected-record queries (17.1729ms)
+✔ loaded worker permissions reject every unrelated scope and direct entity URL (10.1835ms)
+✔ readonly accounting can load purchases and no other transactions, cannot write (12.8056ms)
+✔ return scope cannot be combined with an unrelated entity to bypass its read permission (10.918ms)
+✔ history create/update permissions inspect the nested event ID independently (11.2809ms)
+✔ customer service action cannot bypass delete permission using an absent ID (8.8845ms)
+✔ project-scoped project lookup intersects database grants with customer filter (12.1839ms)
+✔ delegated user creation cannot elevate an account to admin (10.3076ms)
+✔ site VIEW is required in addition to a module write grant (3.194ms)
+(node:24772) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///F:/GUC-Docker/workspaces/performance-module/supabase/functions/inventory-gateway/export-lists.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\F:\GUC-Docker\workspaces\performance-module\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ committed search supports Traditional Chinese, partial Latin/case/full-width/space and clear (2.8356ms)
+✔ exports all filtered records beyond pagination with selected columns in selected order (23.9552ms)
+✔ all scope ignores stale filters, archived customers never export (1.4747ms)
+✔ unknown/internal/duplicate/forged price fields are rejected (1.7353ms)
+✔ only allowlisted filter keys, errors never silently export partial data, quantities numeric (1.1595ms)
+✔ all ERP resources describe columns; scope and dates do not accidentally omit report aggregate rows (5.0648ms)
+✔ valid XLSX package has exact Chinese headers, typed numbers/dates, long text and formula-safe literal strings (7.8381ms)
+✔ Excel datetime preserves Taipei wall time and date-only values do not shift (57.8137ms)
+✔ File System Access contract honors cancellation and writes/closes or aborts on failure (2.0236ms)
+✔ pending async renders see committed text until IME composition is complete (1.2537ms)
+✔ worklog export matches visible pickup and unassigned-worker search without revealing denied pickups (7.2098ms)
+✔ search panels preserve explicit select defaults, including construction all vs empty (2.099ms)
+✔ summary shows actual conditions and skips disabled descendants or empty text (5.4005ms)
+✔ reset dispatches original events in dependency order and does not change disabled state (0.9666ms)
+✔ all list filters share a presentation-only module; form pickers remain out of scope (2.0822ms)
+✔ late cross-tab session discovery cannot clear a successful native login (5.0476ms)
+(node:15996) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ monitoring options include eligible customers and retain the expected filter contract (77.7792ms)
+✔ monitoring list applies both customer-site scope and legacy site filter (8.1599ms)
+✔ invalid customer or missing monitoring contract never falls back to all devices (6.0612ms)
+✔ monitoring customer with no site gets an empty page without a global query (5.1522ms)
+✔ batch update uses one existing atomic RPC and passes only selected IDs/versions/fields (22.8561ms)
+✔ batch roles and preview remain enforced; deletion stays admin-only (39.25ms)
+✔ batch rejects invalid rows, forbidden fields and malformed patch values without a write (43.3036ms)
+✔ explicit blank clears only that field, and stale-version RPC failure is not retried as separate writes (14.7125ms)
+(node:7248) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ shared receipt form keeps receipt and supplier return document IDs isolated (8.6853ms)
+✔ missing return prices are never reconstructed from receipt or inventory values (2.3575ms)
+✔ return export uses return dates, supplier filters and stored financials without mixing purchases (4.5849ms)
+✔ encrypted archive restores exact binary, Chinese paths, empty files and manifest (2086.5636ms)
+✔ wrong password, corrupt ciphertext, truncation and decompression limit fail without extracted residue (637.934ms)
+✔ unsafe archive names, duplicate case names and existing outputs cannot overwrite files (112.9855ms)
+✔ authenticated but malicious archive manifest cannot escape destination (283.2813ms)
+✔ backup API checks dedicated permissions, owner scope, confirmation, single-use download and safe persisted metadata (717.9335ms)
+✔ exclusive worker lock rejects a second live worker and releases after clean shutdown (17.0683ms)
+✔ concurrent starters recover a dead worker lock exactly once without deleting the new owner lock (27.2116ms)
+✔ interrupted stale-lock recovery fails closed without changing worker files or staging (9.7234ms)
+✔ shutdown releases only its ownership token and malformed existing locks are not removed (16.5057ms)
+✔ active asynchronous backup retains worker lock across HTTP shutdown until capture settles (44.0552ms)
+✔ concurrent slow-body inspections cannot bypass busy lock and temporary plan limits are enforced (219.9801ms)
+✔ cloud backup handler fails closed without exposing worker configuration or forwarding requests (2.343ms)
+✔ 登入完成只顯示系統選擇，不預先讀取 ERP 或報價資料 (5.4131ms)
+✔ 選擇外部系統不會在背景載入 ERP Dashboard (1.0694ms)
+✔ 只有選擇 ERP 後才載入 Dashboard scope (1.3686ms)
+✔ header sorting uses natural text/numbers, real numbers, chronological ISO dates and empty-last order (2.6299ms)
+✔ report quantities use raw numeric values, not formatted comma/unit text (0.7117ms)
+✔ ERP sorting dropdowns and their boot handlers are removed without removing search filters (4.6021ms)
+✔ all paginated data columns have header controls, excluding actions and compound audit summaries (1.3197ms)
+✔ date/status keys match displayed values, and source sorting precedes pagination (2.325ms)
+✔ receipt number is editable while pickup numbers remain read-only (6.3107ms)
+✔ receipt preview duplicate number rejects before modifying original data (4.4204ms)
+✔ receipt preview automatic numbering skips manually occupied number (2.6989ms)
+✔ receipt groups before pagination/search/sort and counts valid detail rows (41.0807ms)
+✔ pickup groups before pagination/search/sort and counts valid detail rows (7.5985ms)
+✔ legacy rows with matching names/date remain separate without document IDs (3.0638ms)
+✔ receipt counts duplicate item IDs as separate valid detail lines (3.8179ms)
+✔ receipt count excludes deleted and invalid lines while preserving detail quantities (2.995ms)
+✔ pickup list omits item and total quantity, keeps eight aligned columns and original detail data (7.1601ms)
+✔ dashboard exposes admin assignment creation and current-user completion controls (6.9066ms)
+✔ assignment SQL is private, transactional and idempotently links pickup records (0.5613ms)
+✔ deleted work content is hidden from active reads while historical logs and pickup labels survive (0.7002ms)
+✔ dashboard keeps every previous Taipei-day log and excludes completed work from to-do (2.8577ms)
+✔ dedicated backup entry preserves role management and existing RBAC (1.0181ms)
+(node:24728) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ manual assignment calls one atomic RPC with trusted actor and original project metadata (140.25ms)
+✔ legacy existing-project assignment keeps its original RPC contract (6.0209ms)
+✔ multi-person assignment uses one atomic request with trusted actor and planning links (18.9528ms)
+✔ multi-person validation rejects ambiguous users, stale form identifiers and malformed planning links (85.9758ms)
+✔ multi-person assignment preserves the administrator-only write boundary (19.3446ms)
+✔ invalid manual inputs are rejected before SQL (43.166ms)
+✔ manual assignment does not bypass admin, anonymous or preview boundaries (14.6347ms)
+✔ switching project mode disables hidden required fields and preserves existing/pickup selections (3.3411ms)
+(node:2000) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ ERP Gateway sends manual business date through the existing permission boundary and one RPC (278.5035ms)
+✔ business date is editable and precise report link uses shared customer selectors (1.3514ms)
+✔ classification payload uses atomic v4, validates values and retains permission boundary (56.1006ms)
+✔ 場勘工作內容建立及修改沿用 v4，工程分類、未知類型及未授權寫入仍受限 (58.5293ms)
+✔ ERP visible project terminology is renamed to work content (2.597ms)
+✔ internal project identifiers and existing relations remain unchanged (0.701ms)
+✔ work-log operation annotations and repair prompt are removed (2.7921ms)
+✔ reminders retain unchecked items even if their daily work is marked completed (5.7725ms)
+✔ cancelled plans and different projects cannot appear in reminders (0.8733ms)
+✔ legacy plans use plan status; a checked plan disappears from reminders (3.808ms)
+✔ 工作日誌清單隱藏時段與狀態、日期下拉選單，但保留狀態欄位 (2.4924ms)
+✔ 工作日誌表單可填時段與選擇進行中或已完成 (0.8918ms)
+✔ Preview 中工作日誌與工作內容狀態分離，只接受明確結案 (1.1762ms)
+✔ Gateway 新版請求使用狀態同步 RPC，舊版前端仍可在切換期間寫入 (0.7407ms)
+✔ Migration 新增欄位、同步既有狀態並限制 RPC 權限 (0.7235ms)
+✔ 工作日誌頁使用獨立資料範圍，避免其他案場資料拖慢儲存後刷新 (2.1123ms)
+✔ 工作日誌儲存後依資料庫回傳 ID 與欄位重新讀取核對 (1.0091ms)
+✔ 工作日誌搜尋涵蓋中文狀態、客戶分類、日期格式與取貨摘要 (0.4816ms)
+✔ 新增工作日誌會在開啟前確認並補載施工人員清單 (2.4637ms)
+✔ 施工人員選項保留原生複選、選取計數與手機觸控區域 (0.9506ms)
+✔ one sidebar work group has three link-based children and no duplicated project content (3.2068ms)
+✔ all three children activate the parent and load only their existing scope (10.5976ms)
+✔ existing worklog/report links and CRM project alias land on the corresponding child (3.1085ms)
+✔ group navigation does not grant permissions and falls back to the first allowed child (15.3135ms)
+✔ work tabs reuse CRM tab styles and can wrap on narrow screens (2.2128ms)
+✔ moved work-content page retains its existing reference refresh scope (11.0516ms)
+✔ work name uniqueness is retained only for non-deleted projects, with atomic index replacement (2.6026ms)
+✔ repair suffix checks both base and dated names among non-deleted work, without changing grants (0.719ms)
+✔ all shared name-resolution entrypoints are patched with an exact-baseline guard (0.4791ms)
+✔ native sidebar new tabs securely request the existing same-origin session (3.6121ms)
+✔ repair work type uses the new label without rewriting stored work-log values (0.6203ms)
+✔ equipment maintenance details omit result and per-event worker controls (0.9815ms)
+{"service":"erp-nas","event":"batch_prepared","request_id":"e91b2438-b0be-4588-b8a1-10f9a5a3fb9d","file_count":30,"timing":{"auth_ms":6,"form_ms":5,"root_ms":1,"context_ms":47,"nas_preflight_ms":16,"total_ms":80}}
+{"service":"erp-nas","event":"request_failed","request_id":"52ec74ed-99e8-4bc4-8ddf-67cc3c231372","code":"FILE_COUNT_INVALID","status":400}
+{"service":"erp-nas","event":"request_failed","request_id":"90f2bab4-c992-4c16-8f4e-04f078252c84","code":"FILE_COUNT_INVALID","status":400}
+{"service":"erp-nas","event":"batch_prepared","request_id":"cdf1ab9c-d214-44b7-9cd0-29ec2bf8de3f","file_count":10,"timing":{"auth_ms":0,"form_ms":1,"root_ms":0,"context_ms":1,"nas_preflight_ms":4,"total_ms":6}}
+{"service":"erp-nas","event":"request_failed","request_id":"d5469d6c-fd66-4583-bc94-30731e943aea","code":"WORK_LOG_INVALID","status":400}
+{"service":"erp-nas","event":"request_failed","request_id":"88eb28f9-9634-4f81-9585-d69ae9ce5c79","code":"PREFLIGHT_TICKET_INVALID","status":409}
+{"service":"erp-nas","event":"request_failed","request_id":"ee7c8039-597f-415f-9913-1ddfb4f98e94","code":"FILE_TYPE_UNSUPPORTED","status":415}
+{"service":"erp-nas","event":"request_failed","request_id":"7fd35271-3a8b-4f82-87f3-6188e8f4d169","code":"FILE_NAMES_INVALID","status":400}
+{"service":"erp-nas","event":"request_failed","request_id":"713f7597-50b4-441c-9677-78e8cc97c5de","code":"ROLE_FORBIDDEN","status":403}
+✔ worklog limit 30, normal limit 10, signed log identity and basic validation remain enforced (173.8605ms)
+✔ repair hides/disables summary, restores entered value when switching back (7.0751ms)
+✔ 送貨 hides all content inputs without requiring text or deleting historical summary (2.6704ms)
+✔ 文書作業 hides all content inputs without requiring text or deleting historical summary (2.2717ms)
+✔ repair saves without hidden content, derives from visible details and keeps optional fields optional (3.3979ms)
+✔ existing repair free-text, per-event description and result are not overwritten by hidden fields (4.8345ms)
+✔ non-repair with existing maintenance retains shared required content and renamed error (3.3963ms)
+(node:9796) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ followups pause for each form and resume pickup → manual repair → close (8.3325ms)
+✔ declining optional forms still reaches close; permission denial skips forms (4.9079ms)
+✔ repair options load failure cannot open a stale form or proceed to closure (4.9303ms)
+✔ close clears continuation before queueing; double close cannot repeat next step (3.1778ms)
+✔ sections keep legacy text and preserve split values independently of status (2.7567ms)
+✔ construction worker exclusions preserve owner selectors; historical selected IDs survive without appearing as choices (5.3524ms)
+✔ followup cannot close while saving; successful submission can advance it (2.1956ms)
+✔ repair association snapshot queries only visible event IDs, exposes only a flag and fails closed (83.7736ms)
+✔ 維修類型直接顯示維修明細，保留 cause 並新增獨立處理流程欄位 (2.9345ms)
+✔ 非設備事件不送出未登錄的品項；已登錄關聯與設備履歷維持原值 (7.4089ms)
+✔ 返回表單僅重抓既有 inventory scope；背景、其他視窗、預覽不抓正式資料 (2.8321ms)
+✔ 新函式沿用原簽章與權限，僅更動建立條件及故障欄位 mapping (1.7014ms)
+✔ 新事件顯示六種指定分類含設備測試；舊事件保留原值，不加入其他舊分類 (10.3038ms)
+✔ 開啟新增表單等待施工人員，不在進入前詢問維修品 (2.9213ms)
+✔ 新增日誌選維修/查修直接顯示維修明細，其他類型隱藏，既有維修事件保持顯示 (4.9656ms)
+✔ 切換種類清除上一種類品項，清除種類後停用品項選取 (2.0795ms)
+✔ 空設備維修明細可被收集，設備與處理流程會保留在送出資料 (2.4547ms)
+(node:8444) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 實際 Edge handler 將品項與空設備送入單一具重送保護的 RPC，保留回應結構 (56.3857ms)
+✔ 舊前端省略新欄位仍走相容 RPC，不將省略值變成清除指令 (3.0592ms)
+✔ 故障內容沿既有 cause 欄位送入同一 RPC，空值不產生預設文字 (13.9771ms)
+✔ 處理流程使用獨立欄位，空白轉為 null，過長內容在閘道拒絕 (14.2856ms)
+✔ API 拒絕不合法品項、種類、識別碼與非陣列設備，不呼叫寫入 RPC (11.3783ms)
+✔ 新流程維持 viewer、未登入及 Preview 禁止寫入 (5.4967ms)
+✔ 資料庫同步錯誤回傳失敗，不另開非原子補寫 (2.3529ms)
+✔ 文書作業沿用既有 RPC，未知類型與未授權寫入仍拒絕 (9.3514ms)
+✔ 場勘沿用既有 RPC，未知類型與未授權寫入仍拒絕 (8.9386ms)
+✔ 手動維修品流程仍要求收件日期、數量、狀態與故障內容 (2.3526ms)
+✔ 五種事件類型皆可通過 API，未知或新建舊分類不能寫入 (44.5661ms)
+✔ 已存在的舊分類交由 RPC 檢查是否保留原值，未知類型仍拒絕 (18.4376ms)
+✔ editable title has manual text, datalist and visible dropdown; readonly does not gain a picker (5.9776ms)
+✔ selecting moves only the chosen ID and preserves independent status and daily type (3.1648ms)
+✔ native title suggestions resolve the same project and preserve server-aligned permission boundary (3.1694ms)
+✔ save confirmation checks project identity, not only duplicated title fields (2.2779ms)
+✔ customer/department edit resolves a new destination without changing the original project ID (2.3776ms)
+✔ repair receipt migration preserves the existing entrypoint ACL and uses work-log date without bulk backfill (1.4615ms)
+ℹ tests 450
+ℹ suites 0
+ℹ pass 450
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5648.2588

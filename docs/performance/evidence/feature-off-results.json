@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-10-25T09:33:10.331Z",
+  "case": "AT-22",
+  "status": "PASS",
+  "results": [
+    "Existing worklog Gateway write and database reread",
+    "Existing assignment creation/completion through Gateway",
+    "Existing worklog-linked pickup and quantity persisted",
+    "Existing dashboard remains available"
+  ]
+}
