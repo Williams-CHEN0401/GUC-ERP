@@ -29,7 +29,7 @@ if(process.argv.includes('--auth-passwords')){
 if(process.argv.includes('--functions')){
  for(const name of (await readdir(path.join(root,'supabase/migrations'))).filter(n=>n.includes('_performance_module_')).sort()){
   const source=await readFile(path.join(root,'supabase/migrations',name),'utf8');
-  const definitions=[...source.matchAll(/create function public\.performance_[\s\S]*?\$\$;/g)].map(m=>m[0].replace('create function','create or replace function'));
+  const definitions=[...source.matchAll(/create(?: or replace)? function public\.performance_[\s\S]*?\$\$;/g)].map(m=>m[0].replace(/^create(?: or replace)? function/,'create or replace function'));
   await writeFile(path.join(dir,'functions.sql'),'begin;\n'+definitions.join('\n')+'\ncommit;');
   docker(['cp',path.join(dir,'functions.sql'),container+':/tmp/functions.sql']);psql(['-f','/tmp/functions.sql']);
  }

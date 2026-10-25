@@ -49,7 +49,8 @@ try{
    const scorer=await login(browser,'scorer');contexts.push(scorer.context);const p=scorer.page;
    await p.locator('[data-performance-tab=reviews]').click();await p.locator(`[data-performance-action=detail][data-id="${review.id}"]`).click();
    await p.locator('[data-performance-form=review_score]').waitFor();
-   for(const item of await p.locator('[data-criterion]').all()){await item.locator('[name=rating]').selectOption('4');await item.locator('[name=reason]').fill('現場測試符合要求，完成後已交接。');}
+   assert.equal(await p.locator('[data-perf-item][open]').count(),0);
+   for(const item of await p.locator('[data-criterion]').all()){await item.locator('..').locator('..').locator(':scope > summary').click();await item.locator('[name=rating]').selectOption('4');await item.locator('[name=reason]').fill('現場測試符合要求，完成後已交接。');}
    await widthCheck(p,engine+' scorer form');await submit(p,'review_score');
    assert.equal((await detail('scorer',review.id)).score,80);await p.screenshot({path:path.join(out,'screenshots',engine+'-scorer-390.png'),fullPage:true});
    await clickAction(p,'review_submit');assert.equal((await detail('scorer',review.id)).status,'SUBMITTED');

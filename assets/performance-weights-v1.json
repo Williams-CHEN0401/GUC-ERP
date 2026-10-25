@@ -122,7 +122,7 @@
     },
     {
       "code": "lead",
-      "label": "現場帶班／主管",
+      "label": "主管職務",
       "weights": {
         "QUALITY": 20,
         "SCHEDULE": 15,

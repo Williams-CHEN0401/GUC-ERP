@@ -14,9 +14,10 @@ try{
  await page.locator('[data-performance-source-close]').click();await dialog.waitFor({state:'detached'});
  await page.locator('[data-performance-tab=settings]').click();await page.locator('[data-performance-action=template-new]').click();
  const form=page.locator('[data-performance-form=template_create]');await form.waitFor();assert.equal(await form.locator('input[type=number]').count(),28);
- await form.locator('[name=construction_QUALITY]').fill('26');let response=page.waitForResponse(r=>r.request().method()==='POST'&&r.request().postDataJSON()?.operation==='performance.template_create');await form.locator('button').click();assert.equal((await response).status(),400);
+ await form.locator('details').first().locator(':scope > summary').click();
+ await form.locator('[name=construction_QUALITY]').fill('26');let response=page.waitForResponse(r=>r.request().method()==='POST'&&r.request().postDataJSON()?.operation==='performance.template_create');await form.locator('button.primary').click();assert.equal((await response).status(),400);
  await page.locator('#performanceMessage').getByText(/權重合計/).waitFor();assert.equal(await form.locator('[name=construction_QUALITY]').inputValue(),'26');
- await form.locator('[name=construction_QUALITY]').fill('25');await form.locator('[name=name]').fill('手機權重設定驗收');response=page.waitForResponse(r=>r.request().method()==='POST'&&r.request().postDataJSON()?.operation==='performance.template_create');await form.locator('button').click();assert.equal((await response).status(),201);
+ await form.locator('[name=construction_QUALITY]').fill('25');await form.locator('[name=name]').fill('手機權重設定驗收');response=page.waitForResponse(r=>r.request().method()==='POST'&&r.request().postDataJSON()?.operation==='performance.template_create');await form.locator('button.primary').click();assert.equal((await response).status(),201);
  await page.locator('summary').filter({hasText:'手機權重設定驗收'}).waitFor();assert.deepEqual(errors,[]);
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  await page.screenshot({path:path.join(out,'screenshots/edge-settings-390.png'),fullPage:true});
