@@ -10,7 +10,7 @@ const baseline=readFileSync(new URL('../supabase/migrations/20260923003902_indep
 const source=name=>app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'('));
 function ui(){
  const context=vm.createContext({receiptPriceField:()=>"",itemCategoryOptions:()=>'',inventoryItemOptions:()=>'',state:{inventory:[{id:'i',categoryId:'c'},{id:'j',categoryId:'c'}]},MAX_BATCH_ROWS:20});
- for(const name of ['esc','byId','valueText','transactionBatchRow','collectTransactionBatchRows'])vm.runInContext(source(name),context);
+ for(const name of ['esc','byId','valueText','cablePickupUnitField','transactionBatchRow','collectTransactionBatchRows'])vm.runInContext(source(name),context);
  return context;
 }
 test('both batch types show a safely escaped optional last note, before delete',()=>{
