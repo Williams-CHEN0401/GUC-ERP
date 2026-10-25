@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/shared-excel-export.css" />
   <link rel="stylesheet" href="/system-backup.css" /><link rel="stylesheet" href="/site-returns.css" />
     <link rel="stylesheet" href="/typography-rwd.css" />
+  <link rel="stylesheet" href="/performance.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -32,6 +33,7 @@
           <a class="nav-item" data-page="inventory" href="/?page=inventory"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/inventory.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>商品與庫存</span></a>
           <a class="nav-item" data-page="worklogs" href="/?page=worklogs" data-work-group><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/worklogs.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>工作管理</span></a>
           <a class="nav-item" data-page="repairs" href="/?page=repairs"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/repairs.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>維修品管理</span></a>
+          <a class="nav-item" data-page="performance" href="/?page=performance" hidden><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/worklogs.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>績效管理</span></a>
           <a class="nav-item" data-page="settings" href="/?page=settings"><span class="nav-icon-shell"><img class="nav-icon" src="/assets/navigation/settings.png" width="40" height="40" alt="" aria-hidden="true" decoding="async" /></span><span>系統設定</span></a>
         </nav>
         <div class="sidebar-foot">
@@ -174,6 +176,7 @@
             <div class="material-summary" id="materialSummary"><article class="empty-state"><span>≣</span><h2>請選擇客戶與工作內容</h2><p>系統只會顯示該客戶實際關聯的工作內容。</p></article></div>
           </section>
 
+          <section class="page" id="performance" data-page="performance" aria-label="績效管理"><div id="performanceRoot"></div></section>
           <section class="page" id="settings" data-page="settings">
             <div class="section-tabs" data-tabs="settings"><button class="active" data-tab="system">系統設定</button><button data-tab="users">使用者</button><button data-tab="permissions">權限管理</button><button data-tab="logs">系統日誌</button><button data-tab="backup">系統備份</button></div>
             <div class="tab-pane" id="backup" data-pane="backup"><div id="systemBackupRoot" aria-live="polite"></div></div>
@@ -262,6 +265,7 @@
     <script src="/work-content-report.js" defer></script>
     <script src="/shared-report-ui.js" defer></script>
     <script src="/app.js" defer></script>
+    <script src="/performance-ui.js" defer></script>
     <script src="/construction-checklist.js" defer></script>
     <script src="/construction-plan-ui.js" defer></script>
     <script src="/work-log-construction-reminder.js" defer></script>

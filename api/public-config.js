@@ -83,7 +83,7 @@ module.exports = function handler(request, response) {
     && process.env.VERCEL_ENV === "production";
   const profile = dockerOriginProfile(request);
   const productionOrigin = localProduction ? profile?.erp || localDockerUrl(process.env.ERP_PUBLIC_URL || "http://localhost:8080/") : "";
-  const config = JSON.stringify({ siteDataUrl: profile?.site || normalizedSiteDataUrl(), quotationUrl: profile?.quote || normalizedQuotationUrl(), localProduction,
+  const config = JSON.stringify({ performanceEnabled: process.env.GUC_PERFORMANCE_ENABLED === "true", siteDataUrl: profile?.site || normalizedSiteDataUrl(), quotationUrl: profile?.quote || normalizedQuotationUrl(), localProduction,
     productionOrigin: productionOrigin ? new URL(productionOrigin).origin : "" })
     .replace(/</g, "\\u003c")
     .replace(/\u2028/g, "\\u2028")

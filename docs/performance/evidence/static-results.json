@@ -1,0 +1,8 @@
+{
+  "checkedAt": "2026-10-25T09:45:30.301Z",
+  "status": "PASS",
+  "checks": [
+    "Exact public weight template returns application/json and matches source",
+    "Package metadata, test credentials, test sessions and unlisted JSON remain inaccessible"
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "schema_version": "1.0",
+  "status": "proposal_not_deployed",
+  "effective_date": null,
+  "timezone": "Asia/Taipei",
+  "score_decimals": 2,
+  "rounding": "HALF_UP",
+  "review_cycle": "monthly",
+  "role_allocation_sum_percent": 100,
+  "rating_levels": [
+    {
+      "value": 1,
+      "label": "嚴重未達要求",
+      "explanation": "重大且可歸責、具體記錄之缺失"
+    },
+    {
+      "value": 2,
+      "label": "明顯未達要求",
+      "explanation": "多次未完成明確且合理之交辦事項"
+    },
+    {
+      "value": 3,
+      "label": "部分未達要求",
+      "explanation": "有非重大且具體記錄之缺失，需提醒改善"
+    },
+    {
+      "value": 4,
+      "label": "符合工作要求",
+      "explanation": "按約定品質、時程、紀錄與交接標準完成"
+    },
+    {
+      "value": 5,
+      "label": "明顯超越要求",
+      "explanation": "具可查證之額外成果、改善或技術傳承"
+    }
+  ],
+  "grade_thresholds": [
+    {
+      "grade": "A",
+      "min_inclusive": 90,
+      "label": "卓越"
+    },
+    {
+      "grade": "B",
+      "min_inclusive": 80,
+      "label": "稱職"
+    },
+    {
+      "grade": "C",
+      "min_inclusive": 70,
+      "label": "待改善"
+    },
+    {
+      "grade": "D",
+      "min_inclusive": 0,
+      "label": "需輔導"
+    }
+  ],
+  "criteria": [
+    {
+      "code": "QUALITY",
+      "label": "工作成果與品質",
+      "evidence_guide": "施工驗收與測試；維修排障品質；可歸責返工需人工認定"
+    },
+    {
+      "code": "SCHEDULE",
+      "label": "工作效率與時程",
+      "evidence_guide": "依核定工期執行；異常及早通報；合理排除外部阻礙"
+    },
+    {
+      "code": "RECORD",
+      "label": "文件紀錄與交接",
+      "evidence_guide": "工作日誌、測試數據、設備設定、施工照片與交接"
+    },
+    {
+      "code": "TEAM",
+      "label": "團隊協作與共同責任",
+      "evidence_guide": "排定之跨案協作與公共責任，不評價私人忠誠度"
+    },
+    {
+      "code": "REPORT",
+      "label": "主動回報與問題改善",
+      "evidence_guide": "完工告知、風險回報、具體流程改善"
+    },
+    {
+      "code": "LEARNING",
+      "label": "技術學習與經驗傳承",
+      "evidence_guide": "核定訓練與技能成果；資深人員指導"
+    },
+    {
+      "code": "SAFETY",
+      "label": "安全與工作規範",
+      "evidence_guide": "依SOP、電氣作業、高處作業與合理工作指示"
+    }
+  ],
+  "job_roles": [
+    {
+      "code": "construction",
+      "label": "工程施工",
+      "weights": {
+        "QUALITY": 25,
+        "SCHEDULE": 20,
+        "RECORD": 15,
+        "TEAM": 15,
+        "REPORT": 10,
+        "LEARNING": 5,
+        "SAFETY": 10
+      }
+    },
+    {
+      "code": "maintenance",
+      "label": "維修保養",
+      "weights": {
+        "QUALITY": 30,
+        "SCHEDULE": 15,
+        "RECORD": 15,
+        "TEAM": 15,
+        "REPORT": 10,
+        "LEARNING": 5,
+        "SAFETY": 10
+      }
+    },
+    {
+      "code": "lead",
+      "label": "現場帶班／主管",
+      "weights": {
+        "QUALITY": 20,
+        "SCHEDULE": 15,
+        "RECORD": 15,
+        "TEAM": 20,
+        "REPORT": 10,
+        "LEARNING": 10,
+        "SAFETY": 10
+      }
+    },
+    {
+      "code": "project_management",
+      "label": "專案管理",
+      "weights": {
+        "QUALITY": 20,
+        "SCHEDULE": 20,
+        "RECORD": 20,
+        "TEAM": 15,
+        "REPORT": 10,
+        "LEARNING": 5,
+        "SAFETY": 10
+      }
+    }
+  ],
+  "policy": {
+    "default_rating_for_unassigned": null,
+    "require_evidence_for_rating_1_2_3_5": true,
+    "na_policy": "unassigned_or_unobservable_only; rescale active item weights to 100",
+    "salary_integration": false,
+    "automated_negative_score_from_leave": false,
+    "self_approve_forbidden": true,
+    "published_review_immutable": true,
+    "reviewer_can_view_private_record_only_if_existing_permission": true
+  },
+  "source": "GUC ERP weak-current workforce management requirements, 2026-10-25"
+}

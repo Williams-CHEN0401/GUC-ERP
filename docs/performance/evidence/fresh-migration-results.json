@@ -1,0 +1,12 @@
+{
+  "checkedAt": "2026-10-25T09:41:17.129Z",
+  "status": "PASS",
+  "database": "performance_migration_1792921247020",
+  "migrations": [
+    "20261025090124_performance_module_model.sql",
+    "20261025090531_performance_module_workflow.sql",
+    "20261025090812_performance_module_read_api.sql"
+  ],
+  "performanceTables": 14,
+  "productionWrites": 0
+}

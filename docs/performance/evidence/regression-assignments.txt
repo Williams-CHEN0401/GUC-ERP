@@ -1,0 +1,24 @@
+(node:12100) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ dashboard and assignment Gateway -> PostgreSQL -> reread
+  ✔ reproduces old missing-column failure, corrected dashboard resolves customer and workers (64.6314ms)
+  ✔ manual input creates one project and one assignment, using shared numbering, department and worker (110.9896ms)
+  ✔ existing selection reuses new project without creating another (10.6424ms)
+  ✔ duplicate name cannot silently update an existing project (22.6345ms)
+  ✔ failed assignment rolls back the newly created project and audit trail (14.1624ms)
+  ✔ cross-customer/missing department and inactive assignee are rejected (66.5001ms)
+  ✔ customer without departments can create a manual project (23.4004ms)
+  ✔ invalid modes, names, dates and ambiguous project inputs are rejected (79.1415ms)
+  ✔ general completion still creates no pickup and appears in completion notice (87.8474ms)
+  ✔ manual pickup creates one pickup on completion; repeating completion is idempotent (55.5278ms)
+  ✔ viewer cannot create assignment; scoped dashboard only returns allowed project logs (75.1728ms)
+  ✔ new RPC remains private to service_role and uses invoker security (2.5987ms)
+✔ dashboard and assignment Gateway -> PostgreSQL -> reread (3807.7862ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3818.7981

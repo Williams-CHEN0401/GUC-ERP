@@ -1,0 +1,29 @@
+{
+  "checkedAt": "2026-10-25T09:38:14.360Z",
+  "case": "AT-20",
+  "results": [
+    {
+      "engine": "chrome",
+      "status": "PASS",
+      "viewport": "390×844 and 1440×1000",
+      "flow": "actual UI login, seven ratings, 80.00 persistence, employee concern, separate approval/publication, refresh, CSV and XLSX downloads",
+      "reviewId": "b3ba8849-b72b-4f8a-8eb2-a214b3f44dd8"
+    },
+    {
+      "engine": "msedge",
+      "status": "PASS",
+      "viewport": "390×844 and 1440×1000",
+      "flow": "actual UI login, seven ratings, 80.00 persistence, employee concern, separate approval/publication, refresh, CSV and XLSX downloads",
+      "reviewId": "286f991a-9c4d-4fbe-b615-6a4fc078cf9f"
+    },
+    {
+      "engine": "webkit",
+      "status": "PASS",
+      "viewport": "390×844 and 1440×1000",
+      "flow": "actual UI login, seven ratings, 80.00 persistence, employee concern, separate approval/publication, refresh, CSV and XLSX downloads",
+      "reviewId": "465206b8-812f-431e-8196-f9738d178d64"
+    }
+  ],
+  "errors": [],
+  "physicalDeviceTested": false
+}

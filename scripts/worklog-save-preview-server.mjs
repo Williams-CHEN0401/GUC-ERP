@@ -26,6 +26,9 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
  // These nullable columns model the already-released appointment schema; no
  // application behavior or production privileges are changed by this adapter.
  if(assignments&&!formSync)await db.exec('alter table work_assignments add column if not exists customer_id uuid references customers,add column if not exists appointment_type text,add column if not exists appointment_date date');
+ // Current dashboard projects the already-deployed optional construction links.
+ // This older assignment fixture has no construction plans to join.
+ if(assignments&&!formSync)await db.exec('alter table work_assignments add column if not exists construction_plan_id uuid,add column if not exists construction_item_id uuid,add column if not exists construction_plan_title text,add column if not exists construction_item_title text');
  let handler;
  const currentUser={id:ids.actor,username:'fixture-admin',role:'admin',display_name:'隔離測試員',is_active:true};
  const source=stripTypeScriptTypes((await readFile(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8')).replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'});

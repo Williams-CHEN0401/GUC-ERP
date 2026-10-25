@@ -28,6 +28,8 @@ export async function createERPServer() {
   };
   const publicFiles = new Set((await readdir(root)).filter(name => /\.(?:js|css)$/.test(name)));
   publicFiles.add('index.html');
+  // Explicit public seed template; never expose arbitrary JSON/config files.
+  publicFiles.add('assets/performance-weights-v1.json');
   const config = JSON.parse(await readFile(resolve(root, 'vercel.json'), 'utf8'));
   const headers = config.headers.find(rule => rule.source === '/(.*)').headers;
 
@@ -92,7 +94,7 @@ export async function createERPServer() {
       if ((!publicFiles.has(relative) && !asset) || !path.startsWith(root + sep)) return res.status(404).json({ error: 'Not found.' });
       const info = await stat(path).catch(() => null);
       if (!info?.isFile()) return res.status(404).json({ error: 'Not found.' });
-      res.setHeader('Content-Type', types[extname(path)] || 'application/octet-stream');
+      res.setHeader('Content-Type', relative==='assets/performance-weights-v1.json' ? 'application/json; charset=utf-8' : types[extname(path)] || 'application/octet-stream');
       res.setHeader('Content-Length', info.size);
       if (req.method === 'HEAD') return res.end();
       createReadStream(path).on('error', () => res.destroy()).pipe(res);

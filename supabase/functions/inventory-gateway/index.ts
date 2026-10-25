@@ -293,7 +293,7 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
@@ -303,7 +303,7 @@ async function hydratePermissions(user:AppUser):Promise<AppUser> {
 }
 function hasPermission(user:AppUser,module:string,action:PermissionAction="VIEW"):boolean {
  if(user.role==="admin")return true;
- if(!user.permissions&&["purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
+ if(!user.permissions&&["performance","purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
  if(!user.permissions)return ["operator","viewer"].includes(user.role) && (action==="VIEW"||user.role==="operator"&&!["settings","backup","customers","suppliers","inventory","credentials"].includes(module)&&action!=="DELETE");
  return user.permissions.some(p=>p.module===module&&p[`can_${action.toLowerCase()}` as keyof Permission]===true);
 }
@@ -1872,6 +1872,14 @@ async function handleRequest(request: Request) {
       const user = await currentUser(request);
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
+      if(params.get("scope")==="performance"){
+        if(Deno.env.get("GUC_PERFORMANCE_ENABLED")!=="true")return json({error:"績效功能尚未啟用。"},404);
+        requirePermission(user,"performance");
+        const options:Row={};for(const k of ["id","year","quarter","evidence_id"])if(params.has(k))options[k]=params.get(k);
+        const mode=params.get("mode")||"list";
+        const result=await rpc("performance_read_v1",{p_actor:user.id,p_mode:mode,p_options:options});
+        return json({scope:"performance",performance:result,current_user:publicUser(user),errors:[]});
+      }
       authorizeRead(user,params,request.headers.get("x-guc-system")==="site");
       if(params.get("scope")==="system_backup_authorization")return json({current_user:publicUser(user),authorized:true,action:params.get("action"),capabilities:{view:hasPermission(user,"system_backups","VIEW"),create:hasPermission(user,"system_backups","CREATE"),restore:hasPermission(user,"system_backups","UPDATE")}});
       if(params.get("entity")!=="shared_work_log")params.forEach(value=>assertPrivatePayload(value));
@@ -1947,6 +1955,12 @@ async function handleRequest(request: Request) {
     Object.assign(auditContext.getStore()!,auditHeaders(request,user));
     if(operation === "logout"){await insert("audit_logs",{entity_type:"session",entity_id:user.id,action:"LOGOUT",actor:user.username,source:"web"});return json({ok:true});}
     if(request.headers.get("x-guc-system")==="site")requirePermission(user,"site");
+    if(operation.startsWith("performance.")){
+      if(Deno.env.get("GUC_PERFORMANCE_ENABLED")!=="true")return json({error:"績效功能尚未啟用。"},404);
+      requirePermission(user,"performance");
+      const result=await rpc("performance_command_v1",{p_actor:user.id,p_operation:operation.slice(12),p_payload:payload});
+      return json({ok:true,result,current_user:publicUser(user)},201);
+    }
     if(["request_work_log_access","review_work_log_access","acknowledge_work_log_access","configure_erp_private_access","set_customer_private"].includes(operation)){
       const result=await privateOperation(operation,payload,user);return json({ok:true,private_access:{result},current_user:publicUser(user)},201);
     }
