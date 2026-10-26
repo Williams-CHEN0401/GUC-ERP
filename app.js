@@ -27,7 +27,7 @@ function maintenanceEventTypeOptions(event={}){const legacy=event.id&&LEGACY_MAI
 const REPAIR_STATUSES = [["received", "已收件"], ["sent_to_supplier", "已送供應商"], ["supplier_returned", "供應商已返件"], ["returned_to_customer", "已返還客戶"], ["cancelled", "已取消"]];
 const DEFAULT_CONTRACT_SERVICES = ["電話系統","監控系統","辦公室佈線","音響","柵欄機","緊急求救系統","門禁系統"];
 const MAX_BATCH_ROWS = 20;
-const PAGE_SCOPES = { performance:"performance", appointments:"appointments", dashboard:"dashboard", transactions:"transactions", repairs:"repairs", inventory:"inventory", crm:"crm", projects:"crm", worklogs:"worklogs", materials:"materials", backup:"session", settings:"settings" };
+const PAGE_SCOPES = { performance:"session", appointments:"appointments", dashboard:"dashboard", transactions:"transactions", repairs:"repairs", inventory:"inventory", crm:"crm", projects:"crm", worklogs:"worklogs", materials:"materials", backup:"session", settings:"settings" };
 const WORK_MANAGEMENT_PAGES = ["worklogs", "projects", "materials"];
 const API_TIMEOUT_MS = 30_000;
 const NAS_TARGET_ROOT = "/GUC-ERP";
@@ -1040,7 +1040,7 @@ function openExternalSystem({url,origin,readyMessage,sessionMessage,label,extern
   return true;
 }
 function openSiteSystem(){if(!canModule("site")){showToast("此帳號沒有案場系統權限。");return false;}return openExternalSystem({url:SITE_SYSTEM_TARGET_URL,origin:SITE_SYSTEM_TARGET_ORIGIN,readyMessage:SITE_SSO_READY_MESSAGE,sessionMessage:SITE_SSO_SESSION_MESSAGE,label:"案場資料系統"});}
-function openQuotationSystem(externalWindow=null){if(!canAccessQuotations()){showToast("此帳號未列入會計管理系統白名單。","沒有報價權限");return false;}return openExternalSystem({url:QUOTATION_SYSTEM_TARGET_URL,origin:QUOTATION_SYSTEM_TARGET_ORIGIN,readyMessage:QUOTATION_SSO_READY_MESSAGE,sessionMessage:QUOTATION_SSO_SESSION_MESSAGE,label:"會計管理系統",externalWindow});}
+function openQuotationSystem(externalWindow=null,performanceOnly=false){if(!canAccessQuotations()&&!canOpenPerformance()){showToast("此帳號未列入會計管理系統白名單。","沒有報價權限");return false;}return openExternalSystem({url:performanceOnly||!canAccessQuotations()?new URL("/performance-reviews",QUOTATION_SYSTEM_TARGET_URL).toString():QUOTATION_SYSTEM_TARGET_URL,origin:QUOTATION_SYSTEM_TARGET_ORIGIN,readyMessage:QUOTATION_SSO_READY_MESSAGE,sessionMessage:QUOTATION_SSO_SESSION_MESSAGE,label:"會計管理系統",externalWindow});}
 async function chooseSystem(target,button){
   const status=document.querySelector("#systemChooserStatus");
   if(target==="sites"){
@@ -1057,7 +1057,7 @@ async function chooseSystem(target,button){
     const hint=button.querySelector("small"),originalHint=hint.textContent;
     hint.textContent="正在確認報價權限…";
     try{
-      if(!await loadQuotationAccess()){pendingWindow.close();if(status)status.textContent="此帳號沒有會計管理系統權限。";return;}
+      if(!await loadQuotationAccess()&&!canOpenPerformance()){pendingWindow.close();if(status)status.textContent="此帳號沒有會計管理系統權限。";return;}
       const opened=openQuotationSystem(pendingWindow);
       if(!opened){pendingWindow.close();if(status)status.textContent="報價管理新分頁未能開啟，請確認權限與網址。";return;}
       hideSystemChooser();
