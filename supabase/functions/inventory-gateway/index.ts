@@ -293,7 +293,7 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
@@ -303,7 +303,7 @@ async function hydratePermissions(user:AppUser):Promise<AppUser> {
 }
 function hasPermission(user:AppUser,module:string,action:PermissionAction="VIEW"):boolean {
  if(user.role==="admin")return true;
- if(!user.permissions&&["performance","purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
+ if(!user.permissions&&["accounting_payables","accounting_payroll","performance","purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
  if(!user.permissions)return ["operator","viewer"].includes(user.role) && (action==="VIEW"||user.role==="operator"&&!["settings","backup","customers","suppliers","inventory","credentials"].includes(module)&&action!=="DELETE");
  return user.permissions.some(p=>p.module===module&&p[`can_${action.toLowerCase()}` as keyof Permission]===true);
 }
@@ -1898,6 +1898,15 @@ async function handleRequest(request: Request) {
       const user = await currentUser(request);
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
+      if(params.get("scope")==="finance"){
+        const module=params.get("module")||"";
+        if(!["accounting_payables","accounting_payroll"].includes(module))throw Error("不支援的會計查詢。");
+        requirePermission(user,module);
+        const month=date(params.get("month"));if(!month)throw Error("請選擇有效月份。");
+        const id=params.get("id");if(id&&!uuid(id))throw Error("資料識別不正確。");
+        const result=await rpc("accounting_finance_read_v1",{p_actor:user.id,p_module:module,p_month:month,p_id:id||null});
+        return new Response(JSON.stringify({finance:result,current_user:publicUser(user)}),{headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store, private"}});
+      }
       if(params.get("scope")==="performance"){
         if(Deno.env.get("GUC_PERFORMANCE_ENABLED")!=="true")return json({error:"績效功能尚未啟用。"},404);
         requirePermission(user,"performance");
@@ -1988,6 +1997,13 @@ async function handleRequest(request: Request) {
     Object.assign(auditContext.getStore()!,auditHeaders(request,user));
     if(operation === "logout"){await insert("audit_logs",{entity_type:"session",entity_id:user.id,action:"LOGOUT",actor:user.username,source:"web"});return json({ok:true});}
     if(request.headers.get("x-guc-system")==="site")requirePermission(user,"site");
+    if(operation.startsWith("finance.")){
+      const op=operation.slice(8),module=op==="terms_save"?"accounting_payables":"accounting_payroll";
+      requirePermission(user,module);
+      if(isPreviewGateway&&op!=="payroll_calculate")return json({error:"目前為唯讀預覽。"},403);
+      const result=await rpc("accounting_finance_command_v1",{p_actor:user.id,p_operation:op,p_payload:payload});
+      return json({ok:true,result,current_user:publicUser(user)},op==="payroll_calculate"?200:201);
+    }
     if(operation.startsWith("performance.")){
       if(Deno.env.get("GUC_PERFORMANCE_ENABLED")!=="true")return json({error:"績效功能尚未啟用。"},404);
       requirePermission(user,"performance");

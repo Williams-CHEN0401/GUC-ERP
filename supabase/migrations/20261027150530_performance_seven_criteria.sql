@@ -1,0 +1,260 @@
+begin;
+set local lock_timeout='5s';
+create or replace function public.performance_validate_template_v1(p_config jsonb) returns void
+language plpgsql security invoker set search_path='' as $$
+declare r jsonb;v_codes text[];v_expected text[];v_extras jsonb;v_sum numeric;
+begin
+ if jsonb_typeof(p_config) is distinct from 'object' or p_config->>'schema_version' is distinct from '1.0'
+ or p_config->>'timezone' is distinct from 'Asia/Taipei' or p_config->>'rounding' is distinct from 'HALF_UP' or p_config->>'score_decimals' is distinct from '2'
+ or p_config->>'review_cycle' is distinct from 'monthly' then raise exception '評分模板格式或計分版本不正確。';end if;
+ select array_agg(x->>'code' order by x->>'code') into v_codes from jsonb_array_elements(p_config->'criteria') x;
+ if v_codes is distinct from array['LEARNING','QUALITY','RECORD','REPORT','SAFETY','SCHEDULE','TEAM'] then raise exception '必須設定七項唯一指標。';end if;
+ if exists(select 1 from jsonb_array_elements(p_config->'criteria') x where
+  jsonb_typeof(x->'label') is distinct from 'string' or length(btrim(x->>'label')) not between 1 and 120
+  or jsonb_typeof(x->'evidence_guide') is distinct from 'string' or length(x->>'evidence_guide')>2000) then raise exception '項目名稱須為 1 至 120 字，說明不得超過 2000 字。';end if;
+ select array_agg(x->>'code' order by x->>'code') into v_codes from jsonb_array_elements(p_config->'job_roles') x;
+ if v_codes is distinct from array['construction','lead','maintenance','project_management'] and v_codes is distinct from array['overall'] then raise exception '請使用七項整體考核模板。';end if;
+ if (select jsonb_agg((x->>'value')::integer order by (x->>'value')::integer) from jsonb_array_elements(p_config->'rating_levels') x) is distinct from '[1,2,3,4,5]'::jsonb
+ or (select jsonb_object_agg(x->>'grade',x->'min_inclusive') from jsonb_array_elements(p_config->'grade_thresholds') x) is distinct from '{"A":90,"B":80,"C":70,"D":0}'::jsonb
+ or jsonb_array_length(p_config->'grade_thresholds')<>4 then raise exception '評級或等級門檻不正確。';end if;
+ for r in select * from jsonb_array_elements(p_config->'job_roles') loop
+  v_extras:=coalesce(r->'additional_criteria','[]'::jsonb);
+  if jsonb_typeof(v_extras) is distinct from 'array' or jsonb_array_length(v_extras)>20 then raise exception '主管新增子項目須為清單，最多 20 項。';end if;
+  if r->>'code'<>'lead' and jsonb_array_length(v_extras)>0 then raise exception '只有主管職務可新增考核子項目。';end if;
+  if exists(select 1 from jsonb_array_elements(v_extras) x where jsonb_typeof(x->'code') is distinct from 'string' or x->>'code' !~ '^LEAD_[A-Z0-9_]{1,40}$'
+   or jsonb_typeof(x->'label') is distinct from 'string' or length(btrim(x->>'label')) not between 1 and 120
+   or jsonb_typeof(x->'evidence_guide') is distinct from 'string' or length(x->>'evidence_guide')>2000)
+   or exists(select 1 from jsonb_array_elements(v_extras) x group by x->>'code' having count(*)>1) then raise exception '主管子項目代碼須唯一，名稱須為 1 至 120 字，說明不得超過 2000 字。';end if;
+  select array_agg(code order by code) into v_expected from (select x->>'code' code from jsonb_array_elements(p_config->'criteria') x union all select x->>'code' from jsonb_array_elements(v_extras) x) c;
+  select array_agg(key order by key),sum(value::numeric) into v_codes,v_sum from jsonb_each_text(r->'weights');
+  if v_codes is distinct from v_expected or v_sum<>100
+   or exists(select 1 from jsonb_each_text(r->'weights') where value::numeric<0 or value::numeric>100) then raise exception '每種職務所有項目權重合計必須為 100。';end if;
+ end loop;
+ if p_config#>>'{policy,self_approve_forbidden}' is distinct from 'true' or p_config#>>'{policy,published_review_immutable}' is distinct from 'true'
+ or p_config#>>'{policy,automated_negative_score_from_leave}' is distinct from 'false' then raise exception '模板不可停用既有績效防護。';end if;
+end $$;
+create or replace function public.performance_command_v1(p_actor uuid,p_operation text,p_payload jsonb) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare v_request uuid:=(p_payload->>'request_id')::uuid;v_id uuid;v_review public.performance_reviews;v_period public.performance_periods;
+ v_before jsonb;v_after jsonb;v_result jsonb;v_receipt public.performance_requests;v_fingerprint text;
+ v_admin boolean;v_template uuid;v_alloc jsonb;v_items jsonb;v_calculation jsonb;v_item jsonb;v_value jsonb;
+ v_task public.performance_shared_tasks;v_allowed text[];v_action text;v_entity text;v_actor_name text;v_revision integer;
+begin
+ perform public.performance_assert_actor_v1(p_actor);
+ v_admin:=public.performance_admin_v1(p_actor);
+ select username into v_actor_name from public.app_users where id=p_actor;
+ if v_request is null or jsonb_typeof(p_payload) is distinct from 'object' then raise exception '請提供有效 request_id。';end if;
+ v_allowed:=case p_operation
+ when 'template_create' then array['request_id','name','config']
+ when 'period_create' then array['request_id','month','template_id','trial_start','effective_date','response_workdays','business_calendar']
+ when 'review_create' then array['request_id','period_id','employee_id','reviewer_id','approver_id','allocations']
+ when 'review_template' then array['request_id','id','row_version','template_id','name','config','reason','confirm_reset']
+ when 'review_allocate' then array['request_id','id','row_version','allocations','reason']
+ when 'review_score' then array['request_id','id','row_version','items']
+ when 'review_respond' then array['request_id','id','row_version','response_type','message']
+ when 'review_revise' then array['request_id','id','row_version','reason']
+ when 'evidence_add' then array['request_id','id','row_version','source_type','source_id']
+ when 'evidence_confirm' then array['request_id','id','row_version','evidence_id']
+ when 'goal_add' then array['request_id','id','row_version','description','due_date']
+ when 'appeal_reply' then array['request_id','id','row_version','message']
+ when 'task_create' then array['request_id','title','category','assignee_id','due_date']
+ when 'task_complete' then array['request_id','id','row_version','completion_note']
+ when 'task_verify' then array['request_id','id','row_version']
+ when 'task_return' then array['request_id','id','row_version','reason']
+ when 'task_cancel' then array['request_id','id','row_version','reason']
+ when 'skill_set' then array['request_id','id','row_version','skill_code','level','evidence']
+ when 'review_submit' then array['request_id','id','row_version']
+ when 'review_timeout' then array['request_id','id','row_version']
+ when 'review_approve' then array['request_id','id','row_version']
+ when 'review_publish' then array['request_id','id','row_version']
+ else null end;
+ if v_allowed is null or exists(select 1 from jsonb_object_keys(p_payload) k where not(k=any(v_allowed))) then raise exception '操作或欄位不正確；不可提交計算總分或操作人。';end if;
+ v_action:=case when p_operation in ('review_respond','evidence_add','task_complete') then 'VIEW' when p_operation in ('template_create','period_create','review_create','task_create') then 'CREATE' else 'UPDATE' end;
+ perform public.performance_assert_actor_v1(p_actor,v_action);
+ -- A transaction lock makes simultaneous retries observe the committed receipt.
+ perform pg_advisory_xact_lock(hashtextextended(p_actor::text||':'||p_operation||':'||v_request,0));
+ v_fingerprint:=md5((p_payload-'request_id')::text);
+ select * into v_receipt from public.performance_requests where actor_id=p_actor and operation=p_operation and request_id=v_request;
+ if found then
+  if v_receipt.fingerprint<>v_fingerprint then raise exception '此 request_id 已被其他使用者內容使用，請重新載入。';end if;
+  -- Receipts contain identifiers/versions only, never frozen private text.
+  return v_receipt.result;
+ end if;
+ if p_operation in ('template_create','period_create','review_create','review_allocate','review_template','review_revise','appeal_reply') and not v_admin then raise exception '沒有管理設定權限。';end if;
+
+ if p_operation='template_create' then
+  perform public.performance_validate_template_v1(p_payload->'config');
+  insert into public.performance_templates(name,config,created_by) values(p_payload->>'name',p_payload->'config',p_actor) returning id into v_id;
+  insert into public.performance_role_weights select v_id,r->>'code',w.key,w.value::numeric from jsonb_array_elements(p_payload#>'{config,job_roles}') r cross join lateral jsonb_each_text(r->'weights') w;
+  v_entity:='performance_templates';select to_jsonb(t) into v_after from public.performance_templates t where id=v_id;
+ elsif p_operation='period_create' then
+  if not exists(select 1 from public.performance_templates where id=(p_payload->>'template_id')::uuid) then raise exception '找不到評分模板。';end if;
+  if p_payload->>'response_workdays' is not null then perform public.performance_deadline_v1(now(),(p_payload->>'response_workdays')::int,p_payload->'business_calendar');end if;
+  insert into public.performance_periods(month,template_id,trial_start,effective_date,response_workdays,business_calendar,created_by)
+  values((p_payload->>'month')::date,(p_payload->>'template_id')::uuid,(p_payload->>'trial_start')::date,(p_payload->>'effective_date')::date,(p_payload->>'response_workdays')::int,nullif(p_payload->'business_calendar','null'),p_actor) returning * into v_period;
+  v_id:=v_period.id;v_after:=to_jsonb(v_period);v_entity:='performance_periods';
+ elsif p_operation='review_create' then
+  if (select count(*) from public.app_users where id in ((p_payload->>'employee_id')::uuid,(p_payload->>'reviewer_id')::uuid,(p_payload->>'approver_id')::uuid) and is_active) <2
+   or not public.has_app_permission_v1((p_payload->>'reviewer_id')::uuid,'performance','UPDATE')
+   or not public.performance_admin_v1((p_payload->>'approver_id')::uuid) then raise exception '請指定有效員工、評核主管與其他管理員核定人。';end if;
+  if not exists(select 1 from public.app_users where id=(p_payload->>'employee_id')::uuid and is_active) then raise exception '找不到有效員工。';end if;
+  insert into public.performance_reviews(period_id,employee_id,reviewer_id,approver_id,created_by,updated_by)
+  values((p_payload->>'period_id')::uuid,(p_payload->>'employee_id')::uuid,(p_payload->>'reviewer_id')::uuid,(p_payload->>'approver_id')::uuid,p_actor,p_actor) returning * into v_review;
+  v_id:=v_review.id;
+  select coalesce((select p.template_id from public.performance_periods p join public.performance_templates t on t.id=p.template_id where p.id=v_review.period_id and t.config#>>'{job_roles,0,code}'='overall'),(select id from public.performance_templates where config#>>'{job_roles,0,code}'='overall' order by created_at desc,id limit 1)) into v_template;
+  if v_template is null then raise exception '請先建立七項整體考核權重版本。';end if;
+  update public.performance_reviews set template_id=v_template where id=v_id returning * into v_review;
+  v_alloc:='[{"job_role":"overall","percent":100}]'::jsonb;
+ elsif p_operation='task_create' then
+  if not v_admin and not exists(select 1 from public.performance_reviews r join public.performance_periods p on p.id=r.period_id where r.reviewer_id=p_actor and r.employee_id=(p_payload->>'assignee_id')::uuid and (p_payload->>'due_date')::date>=p.month and (p_payload->>'due_date')::date<p.month+interval '1 month') then raise exception '沒有此月份人員的共同任務指派權限。';end if;
+  if not exists(select 1 from public.app_users where id=(p_payload->>'assignee_id')::uuid and is_active) then raise exception '找不到有效任務負責人。';end if;
+  insert into public.performance_shared_tasks(title,category,assignee_id,assigned_by,due_date,updated_by)
+  values(p_payload->>'title',p_payload->>'category',(p_payload->>'assignee_id')::uuid,p_actor,(p_payload->>'due_date')::date,p_actor) returning * into v_task;
+  v_id:=v_task.id;v_after:=to_jsonb(v_task);v_entity:='performance_shared_tasks';
+ elsif p_operation like 'task_%' then
+  select * into v_task from public.performance_shared_tasks where id=(p_payload->>'id')::uuid for update;
+  if not found then raise exception '找不到共同任務。';end if;
+  if not(v_admin or p_actor in (v_task.assignee_id,v_task.assigned_by)) then raise exception '沒有此任務權限。';end if;
+  if v_task.row_version is distinct from (p_payload->>'row_version')::int then raise exception '資料已被其他使用者修改，請重新載入。';end if;
+  v_id:=v_task.id;v_before:=to_jsonb(v_task);v_entity:='performance_shared_tasks';
+  if p_operation='task_complete' then
+   if p_actor<>v_task.assignee_id or v_task.status<>'ASSIGNED' or length(btrim(coalesce(p_payload->>'completion_note','')))<2 then raise exception '請由負責人填寫完成證明。';end if;
+   v_task.status:='COMPLETED';v_task.completion_note:=p_payload->>'completion_note';v_task.completed_at:=now();
+  else
+   if p_actor=v_task.assignee_id or not(v_admin or p_actor=v_task.assigned_by) then raise exception '沒有驗證或取消此任務權限。';end if;
+   if p_operation='task_verify' then
+    if v_task.status<>'COMPLETED' then raise exception '任務尚未完成。';end if;v_task.status:='VERIFIED';v_task.verified_by:=p_actor;
+   else
+    if v_task.status='CANCELLED' or length(btrim(coalesce(p_payload->>'reason','')))<2 then raise exception '請填寫退回或取消原因。';end if;
+    v_task.status:=case when p_operation='task_return' then 'ASSIGNED' else 'CANCELLED' end;v_task.reason:=p_payload->>'reason';v_task.verified_by:=null;
+   end if;
+  end if;
+  update public.performance_shared_tasks set status=v_task.status,completion_note=v_task.completion_note,completed_at=v_task.completed_at,verified_by=v_task.verified_by,reason=v_task.reason,row_version=row_version+1,updated_at=now(),updated_by=p_actor where id=v_id returning to_jsonb(performance_shared_tasks) into v_after;
+ else
+  select * into v_review from public.performance_reviews where id=(p_payload->>'id')::uuid for update;
+  if not found then raise exception '找不到考核。';end if;
+  if not public.performance_can_read_v1(p_actor,v_review) and not(p_operation='evidence_add' and p_actor=v_review.employee_id) then raise exception '沒有此考核權限。';end if;
+  if v_review.row_version is distinct from (p_payload->>'row_version')::int then raise exception '資料已被其他使用者修改，請重新載入。';end if;
+  v_id:=v_review.id;v_before:=public.performance_content_v1(v_id);
+  if v_review.status='PUBLISHED' and p_operation not in ('review_revise','appeal_reply','skill_set') then raise exception '已發布評核不可修改，請建立新修訂。';end if;
+ end if;
+
+ if v_review.id is not null then
+  v_entity:='performance_reviews';select * into v_period from public.performance_periods where id=v_review.period_id;v_template:=coalesce(v_review.template_id,v_period.template_id);
+  if p_operation='review_template' then
+   if v_review.status<>'DRAFT' then raise exception '只有草稿可修改評核項目版本。';end if;
+   if length(btrim(coalesce(p_payload->>'reason',''))) not between 2 and 2000 or p_payload->'confirm_reset' is distinct from 'true'::jsonb then raise exception '請填寫變更原因並確認清除草稿評級。';end if;
+   if p_payload ? 'template_id' then
+    if p_payload ? 'config' or p_payload ? 'name' then raise exception '請選擇既有版本或建立新版本，不能同時指定。';end if;
+    v_template:=(p_payload->>'template_id')::uuid;
+    if not exists(select 1 from public.performance_templates where id=v_template) then raise exception '找不到評核項目版本。';end if;
+    if v_template=coalesce(v_review.template_id,v_period.template_id) then raise exception '此草稿已使用選取的版本。';end if;
+   else
+    v_value:=public.performance_command_v1(p_actor,'template_create',jsonb_build_object('request_id',v_request,'name',p_payload->'name','config',p_payload->'config'));
+    v_template:=(v_value->>'id')::uuid;
+   end if;
+   v_review.template_id:=v_template;
+   if not exists(select 1 from public.performance_templates where id=v_template and config#>>'{job_roles,0,code}'='overall') then raise exception '請選擇七項整體考核權重版本。';end if;
+   delete from public.performance_review_items where review_id=v_id;
+   delete from public.performance_role_allocations where review_id=v_id;
+   v_alloc:='[{"job_role":"overall","percent":100}]'::jsonb;
+  end if;
+  if p_operation='review_allocate' then
+   if v_review.status<>'DRAFT' or length(btrim(coalesce(p_payload->>'reason','')))<2 then raise exception '僅草稿可重新核定配比，並須填寫原因。';end if;
+   delete from public.performance_review_items where review_id=v_id;delete from public.performance_role_allocations where review_id=v_id;v_alloc:=p_payload->'allocations';
+  end if;
+  if v_alloc is not null then
+   perform public.performance_calculate_v1(v_template,v_alloc,'[]');
+   insert into public.performance_role_allocations select v_id,a->>'job_role',(a->>'percent')::numeric,p_actor,now() from jsonb_array_elements(v_alloc) a;
+   insert into public.performance_review_items(review_id,job_role,criterion) select v_id,w.job_role,w.criterion from public.performance_role_weights w join public.performance_role_allocations a on a.job_role=w.job_role and a.review_id=v_id where w.template_id=v_template;
+  end if;
+  if p_operation in ('review_score','review_submit','evidence_confirm','goal_add') then
+   if p_actor<>v_review.reviewer_id or p_actor=v_review.employee_id or v_review.status<>'DRAFT' then raise exception '沒有草稿評核權限。';end if;
+  end if;
+  if p_operation='review_score' then
+   v_items:=p_payload->'items';
+   select jsonb_agg(to_jsonb(a)) into v_alloc from public.performance_role_allocations a where review_id=v_id;
+   perform public.performance_calculate_v1(v_template,v_alloc,v_items);
+   if jsonb_typeof(v_items) is distinct from 'array' or jsonb_array_length(v_items)<>(select count(*) from public.performance_review_items where review_id=v_id) then raise exception '請保存所有核定職務的評級。';end if;
+   for v_item in select * from jsonb_array_elements(v_items) loop
+    if exists(select 1 from jsonb_object_keys(v_item) k where k not in ('job_role','criterion','rating_state','rating','reason','na_kind','assigned')) then raise exception '評級包含不支援欄位。';end if;
+    update public.performance_review_items set rating_state=v_item->>'rating_state',rating=(v_item->>'rating')::smallint,reason=coalesce(v_item->>'reason',''),na_kind=v_item->>'na_kind',assigned=coalesce((v_item->>'assigned')::boolean,false)
+     where review_id=v_id and job_role=v_item->>'job_role' and criterion=v_item->>'criterion';
+    if not found then raise exception '未核定的職務或指標。';end if;
+   end loop;
+  elsif p_operation='evidence_add' then
+   if v_review.status<>'DRAFT' or p_actor not in (v_review.employee_id,v_review.reviewer_id) then raise exception '僅本人或指定主管可於草稿新增佐證。';end if;
+   v_value:=public.performance_source_v1(p_actor,v_review.employee_id,p_payload->>'source_type',(p_payload->>'source_id')::uuid);
+   if v_value is null or (v_value->>'date')::date<v_period.month or (v_value->>'date')::date>=v_period.month+interval '1 month' then raise exception '沒有此月份來源的佐證權限。';end if;
+   insert into public.performance_evidence_links(review_id,source_type,source_id,snapshot,confirmed_by,created_by) values(v_id,p_payload->>'source_type',(p_payload->>'source_id')::uuid,v_value,case when p_actor=v_review.reviewer_id then p_actor end,p_actor);
+  elsif p_operation='evidence_confirm' then
+   select public.performance_source_v1(p_actor,v_review.employee_id,e.source_type,e.source_id) into v_value from public.performance_evidence_links e where e.id=(p_payload->>'evidence_id')::uuid and review_id=v_id;
+   if v_value is null then raise exception '沒有佐證確認權限。';end if;
+   update public.performance_evidence_links set confirmed_by=p_actor,snapshot=v_value where id=(p_payload->>'evidence_id')::uuid and review_id=v_id;
+  elsif p_operation='goal_add' then
+   insert into public.performance_goals(review_id,description,due_date,created_by) values(v_id,p_payload->>'description',(p_payload->>'due_date')::date,p_actor);
+  elsif p_operation='review_respond' then
+   if p_actor<>v_review.employee_id or v_review.status<>'SUBMITTED' then raise exception '沒有此版本回覆權限。';end if;
+   insert into public.performance_responses(review_id,response_type,message,created_by) values(v_id,p_payload->>'response_type',coalesce(p_payload->>'message',''),p_actor);v_review.status:='EMPLOYEE_RESPONDED';
+  elsif p_operation='review_timeout' then
+   if not v_admin or v_review.status<>'SUBMITTED' or v_review.response_due_at is null or now()<=v_review.response_due_at then raise exception '尚未超過已設定的工作日回覆期限。';end if;v_review.status:='ACK_TIMEOUT';
+  elsif p_operation in ('review_approve','review_publish') then
+   if not v_admin or p_actor<>v_review.approver_id or p_actor=v_review.employee_id then raise exception '沒有核定權限；不可核定自己的評核。';end if;
+   if p_operation='review_approve' then
+    if v_review.status not in ('EMPLOYEE_RESPONDED','ACK_TIMEOUT') then raise exception '請先取得員工回覆或依法定工作日曆等待回覆期限。';end if;
+    v_review.status:='APPROVED';v_review.approved_at:=now();
+   else
+    if v_review.status<>'APPROVED' then raise exception '評核尚未核定。';end if;
+    perform pg_advisory_xact_lock(hashtextextended(v_review.period_id::text||v_review.employee_id,0));
+    update public.performance_reviews set is_current=false where period_id=v_review.period_id and employee_id=v_review.employee_id and is_current;
+    v_review.status:='PUBLISHED';v_review.is_current:=true;v_review.published_at:=now();
+   end if;
+  elsif p_operation='review_revise' then
+   if v_review.status<>'PUBLISHED' or not v_review.is_current or length(btrim(coalesce(p_payload->>'reason','')))<2 then raise exception '請由目前發布版本建立修訂並說明原因。';end if;
+   perform pg_advisory_xact_lock(hashtextextended(v_review.period_id::text||v_review.employee_id,0));
+   v_revision:=v_review.revision+1;
+   insert into public.performance_reviews(period_id,employee_id,reviewer_id,approver_id,revision,supersedes_id,revision_reason,created_by,updated_by,template_id)
+    values(v_review.period_id,v_review.employee_id,v_review.reviewer_id,v_review.approver_id,v_revision,v_id,p_payload->>'reason',p_actor,p_actor,v_template) returning * into v_review;
+   insert into public.performance_role_allocations select v_review.id,job_role,percent,p_actor,now() from public.performance_role_allocations where review_id=v_id;
+   insert into public.performance_review_items select v_review.id,job_role,criterion,rating_state,rating,reason,na_kind,assigned from public.performance_review_items where review_id=v_id;
+   insert into public.performance_evidence_links(review_id,source_type,source_id,snapshot,created_by) select v_review.id,source_type,source_id,snapshot,p_actor from public.performance_evidence_links where review_id=v_id;
+   insert into public.performance_goals(review_id,description,due_date,created_by) select v_review.id,description,due_date,p_actor from public.performance_goals where review_id=v_id;
+   v_id:=v_review.id;
+  elsif p_operation='appeal_reply' then
+   insert into public.performance_appeals(review_id,message,created_by) values(v_id,p_payload->>'message',p_actor);
+  elsif p_operation='skill_set' then
+   if p_actor=v_review.employee_id or not(v_admin or p_actor=v_review.reviewer_id) or v_review.status<>'PUBLISHED' then raise exception '沒有核定技能等級權限。';end if;
+   perform pg_advisory_xact_lock(hashtextextended(v_review.employee_id::text||':'||(p_payload->>'skill_code'),0));
+   insert into public.performance_user_skills(employee_id,skill_code,level,evidence,assessor_id,review_id,version)
+    select v_review.employee_id,p_payload->>'skill_code',(p_payload->>'level')::int,p_payload->>'evidence',p_actor,v_id,coalesce(max(version),0)+1 from public.performance_user_skills where employee_id=v_review.employee_id and skill_code=p_payload->>'skill_code';
+  end if;
+  if p_operation not in ('appeal_reply','skill_set') then
+   select jsonb_agg(to_jsonb(a)) into v_alloc from public.performance_role_allocations a where review_id=v_id;
+   select jsonb_agg(to_jsonb(i)) into v_items from public.performance_review_items i where review_id=v_id;
+   v_calculation:=public.performance_calculate_v1(v_template,v_alloc,v_items);
+   if p_operation in ('review_submit','review_approve','review_publish') then
+    if v_calculation->>'status'<>'READY' then raise exception '資料不足或尚未完成評級，不可送出或發布。';end if;
+    if exists(select 1 from public.performance_review_items where review_id=v_id and rating_state='RATED' and length(btrim(reason))<2)
+     and not exists(select 1 from public.performance_evidence_links e where review_id=v_id and confirmed_by=v_review.reviewer_id and public.performance_source_v1(v_review.reviewer_id,v_review.employee_id,e.source_type,e.source_id) is not null) then raise exception '評級須附具體說明或主管確認的佐證。';end if;
+   end if;
+   if p_operation='review_submit' then
+    v_review.status:='SUBMITTED';v_review.submitted_at:=now();v_review.response_due_at:=public.performance_deadline_v1(now(),v_period.response_workdays,v_period.business_calendar);
+   end if;
+   update public.performance_reviews set template_id=v_review.template_id,status=v_review.status,is_current=v_review.is_current,score=(v_calculation->>'score')::numeric,grade=v_calculation->>'grade',calculation=v_calculation,
+    submitted_at=v_review.submitted_at,response_due_at=v_review.response_due_at,approved_at=v_review.approved_at,published_at=v_review.published_at,row_version=row_version+1,updated_at=now(),updated_by=p_actor where id=v_id returning * into v_review;
+  end if;
+  v_after:=public.performance_content_v1(v_id);
+  if p_operation='appeal_reply' then v_after:=v_after||jsonb_build_object('management_reply',p_payload->>'message');end if;
+  if p_operation='skill_set' then v_after:=v_after||jsonb_build_object('skill',p_payload-'request_id');end if;
+  if p_operation='review_template' then v_after:=v_after||jsonb_build_object('template_change_reason',p_payload->>'reason','previous_template_id',coalesce((v_before->>'template_id')::uuid,v_period.template_id));end if;
+  if p_operation='review_allocate' then v_after:=v_after||jsonb_build_object('allocation_change_reason',p_payload->>'reason');end if;
+ end if;
+ insert into public.audit_logs(entity_type,entity_id,action,before_data,after_data,source,actor)
+ values(v_entity,v_id,case when v_before is null then 'insert' else 'update' end,v_before,v_after||jsonb_build_object('performance_operation',p_operation,'actor_user_id',p_actor,'request_id',v_request),'performance',v_actor_name);
+ v_result:=jsonb_build_object('id',v_id,'row_version',coalesce((v_after->>'row_version')::int,1),'status',v_after->>'status');
+ insert into public.performance_requests values(p_actor,p_operation,v_request,v_fingerprint,v_result,now());
+ return v_result;
+end $$;
+-- Existing review snapshots and published scores are untouched. New reviews use one overall role.
+notify pgrst,'reload schema';
+commit;
