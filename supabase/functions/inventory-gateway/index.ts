@@ -140,6 +140,17 @@ async function deviceCredentialEnvelope(loginUsername: unknown, loginPassword: u
     key_version: "v1",
   };
 }
+// Excel permits either credential value to be blank. Manual/phone validation is unchanged.
+async function spreadsheetCredentialEnvelope(row: Row, user: AppUser): Promise<Row | null> {
+  const {spreadsheetText}=await import('./site-spreadsheet.ts');
+  const username=spreadsheetText(row.login_username,256),password=spreadsheetText(row.login_password,512,true);
+  if(!username&&!password)return null;
+  requirePermission(user,"credentials","UPDATE");
+  const [name,secret]=await Promise.all([encryptDeviceCredentialValue(username),encryptDeviceCredentialValue(password)]);
+  return {username_ciphertext:name.ciphertext,username_iv:name.iv,username_authentication_tag:name.authentication_tag,
+    password_ciphertext:secret.ciphertext,password_iv:secret.iv,password_authentication_tag:secret.authentication_tag,
+    masked_username:maskedDeviceUsername(username),key_version:"v1"};
+}
 const role = (value: unknown): Role | null => /^[a-z][a-z0-9_]{0,39}$/.test(text(value)) ? text(value) as Role : null;
 // Category membership is enforced by the shared database foreign key, not a UI-specific list.
 const customerCategory = (value: unknown) => /^[a-z][a-z0-9_]{1,63}$/.test(text(value)) ? text(value) : null;
@@ -370,6 +381,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   return;
  }
  if(scope==="access_device_import"){requireOperation(user,"import_access_devices",{},["admin","operator"]);return;}
+ if(scope==="site_spreadsheet"){requirePermission(user,"site");return;}
  if(scope==="session"||scope==="settings"&&privateContext.getStore()?.can_configure)return;
  if(scope==="nas_upload_context"){
   requireOperation(user,"create_contract_site_attachment_batch",{},["admin","operator"]);
@@ -513,7 +525,7 @@ async function siteCustomerSnapshot(params: URLSearchParams, user: AppUser, isPr
   } else {
     const sites = await getAll(`sites?customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}&select=id,site_name,customer_id,contract_service_type_id,status&order=id.asc`) as Row[];
     result.sites = sites;
-    if (sites.length) result.site_devices = await getAll(`site_devices?site_id=in.(${sites.map(row=>row.id).join(",")})&deleted_at=is.null&select=${MONITORING_DEVICE_SELECT},notes,access_station_no&order=id.asc`);
+    if (sites.length) result.site_devices = await getAll(`site_devices?site_id=in.(${sites.map(row=>row.id).join(",")})&deleted_at=is.null&select=${MONITORING_DEVICE_SELECT}&order=id.asc`);
   }
   return result;
 }
@@ -675,7 +687,7 @@ async function queryRecords(params: URLSearchParams,user:AppUser) {
   return { records: await get(path), entity: params.get("entity"), sort: params.get("sort"), direction };
 }
 
-const MONITORING_DEVICE_SELECT = "id,site_id,device_no,device_name,ip_address,device_type,network_cable_no,cabinet,device_brand,device_model,details,http_port,supports_audio,manual_url,status,credential_configured,created_by,updated_by,created_at,updated_at,row_version";
+const MONITORING_DEVICE_SELECT = "id,site_id,device_no,device_name,ip_address,device_type,network_cable_no,cabinet,device_brand,device_model,details,notes,http_port,supports_audio,resolution_width,resolution_height,fps,access_station_no,serial_number,installed_on,warranty_end_on,manual_url,spreadsheet_fields,status,credential_configured,created_by,updated_by,created_at,updated_at,row_version";
 const MONITORING_SORTS: Record<string,string> = {
   updated: "updated_at",
   name: "device_name",
@@ -709,6 +721,51 @@ async function accessDeviceScope(customerId:string,serviceId:string) {
   ]);
   if(!links.length||!customers.length||!services.some((s:Row)=>s.equipment_import_template==="access_control"))throw Error("此客戶沒有有效的門禁承攬關聯。");
 }
+async function siteSpreadsheetScope(params:URLSearchParams,user:AppUser,write=false,templateOnly=false) {
+  const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("service_id")),kind=params.get("kind")||"devices",sourceId=uuid(params.get("source_id"));
+  if(!customerId||!serviceId||!["devices","history"].includes(kind)||kind==="history"&&!sourceId&&!templateOnly||kind==="devices"&&params.get("source_id"))throw Error("請選擇有效的客戶、承攬及設備範圍。");
+  requirePermission(user,"site");
+  const [services,links,customers]=await Promise.all([
+    get(`contract_service_types?id=eq.${serviceId}&is_active=eq.true&select=id,code,name,equipment_import_template`),
+    get(`customer_contract_services?customer_id=eq.${customerId}&service_type_id=eq.${serviceId}&is_active=eq.true&select=customer_id`),
+    get(`customers?id=eq.${customerId}&deleted_at=is.null&select=id`)
+  ]);
+  const service=services[0] as Row|undefined;
+  if(!service||service.code==="phone_system"||!links.length||!customers.length)throw Error("找不到可用的非電話客戶承攬資料。");
+  const module=service.code==="surveillance"?"monitoring":"equipment";
+  requirePermission(user,module);
+  const importModule=kind==="history"?"history":service.code==="surveillance"?"monitoring_import":"equipment";
+  if(kind==="history")requirePermission(user,"history");
+  if(write)requirePermission(user,importModule,"CREATE");
+  if(sourceId){
+    const records=await get(`site_devices?id=eq.${sourceId}&deleted_at=is.null&select=id,site_id`) as Row[];
+    const sites=records[0]?await get(`sites?id=eq.${records[0].site_id}&customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}&select=id`):[];
+    if(!sites.length)throw Error("找不到所選客戶承攬的有效設備。");
+  }
+  const deviceType=text(params.get("device_type"));if(deviceType&&!DEVICE_TYPES.includes(deviceType as MonitoringDeviceType)||kind==="history"&&deviceType)throw Error("範本設備類型不正確。");
+  return {customer_id:customerId,service_id:serviceId,kind:kind as "devices"|"history",source_id:sourceId,device_type:deviceType,service,can_import:hasPermission(user,importModule,"CREATE"),can_manage_template:hasPermission(user,kind==="history"?"history":module,"UPDATE"),can_credentials:hasPermission(user,"credentials","UPDATE")};
+}
+async function saveSiteSpreadsheetTemplate(payload:Row,user:AppUser) {
+  const {spreadsheetColumns}=await import('./site-spreadsheet.ts');
+  const params=new URLSearchParams();for(const key of ["customer_id","service_id","kind","device_type"])if(payload[key]!=null)params.set(key,text(payload[key]));
+  const scope=await siteSpreadsheetScope(params,user,false,true),name=limited(payload.name,120),columns=spreadsheetColumns(scope.kind,payload.columns),version=payload.row_version==null?null:Number(payload.row_version);
+  if(!scope.can_manage_template)throw Error("沒有修改此承攬範本的權限。");
+  if(!name||version!==null&&(!Number.isInteger(version)||version<1))throw Error("範本名稱或版本不正確。");
+  return rpc("save_site_spreadsheet_template_v1",{p_actor_user_id:user.id,p_customer_id:scope.customer_id,p_service_id:scope.service_id,p_kind:scope.kind,p_device_type:scope.device_type,p_name:name,p_columns:columns,p_row_version:version});
+}
+async function importSiteSpreadsheet(payload:Row,user:AppUser) {
+  const {siteSpreadsheetRow}=await import('./site-spreadsheet.ts');
+  const params=new URLSearchParams();for(const key of ["customer_id","service_id","kind","source_id","device_type"])if(payload[key]!=null)params.set(key,text(payload[key]));
+  const scope=await siteSpreadsheetScope(params,user,true),fileName=limited(payload.file_name,255),sheetName=limited(payload.sheet_name,120),fileHash=text(payload.file_hash),requestId=uuid(payload.request_id);
+  if(!fileName||!sheetName||!requestId||!/^[0-9a-f]{64}$/.test(fileHash)||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>1000||JSON.stringify(payload.rows).length>8388608)throw Error("Excel 匯入資料不完整或超出大小限制。");
+  const rows:Row[]=[];
+  for(const candidate of payload.rows){
+    const row=siteSpreadsheetRow(candidate,scope.kind);
+    if(scope.kind==="devices")row.credential=await spreadsheetCredentialEnvelope(candidate as Row,user);
+    rows.push(row);
+  }
+  return rpc("import_site_spreadsheet_v1",{p_customer_id:scope.customer_id,p_service_id:scope.service_id,p_kind:scope.kind,p_source_id:scope.source_id,p_file_name:fileName,p_sheet_name:sheetName,p_file_hash:fileHash,p_request_id:requestId,p_rows:rows,p_actor_user_id:user.id});
+}
 async function monitoringCustomerScope(customerId: string) {
   const services = await get("contract_service_types?code=eq.surveillance&is_active=eq.true&select=id&limit=1") as Row[];
   const serviceId = services.length ? uuid(services[0].id) : null;
@@ -727,7 +784,7 @@ async function monitoringDevices(params: URLSearchParams) {
   const sort = text(params.get("sort"));
   const sortField = MONITORING_SORTS[sort] || MONITORING_SORTS.updated;
   const search = text(params.get("search")).replace(/[,*()]/g, " ").slice(0, 80);
-  let path = `site_devices?select=${MONITORING_DEVICE_SELECT}&deleted_at=is.null&device_type=not.is.null&order=${sortField}.${direction},id.asc&limit=${pageSize}&offset=${(page - 1) * pageSize}`;
+  let path = `site_devices?select=${MONITORING_DEVICE_SELECT}&deleted_at=is.null&${await monitoringSiteFilter()}&order=${sortField}.${direction},id.asc&limit=${pageSize}&offset=${(page - 1) * pageSize}`;
   const rawSiteId = text(params.get("site_id"));
   const siteId = rawSiteId ? uuid(rawSiteId) : null;
   if (rawSiteId && !siteId) throw new Error("案場編號不正確。");
@@ -763,10 +820,15 @@ async function monitoringDevices(params: URLSearchParams) {
     query: { search, customer_id: customerId || "", type: type || "", brand, model, cabinet, sort: sort || "updated", direction },
   };
 }
+async function monitoringSiteFilter() {
+  const services=await get("contract_service_types?code=eq.surveillance&select=id") as Row[];
+  const sites=services.length?await getAll(`sites?contract_service_type_id=in.(${services.map(service=>service.id).join(",")})&select=id`):[];
+  return sites.length?`site_id=in.(${sites.map(site=>site.id).join(",")})`:"site_id=is.null";
+}
 async function monitoringDeviceDetail(params: URLSearchParams) {
   const id = uuid(params.get("id"));
   if (!id) throw new Error("監控設備編號不正確。");
-  const records = await get(`site_devices?id=eq.${id}&deleted_at=is.null&device_type=not.is.null&select=${MONITORING_DEVICE_SELECT}&limit=1`) as Row[];
+  const records = await get(`site_devices?id=eq.${id}&deleted_at=is.null&${await monitoringSiteFilter()}&select=${MONITORING_DEVICE_SELECT}&limit=1`) as Row[];
   if (records.length !== 1) throw new Error("找不到監控設備。");
   return { record: (await attachMonitoringDeviceDisplayData(records))[0] };
 }
@@ -776,7 +838,34 @@ async function equipmentHistory(params: URLSearchParams, user: AppUser) {
   if (!["site_devices","phone_systems","phone_extensions","phone_terminal_points"].includes(sourceTable) || !sourceId) {
     throw new Error("設備履歷來源資料不正確。");
   }
-  return privateReadRpc("get_equipment_history_v1", { p_source_table: sourceTable, p_source_id: sourceId }, user);
+  const result=await privateReadRpc("get_equipment_history_v1", { p_source_table: sourceTable, p_source_id: sourceId }, user) as Row;
+  if(sourceTable==="site_devices"&&Array.isArray(result.events)&&result.events.length){
+    const ids=(result.events as Row[]).map(row=>uuid(row.id)).filter(Boolean);
+    const extra=ids.length?await get(`maintenance_events?id=in.(${ids.join(",")})&select=id,worker_names_text,spreadsheet_import_id,spreadsheet_fields`) as Row[]:[];
+    result.events=(result.events as Row[]).map(row=>({...row,...extra.find(item=>item.id===row.id)}));
+  }
+  return result;
+}
+// The legacy dialog RPC deliberately limits its page to 100 rows. Spreadsheet
+// reads fetch all visible links so a 1,000-row import can be exported completely.
+async function siteSpreadsheetHistory(sourceId:string,user:AppUser) {
+  const existing=await equipmentHistory(new URLSearchParams({source_table:"site_devices",source_id:sourceId}),user);
+  const equipment=existing.equipment as Row|null;
+  if(!equipment)return {equipment:null,events:[],summary:{total:0,last_maintenance:null}};
+  const links=await getAll(`maintenance_event_equipment?equipment_id=eq.${equipment.id}&select=event_id&order=event_id.asc`);
+  const ids=[...new Set(links.map(row=>uuid(row.event_id)).filter((id):id is string=>!!id))];
+  const events:Row[]=[],workers:Row[]=[];
+  for(let offset=0;offset<ids.length;offset+=100){
+    const selected=ids.slice(offset,offset+100).join(",");
+    events.push(...await getAll(`maintenance_events?id=in.(${selected})&status=eq.active&select=id,work_log_id,service_id,event_type,occurred_at,description,cause,handling_process,result,notes,status,row_version,created_at,updated_at,worker_names_text,spreadsheet_import_id,spreadsheet_fields&order=id.asc`));
+    workers.push(...await getAll(`maintenance_event_workers?event_id=in.(${selected})&select=event_id,user_id&order=event_id.asc,user_id.asc`));
+  }
+  const userIds=[...new Set(workers.map(row=>uuid(row.user_id)).filter((id):id is string=>!!id))],people:Row[]=[];
+  for(let offset=0;offset<userIds.length;offset+=100)people.push(...await get(`app_users?id=in.(${userIds.slice(offset,offset+100).join(",")})&select=id,display_name`) as Row[]);
+  const byUser=new Map(people.map(person=>[person.id,person]));
+  const result=events.map(event=>({...event,workers:workers.filter(worker=>worker.event_id===event.id).map(worker=>byUser.get(worker.user_id)).filter(Boolean)}))
+    .sort((a,b)=>String(b.occurred_at||"").localeCompare(String(a.occurred_at||""))||String(b.created_at).localeCompare(String(a.created_at)));
+  return {equipment,events:result,summary:{total:result.length,last_maintenance:result.find(event=>event.occurred_at)?.occurred_at||null}};
 }
 async function phoneTerminalVersions(params:URLSearchParams) {
  const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("service_id")),versionId=uuid(params.get("id"));
@@ -810,7 +899,7 @@ async function monitoringDeviceOptions(user: AppUser, params=new URLSearchParams
 }
 async function monitoringDeviceDashboard(user: AppUser) {
   const [devices, imports] = await Promise.all([
-    get(`site_devices?deleted_at=is.null&device_type=not.is.null&select=${MONITORING_DEVICE_SELECT}`) as Promise<Row[]>,
+    get(`site_devices?deleted_at=is.null&${await monitoringSiteFilter()}&select=${MONITORING_DEVICE_SELECT}`) as Promise<Row[]>,
     get("monitoring_device_imports?select=id,file_name,sheet_name,total_count,inserted_count,status,actor,created_at&order=created_at.desc&limit=5") as Promise<Row[]>,
   ]);
   const byType = Object.fromEntries(DEVICE_TYPES.map(type => [type, devices.filter(row => row.device_type === type).length]));
@@ -981,6 +1070,14 @@ function maintenanceEventsInput(value: unknown) {
 }
 
 async function change(operation: string, payload: Row, user: AppUser | null) {
+  if(operation==="save_site_spreadsheet_template"){
+    if(!user)throw Error("請先登入。");
+    return saveSiteSpreadsheetTemplate(payload,user);
+  }
+  if(operation==="import_site_spreadsheet"){
+    if(!user)throw Error("請先登入。");
+    return importSiteSpreadsheet(payload,user);
+  }
   if(operation==="set_construction_item_completed"){
     if(!uuid(payload.id)||!Number.isInteger(payload.row_version)||typeof payload.is_completed!=="boolean")throw new Error("施工子項目或版本不正確。");
     return rpc("set_construction_item_completed_v1",{p_actor_user_id:user!.id,p_item_id:uuid(payload.id),p_row_version:payload.row_version,p_completed:payload.is_completed});
@@ -1959,6 +2056,13 @@ async function handleRequest(request: Request) {
         return json(await constructionSnapshot(user,projectId?uuid(projectId):null));
       }
       if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
+      if(scopeName==="site_spreadsheet") {
+        const scope=await siteSpreadsheetScope(params,user);
+        const templateOnly=params.get("template_only")==="1";
+        const snapshot:Row=templateOnly?{}:scope.kind==="devices"?await siteCustomerSnapshot(params,user,isPreviewGateway):await siteSpreadsheetHistory(scope.source_id!,user);
+        const templates=await get(`site_spreadsheet_templates?service_id=eq.${scope.service_id}&kind=eq.${scope.kind}&device_type=eq.${scope.device_type}&select=id,service_id,kind,device_type,name,columns,row_version,updated_at`);
+        return json({...scope,template:templates[0]||null,...templateOnly?{}:{records:scope.kind==="devices"?snapshot.site_devices:snapshot.events,equipment:snapshot.equipment},current_user:publicUser(user),preview_readonly:isPreviewGateway});
+      }
       if (scopeName === "access_device_import") {
         const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("service_id"));
         if(!customerId||!serviceId)throw Error("請選擇客戶與門禁承攬。");

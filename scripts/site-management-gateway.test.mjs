@@ -15,6 +15,8 @@ function harness(role='operator'){
   context.currentUser=async()=>role?{id:randomUUID(),username:'fixture',display_name:'測試員',role,is_active:true}:null;
   context.get=async path=>{
     reads.push(path);
+    // Model the final PostgREST page when a scope uses getAll for completeness.
+    if(Number(new URL('http://fixture/'+path).searchParams.get('offset'))>0)return[];
     if(path.startsWith('contract_service_types?'))return[{id:service}];
     if(path.startsWith('customer_contract_services?'))return[{customer_id:customer}];
     if(path.startsWith('customers?'))return[{id:customer,customer_code:'C001',name:'測試客戶',customer_category:'school'}];
