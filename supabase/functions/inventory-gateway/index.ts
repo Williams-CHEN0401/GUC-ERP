@@ -293,7 +293,7 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
@@ -303,7 +303,7 @@ async function hydratePermissions(user:AppUser):Promise<AppUser> {
 }
 function hasPermission(user:AppUser,module:string,action:PermissionAction="VIEW"):boolean {
  if(user.role==="admin")return true;
- if(!user.permissions&&["performance","purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
+ if(!user.permissions&&["accounting_payables","accounting_payroll","performance","purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
  if(!user.permissions)return ["operator","viewer"].includes(user.role) && (action==="VIEW"||user.role==="operator"&&!["settings","backup","customers","suppliers","inventory","credentials"].includes(module)&&action!=="DELETE");
  return user.permissions.some(p=>p.module===module&&p[`can_${action.toLowerCase()}` as keyof Permission]===true);
 }
@@ -327,7 +327,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  monitoring_import:["import_monitoring_devices"],
  history:["save_equipment_history","void_maintenance_event"],
  worklogs:["upsert_customer_project_work_log","delete_standalone_work_log","create_site_work_log"],
- equipment:["create_site","update_site","delete_site","upsert_contract_site_entry","delete_contract_site_entry","upsert_project_site_entry","delete_project_site_entry","delete_site_entry","create_site_floor","create_site_route","create_site_device","create_site_note","create_site_asset","create_site_attachment_batch","create_contract_site_attachment_batch"],
+ equipment:["import_access_devices","create_site","update_site","delete_site","upsert_contract_site_entry","delete_contract_site_entry","upsert_project_site_entry","delete_project_site_entry","delete_site_entry","create_site_floor","create_site_route","create_site_device","create_site_note","create_site_asset","create_site_attachment_batch","create_contract_site_attachment_batch"],
  backup:["restore_database_backup"]
 };
 function operationPermission(operation:string,payload:Row):{module:string;action:PermissionAction}|null {
@@ -369,6 +369,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   if(["monitoring","phone","history"].includes(module))requirePermission(user,"site");
   return;
  }
+ if(scope==="access_device_import"){requireOperation(user,"import_access_devices",{},["admin","operator"]);return;}
  if(scope==="session"||scope==="settings"&&privateContext.getStore()?.can_configure)return;
  if(scope==="nas_upload_context"){
   requireOperation(user,"create_contract_site_attachment_batch",{},["admin","operator"]);
@@ -454,7 +455,7 @@ const datasets: Record<string, DatasetDefinition> = {
   customer_departments: { path: "customer_departments?select=id,customer_id,name,is_active,row_version,created_at,updated_at&order=customer_id.asc,name.asc,id.asc", paged: true },
   customer_categories: { path: "customer_categories?select=id,code,name,row_version&order=sort_order.asc,created_at.asc,id.asc", paged: true },
   customers: { path: "customers?select=is_private,id,customer_code,customer_category,name,phone,email,address,note,created_at,updated_at,row_version,deleted_at&order=customer_code.asc,id.asc", paged: true },
-  contract_service_types: { path: "contract_service_types?select=id,code,name,sort_order,is_active,row_version,created_at,updated_at&order=sort_order.asc,name.asc", paged: true },
+  contract_service_types: { path: "contract_service_types?select=id,code,name,equipment_import_template,sort_order,is_active,row_version,created_at,updated_at&order=sort_order.asc,name.asc", paged: true },
   customer_contract_services: { path: "customer_contract_services?is_active=eq.true&select=customer_id,service_type_id,created_at&order=created_at.asc", paged: true },
   customer_contacts: { path: "customer_contacts?select=id,customer_id,name,title,phone,email,is_primary,note,created_at,updated_at,row_version&order=is_primary.desc,name.asc" },
   construction_details: { path: "construction_details?select=project_id,scope,planned_start_on,planned_end_on,actual_start_on,actual_end_on,acceptance_on,acceptance_note" },
@@ -512,7 +513,7 @@ async function siteCustomerSnapshot(params: URLSearchParams, user: AppUser, isPr
   } else {
     const sites = await getAll(`sites?customer_id=eq.${customerId}&contract_service_type_id=eq.${serviceId}&select=id,site_name,customer_id,contract_service_type_id,status&order=id.asc`) as Row[];
     result.sites = sites;
-    if (sites.length) result.site_devices = await getAll(`site_devices?site_id=in.(${sites.map(row=>row.id).join(",")})&deleted_at=is.null&select=${MONITORING_DEVICE_SELECT},notes&order=id.asc`);
+    if (sites.length) result.site_devices = await getAll(`site_devices?site_id=in.(${sites.map(row=>row.id).join(",")})&deleted_at=is.null&select=${MONITORING_DEVICE_SELECT},notes,access_station_no&order=id.asc`);
   }
   return result;
 }
@@ -699,6 +700,14 @@ async function attachMonitoringDeviceDisplayData(records: Row[]) {
     customer_id: siteById.get(String(row.site_id))?.customer_id || null,
     contract_service_type_id: siteById.get(String(row.site_id))?.contract_service_type_id || null,
   }));
+}
+async function accessDeviceScope(customerId:string,serviceId:string) {
+  const [links,services,customers]=await Promise.all([
+    get(`customer_contract_services?is_active=eq.true&customer_id=eq.${customerId}&service_type_id=eq.${serviceId}&select=customer_id`),
+    get(`contract_service_types?id=eq.${serviceId}&is_active=eq.true&select=code,name,equipment_import_template`),
+    get(`customers?id=eq.${customerId}&deleted_at=is.null&select=id`)
+  ]);
+  if(!links.length||!customers.length||!services.some((s:Row)=>s.equipment_import_template==="access_control"))throw Error("此客戶沒有有效的門禁承攬關聯。");
 }
 async function monitoringCustomerScope(customerId: string) {
   const services = await get("contract_service_types?code=eq.surveillance&is_active=eq.true&select=id&limit=1") as Row[];
@@ -1026,6 +1035,23 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     const id=uuid(payload.id),rowVersion=Number(payload.row_version);
     if(!id||!Number.isInteger(rowVersion)||rowVersion<1) throw new Error("監控設備或版本不正確。");
     return rpc("delete_monitoring_device_v1",{p_id:id,p_row_version:rowVersion,p_actor:actor});
+  }
+  if(operation==="import_access_devices") {
+    requireOperation(user,operation,payload,["admin","operator"]);
+    const customerId=uuid(payload.customer_id),serviceId=uuid(payload.service_id),fileName=limited(payload.file_name,255),sheetName=limited(payload.sheet_name,120),fileHash=text(payload.file_hash);
+    if(!customerId||!serviceId||!fileName||!sheetName||!/^[0-9a-f]{64}$/.test(fileHash)||!Array.isArray(payload.rows)||!payload.rows.length||payload.rows.length>1000)throw Error("門禁匯入資料不完整。");
+    await accessDeviceScope(customerId,serviceId);
+    const rows:Row[]=[];
+    for(const candidate of payload.rows){
+      if(!candidate||typeof candidate!=="object"||Array.isArray(candidate))throw Error("門禁匯入列格式不正確。");
+      const row=candidate as Row,deviceName=limited(row.device_name,160),model=limited(row.device_model,160),address=ipAddress(row.ip_address),station=nullable(row.access_station_no,80),notes=nullable(row.notes,1000),port=row.http_port==null?null:Number(row.http_port),sourceRow=Number(row.source_row);
+      if(!deviceName||!model||address===null||station===null||notes===null||(port!==null&&(!Number.isInteger(port)||port<1||port>65535))||!Number.isInteger(sourceRow)||sourceRow<2)throw Error("門禁匯入列資料不完整或格式不正確。");
+      const username=text(row.login_username),password=typeof row.login_password==="string"?row.login_password:"";
+      if(username||password)requirePermission(user,"credentials","UPDATE");
+      const credential=await deviceCredentialEnvelope(username,password);
+      rows.push({device_name:deviceName,device_model:model,ip_address:address||null,http_port:port,access_station_no:station||null,notes:notes||null,source_row:sourceRow,credential});
+    }
+    return rpc("import_access_devices_v1",{p_customer_id:customerId,p_service_id:serviceId,p_file_name:fileName,p_sheet_name:sheetName,p_file_hash:fileHash,p_rows:rows,p_actor_user_id:user.id});
   }
   if (operation === "import_monitoring_devices") {
     requireOperation(user,operation,payload,["admin"]);
@@ -1872,6 +1898,15 @@ async function handleRequest(request: Request) {
       const user = await currentUser(request);
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
+      if(params.get("scope")==="finance"){
+        const module=params.get("module")||"";
+        if(!["accounting_payables","accounting_payroll"].includes(module))throw Error("不支援的會計查詢。");
+        requirePermission(user,module);
+        const month=date(params.get("month"));if(!month)throw Error("請選擇有效月份。");
+        const id=params.get("id");if(id&&!uuid(id))throw Error("資料識別不正確。");
+        const result=await rpc("accounting_finance_read_v1",{p_actor:user.id,p_module:module,p_month:month,p_id:id||null});
+        return new Response(JSON.stringify({finance:result,current_user:publicUser(user)}),{headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store, private"}});
+      }
       if(params.get("scope")==="performance"){
         if(Deno.env.get("GUC_PERFORMANCE_ENABLED")!=="true")return json({error:"績效功能尚未啟用。"},404);
         requirePermission(user,"performance");
@@ -1924,6 +1959,13 @@ async function handleRequest(request: Request) {
         return json(await constructionSnapshot(user,projectId?uuid(projectId):null));
       }
       if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
+      if (scopeName === "access_device_import") {
+        const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("service_id"));
+        if(!customerId||!serviceId)throw Error("請選擇客戶與門禁承攬。");
+        await accessDeviceScope(customerId,serviceId);
+        const snapshot=await siteCustomerSnapshot(params,user,isPreviewGateway);
+        return json({records:snapshot.site_devices,can_credentials:hasPermission(user,"credentials","UPDATE"),preview_readonly:isPreviewGateway});
+      }
       if (scopeName === "site_customer") return json(await siteCustomerSnapshot(params,user,isPreviewGateway));
       if (scopeName === "session") return json({ scope: scopeName, current_user: publicUser(user), preview_readonly:isPreviewGateway, errors: [], refreshed_at: new Date().toISOString() });
       const snapshot=await scopedSnapshot(user, scopeName, params.get("options_only")==="1") as Row;
@@ -1955,6 +1997,13 @@ async function handleRequest(request: Request) {
     Object.assign(auditContext.getStore()!,auditHeaders(request,user));
     if(operation === "logout"){await insert("audit_logs",{entity_type:"session",entity_id:user.id,action:"LOGOUT",actor:user.username,source:"web"});return json({ok:true});}
     if(request.headers.get("x-guc-system")==="site")requirePermission(user,"site");
+    if(operation.startsWith("finance.")){
+      const op=operation.slice(8),module=op==="terms_save"?"accounting_payables":"accounting_payroll";
+      requirePermission(user,module);
+      if(isPreviewGateway&&op!=="payroll_calculate")return json({error:"目前為唯讀預覽。"},403);
+      const result=await rpc("accounting_finance_command_v1",{p_actor:user.id,p_operation:op,p_payload:payload});
+      return json({ok:true,result,current_user:publicUser(user)},op==="payroll_calculate"?200:201);
+    }
     if(operation.startsWith("performance.")){
       if(Deno.env.get("GUC_PERFORMANCE_ENABLED")!=="true")return json({error:"績效功能尚未啟用。"},404);
       requirePermission(user,"performance");
