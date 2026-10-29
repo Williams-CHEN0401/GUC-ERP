@@ -20,6 +20,7 @@ export async function assignmentDatabase({completionFix=true}={}){
  await db.exec(await sql('20260916232954_work_assignments_dashboard.sql'));
  await db.exec(await sql('20260916233046_index_work_assignments_inventory_item.sql'));
  await db.exec(await sql(assignmentMigration));
+ await db.exec('alter table work_assignments add column assignment_request_id uuid');
  // Mirror the actual production constraint: completion is an update, not a new action.
  await db.exec(`alter table audit_logs add constraint audit_logs_action_check check(action in
  ('insert','update','delete','import','export','UPDATE_CREDENTIAL','IMPORT_DEVICES',

@@ -1173,7 +1173,7 @@ function renderDashboard(){
   const data=state.dashboard||{previous_business_date:"",projects:[],repairs:[],worklogs:[],assignments:{pending:[],completed:[]}},assignments=data.assignments||{pending:[],completed:[]};
   const worklogDate=document.querySelector("#dashboardWorklogDate");if(worklogDate)worklogDate.textContent=data.previous_business_date?`${data.previous_business_date} 的全部工作日誌`:"顯示前一日全部工作日誌";
   const constructionAssignmentExpanded=new Set([...document.querySelectorAll('#pendingAssignmentList [data-construction-assignment][open]')].map(row=>row.dataset.constructionAssignment));
-  const pendingRows=assignmentPendingRows();
+  const pendingRows=groupPendingAssignments(assignmentPendingRows());
   document.querySelector("#pendingAssignmentList").innerHTML=pendingRows.map(assignmentPendingCard).join("")||`<p class="dashboard-empty">${document.querySelector('#assignmentScope').value==='all'?'目前沒有未完成的工作指派':'目前沒有指派給您的未完成工作'}</p>`;
   for(const row of document.querySelectorAll('#pendingAssignmentList [data-construction-assignment]'))row.open=constructionAssignmentExpanded.has(row.dataset.constructionAssignment);
   document.querySelector("#completedAssignmentList").innerHTML=assignments.completed.map((row)=>`<article class="assignment-card complete"><div><small>${esc(row.project_code)}｜${esc(row.assignee)}</small><strong>${esc(row.project)}</strong><p>${esc(row.instructions)}</p>${assignmentPlanningSummary(row)}<span>${esc(formatDateTime(row.completed_at))} 已完成</span></div><button class="outline" type="button" data-acknowledge-assignment="${esc(row.id)}">知道了</button></article>`).join("")||'<p class="dashboard-empty">目前沒有新的完成通知</p>';

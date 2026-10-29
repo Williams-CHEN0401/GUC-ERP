@@ -10,7 +10,7 @@ import vm from 'node:vm';
 export async function adminAssignmentFixture(){
  const f=await constructionPlanServer(),{db,gatewayContext:context}=f;
  // The historical isolated schema predates these already-deployed nullable fields.
- await db.exec('alter table work_assignments add column if not exists construction_plan_id uuid,add column if not exists construction_item_id uuid,add column if not exists construction_plan_title text,add column if not exists construction_item_title text');
+ await db.exec('alter table work_assignments add column if not exists assignment_request_id uuid,add column if not exists construction_plan_id uuid,add column if not exists construction_item_id uuid,add column if not exists construction_plan_title text,add column if not exists construction_item_title text');
  const exportMigration=await sql('20261017083454_customer_archive_and_admin_tools.sql');
  await db.exec(exportMigration.slice(exportMigration.indexOf('do $$ declare prior text;'),exportMigration.lastIndexOf('commit;')));
  const users={admin:planUsers.admin,A:planUsers.A,B:planUsers.B,viewer:planUsers.viewer,admin2:'10000000-0000-4000-8000-000000000090'};

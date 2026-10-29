@@ -16,13 +16,28 @@ function assignmentPendingRows(){
   document.querySelector('#assignmentVisibilityHint').textContent=adminView?'管理員可查看所有人的未完成工作；完成通知保留給原指派人。':'只顯示與目前登入帳號相關的未完成工作與完成通知';
   return all?assignments.all_pending:assignments.pending;
 }
+function groupPendingAssignments(rows){
+  const groups=[],requests=new Map();
+  for(const row of rows){
+    // Only a persisted multi-person request identifies the same assignment.
+    // Legacy rows and independent requests must not collapse by title/notes.
+    if(row.assignment_type==='construction'||!row.assignment_request_id||!row.created_by_user_id){groups.push(row);continue;}
+    const key=JSON.stringify([row.created_by_user_id,row.assignment_request_id]);
+    let group=requests.get(key);
+    if(!group){group={...row,assignment_members:[]};requests.set(key,group);groups.push(group);}
+    group.assignment_members.push(row);
+    group.assignee=group.assignment_members.map(member=>member.assignee||'—').join('、');
+  }
+  return groups;
+}
 function assignmentPendingCard(row){
+  const ownAssignment=(row.assignment_members||[row]).find(member=>member.assignee_user_id===state.currentUser?.id);
   const mine=row.assignment_type==='construction'
     ?(state.dashboard.assignments?.pending||[]).some(item=>item.id===row.id)
-    :row.assignee_user_id===state.currentUser?.id;
+    :Boolean(ownAssignment);
   const people=`<span class="assignment-people">負責人：${esc(row.assignee||'—')}${row.creator?` · 指派人：${esc(row.creator)}`:''}</span>`;
   if(row.assignment_type==='construction')return constructionAssignmentAction(row,{readOnly:!mine,people});
-  return `<article class="assignment-card"><div><small>${esc(row.project_code)}｜${esc(row.customer)}</small><strong>${esc(row.project)}</strong>${people}<p>${esc(row.instructions)}</p>${assignmentPlanningSummary(row)}${row.assignment_type==='pickup'?`<span>取貨：${esc(row.item)} × ${esc(row.pickup_quantity)}</span>`:row.assignment_type==='appointment'?`<span>${esc(appointmentTypeLabel(row.appointment_type))} · ${esc(row.appointment_date||'')}</span>`:'<span>一般工作</span>'}</div>${mine?`<button class="primary" type="button" data-complete-assignment="${esc(row.id)}">完成</button>`:''}</article>`;
+  return `<article class="assignment-card"><div><small>${esc(row.project_code)}｜${esc(row.customer)}</small><strong>${esc(row.project)}</strong>${people}<p>${esc(row.instructions)}</p>${assignmentPlanningSummary(row)}${row.assignment_type==='pickup'?`<span>取貨${row.assignment_members?.length>1?'（每位）':''}：${esc(row.item)} × ${esc(row.pickup_quantity)}</span>`:row.assignment_type==='appointment'?`<span>${esc(appointmentTypeLabel(row.appointment_type))} · ${esc(row.appointment_date||'')}</span>`:'<span>一般工作</span>'}</div>${mine?`<button class="primary" type="button" data-complete-assignment="${esc(ownAssignment.id)}">${row.assignment_members?.length>1?'完成我的指派':'完成'}</button>`:''}</article>`;
 }
 document.addEventListener('change',event=>{if(event.target.id==='assignmentScope'){assignmentScopeChoice=event.target.value==='all'?'all':'mine';renderDashboard();}});
 

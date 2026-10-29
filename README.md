@@ -52,3 +52,7 @@ NAS Vercel Function 需要在對應環境設定 `NAS_WEBDAV_URL`、`NAS_WEBDAV_U
 版本控制與多人協作方式請見 `CONTRIBUTING.md` 與 `VERSION_CONTROL_AND_COLLABORATION.md`。
 
 跨 ERP 與獨立案場系統的正式架構、SSO、Gateway API、資料模型、環境變數、發布、回滾與驗收規格，以 [`GUC-Site-Data/docs/SYSTEM_SPECIFICATION.md`](https://github.com/Williams-CHEN0401/GUC-Site-Data/blob/main/docs/SYSTEM_SPECIFICATION.md) 為單一正式來源。
+
+## 2026-10-29 工作指派合併顯示
+
+同次多人指派以一張卡片集中顯示負責人，保留個人完成及逐人匯出；驗證與發布範圍見 [驗證紀錄](docs/20261029_assignment_grouping.md)。
