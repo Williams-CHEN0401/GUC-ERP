@@ -38,6 +38,7 @@
 Migration `20261029084350_system_audit_coverage.sql`：
 
 - 擴充既有 audit_logs：event_kind、outcome、operation、entity_key、record_label；舊事件 ID、時間、操作者及前後內容不改寫。
+- 解除 audit_logs.entity_id 的 NOT NULL 限制，讓尚無 UUID 的新增／失敗請求、匯出及代碼主鍵表單保存真實 request_id／entity_key，不虛構資料 ID；既有資料 ID 不變。
 - 對 44 張既有表，使用同一個內部 trigger 記錄新增／修改／刪除；涵蓋客戶科室／承攬、商品庫存、進取退貨主表與明細、工作規劃／人員／日誌／維修／附件、帳號／角色權限、會計相關表。
 - 替換的只有既有稽核 trigger；業務／驗證 trigger、FK、RPC 與編號機制保留。複合主鍵以 entity_key 保存；不依賴每張表必有 id。
 - 變更與稽核同一資料庫交易，交易 rollback 時不保留假的成功事件；只有時間／版本欄位變化的無實質異動略過。

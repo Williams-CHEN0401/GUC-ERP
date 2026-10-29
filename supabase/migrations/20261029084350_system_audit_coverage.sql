@@ -1,5 +1,8 @@
 -- Additive audit coverage. Existing events/identities/timestamps are not rewritten.
 begin;
+-- Request failures/exports and code-keyed forms may have no UUID record ID.
+-- Keep their real request_id/entity_key instead of fabricating an entity UUID.
+alter table public.audit_logs alter column entity_id drop not null;
 alter table public.audit_logs
  add column if not exists event_kind text not null default 'legacy',
  add column if not exists outcome text not null default 'recorded',

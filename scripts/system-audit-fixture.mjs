@@ -7,7 +7,7 @@ const text=f=>fs.readFileSync(new URL(f,import.meta.url),'utf8');
 export async function auditFixture({history=[]}={}){
  const {PGlite}=await import(process.env.PGLITE_MODULE||'@electric-sql/pglite'),db=new PGlite();
  await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
- create table audit_logs(id bigserial primary key,entity_type text,entity_id uuid,action text check(action in ('insert','update','delete','import','export','UPDATE_CREDENTIAL','IMPORT_DEVICES','BATCH_UPDATE','BATCH_DELETE','CREATE_REPAIR_ITEM','UPDATE_REPAIR_ITEM','DELETE_REPAIR_ITEM','LOGIN','LOGOUT')),before_data jsonb,after_data jsonb,source text,actor text,created_at timestamptz default now());`);
+ create table audit_logs(id bigserial primary key,entity_type text,entity_id uuid not null,action text check(action in ('insert','update','delete','import','export','UPDATE_CREDENTIAL','IMPORT_DEVICES','BATCH_UPDATE','BATCH_DELETE','CREATE_REPAIR_ITEM','UPDATE_REPAIR_ITEM','DELETE_REPAIR_ITEM','LOGIN','LOGOUT')),before_data jsonb,after_data jsonb,source text,actor text,created_at timestamptz default now());`);
  const schema=JSON.parse(text('./fixtures/system-audit-columns.json'));
  for(const table of schema)await db.exec('create table '+table.name+'('+table.columns.map(c=>'"'+c.name+'" '+c.type).join(',')+')');
  await db.exec(`create table phone_terminal_import_logs(id uuid,customer_id uuid,source_rows jsonb);
