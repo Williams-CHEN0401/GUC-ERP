@@ -64,7 +64,7 @@
               <span class="workspace-caption">工作內容・庫存・工作紀錄</span>
             </header>
             <div class="dashboard-focus">
-              <article class="panel assignment-panel"><div class="panel-head"><div><h2>工作指派</h2><p>只顯示與目前登入帳號相關的未完成工作與完成通知</p></div><button class="primary" type="button" data-open="workAssignmentModal">＋ 建立工作指派</button></div><div class="assignment-columns"><section><h3>我的待辦</h3><div id="pendingAssignmentList" class="assignment-list"></div></section><section><h3>完成通知</h3><div id="completedAssignmentList" class="assignment-list"></div></section></div></article>
+              <article class="panel assignment-panel"><div class="panel-head"><div><h2>工作指派</h2><p id="assignmentVisibilityHint">只顯示與目前登入帳號相關的未完成工作與完成通知</p></div><button class="primary" type="button" data-open="workAssignmentModal">＋ 建立工作指派</button></div><div class="assignment-columns"><section><div class="assignment-list-heading"><h3 id="pendingAssignmentTitle">我的待辦</h3><label class="assignment-scope-control" hidden>查看範圍<select id="assignmentScope"><option value="all">所有人的待辦</option><option value="mine">我的待辦</option></select></label></div><div id="pendingAssignmentList" class="assignment-list"></div></section><section><h3>完成通知</h3><div id="completedAssignmentList" class="assignment-list"></div></section></div></article>
               <article class="panel dashboard-equal-card"><div class="panel-head"><div><h2>工作內容</h2><p id="dashboardWorklogDate">顯示前一日全部工作日誌</p></div><button class="text-button" data-goto="worklogs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>日期</th><th>客戶／工作內容</th><th>施工人員</th><th>工作摘要</th></tr></thead><tbody id="dashboardWorklogTable"></tbody></table></div></article>
               <div class="dashboard-pair"><article class="panel"><div class="panel-head"><div><h2>維修品管理</h2><p>依收件日期選取最新 15 筆</p></div><button class="text-button" data-goto="repairs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>收件日期</th><th>維修單／客戶</th><th>品項／故障內容</th><th>狀態</th></tr></thead><tbody id="dashboardRepairTable"></tbody></table></div></article>
               <article class="panel project-panel"><div class="panel-head"><div><h2>待辦工作</h2><p>尚未完成的工作內容，最多 15 筆</p></div><button class="text-button" data-goto="projects">查看全部 →</button></div><div class="project-list" id="activeProjectList"></div></article></div>
@@ -262,13 +262,13 @@
     <script src="/receipt-documents.js" defer></script>
     <script src="/work-content-report.js" defer></script>
     <script src="/shared-report-ui.js" defer></script>
+    <script src="/assignment-ui.js" defer></script>
     <script src="/app.js" defer></script>
     <script src="/performance-ui.js" defer></script>
     <script src="/construction-checklist.js" defer></script>
     <script src="/construction-plan-ui.js" defer></script>
     <script src="/work-log-construction-reminder.js" defer></script>
     <script src="/work-log-workforce.js" defer></script>
-    <script src="/assignment-ui.js" defer></script>
     <script src="/customer-services.js" defer></script>
     <script src="/form-reference-sync.js" defer></script>
     <script src="/search-panels.js" defer></script>
