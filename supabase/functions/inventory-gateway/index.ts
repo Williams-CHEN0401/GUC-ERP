@@ -620,7 +620,7 @@ async function exportErpData(payload:Row,user:AppUser){
  const filters=payload.scope==='filtered'&&payload.filters&&typeof payload.filters==='object'?payload.filters as Row:{};
  let snapshot:Row;
  if(spec.scope==='audit'){
-  const params=new URLSearchParams();for(const field of ['q','actor','module','action','from','to'])if(filters[field])params.set(field,text(filters[field]));params.set('page_size','100');
+  const params=new URLSearchParams();for(const field of ['q','actor','module','action','from','to','event_kind','outcome','request_id','entity_id','actor_user_id'])if(filters[field])params.set(field,text(filters[field]));params.set('page_size','100');
   const rows:Row[]=[];let expected=0;
   for(let page=1;page<=10000;page++){params.set('page',String(page));const result=await auditRecords(params,user);expected=result.pagination.total;rows.push(...result.records);if(page>=result.pagination.page_count)break;if(page===10000)throw new Error('日誌超過匯出範圍，請縮小日期條件。');}
   if(rows.length!==expected)throw new Error('日誌資料於匯出期間變動，請重新匯出。');
@@ -1731,7 +1731,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "delete_account") return deleteAccount(payload, user!);
   throw new Error("不支援的操作。");
 }
-type AuditContext = { actor: string; actorId: string; requestId: string; sourceIp: string; userAgent: string; system: string };
+type AuditContext = { actor: string; actorId: string; requestId: string; sourceIp: string; userAgent: string; system: string; operation?: string; target?: Row; entityType?: string; action?: string; preview?: boolean };
 async function privateReadRpc(name: string, args: Row, user: AppUser) {
  return rpc(`private_${name}`, {...args,p_private_actor:user.id});
 }
@@ -1826,7 +1826,9 @@ function auditHeaders(request: Request, user?: AppUser): AuditContext {
   return { actor:user?.display_name||user?.username||"",actorId:user?.id||"",requestId:crypto.randomUUID(),sourceIp:(request.headers.get("x-forwarded-for")||"").split(",")[0].trim().slice(0,64),userAgent:(request.headers.get("user-agent")||"").slice(0,512),system:request.headers.get("x-guc-system")==="site"?"site":"erp" };
 }
 function auditProjection(record: Row): Row {
-  return {...record,before_data:redactAuditValue(record.before_data),after_data:redactAuditValue(record.after_data)};
+  return {...record,before_data:redactAuditValue(record.before_data),after_data:redactAuditValue(record.after_data),
+    event_kind:record.event_kind||"legacy",outcome:record.outcome||"recorded",
+    actor_evidence:record.actor_user_id?"account":record.actor?"text":"unknown"};
 }
 function redactAuditValue(value: unknown, depth=0): unknown {
   if(depth>12)return "[已省略]";
@@ -1835,7 +1837,40 @@ function redactAuditValue(value: unknown, depth=0): unknown {
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
-const AUDIT_ENTITIES:Record<string,string[]>={customers:["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],projects:["project","projects","project_workers","construction_plans","construction_plan_items","construction_details","maintenance_details","project_costs","work_assignment"],worklogs:["site_work_logs","site_work_log_workers","site_assets"],repairs:["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],phone:["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],monitoring:["sites","site_devices","site_device_credentials","monitoring_device_imports"],inventory:["inventory_item","inventory_items","product_categories","pickup_record","stock_receipt","stock_receipt_customers","supplier_return_documents","stock_adjustment","suppliers","bulk_update_batches","bulk_update_batch_items"],accounts:["app_user","app_users","session","app_roles","role_permissions","project_access"]};
+const AUDIT_ENTITIES:Record<string,string[]>={"customers":["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],"projects":["project","projects","project_workers","construction_plans","construction_plan_items","construction_plan_assignees","construction_details","maintenance_details","project_costs"],"assignments":["work_assignment","work_assignments"],"worklogs":["site_work_logs","site_work_log_workers","site_assets","attachments","work_log_access_requests"],"repairs":["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],"phone":["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],"monitoring":["sites","site_devices","site_device_credentials","monitoring_device_imports","access_device_imports","site_spreadsheet_imports","site_spreadsheet_templates"],"inventory":["inventory_item","inventory_items","product_categories","stock_adjustment","stock_adjustments","suppliers","bulk_update_batches","bulk_update_batch_items"],"transactions":["stock_receipt","stock_receipts","stock_receipt_customers","stock_transaction_documents","pickup_record","pickup_records","supplier_return_documents","supplier_return_lines","supplier_return_customers","site_return_documents","site_return_lines"],"accounts":["app_user","app_users","session","app_roles","role_permissions","project_access","erp_private_access"],"accounting":["accounting_material_prices","accounting_worker_wages","supplier_payment_terms","accounting_payroll","accounting_payables"],"performance":["performance_access","performance_reviews","performance_periods","performance_templates","performance_shared_tasks"],"system":["system_operation","system_backup"]};
+// Metadata only: never persist submitted passwords, salary values or request bodies.
+function auditOperation(operation:string,payload:Row){
+ const needed=operationPermission(operation,payload),module=needed?.module||"";
+ const types:Record<string,string>={users:"app_users",settings:"app_roles",customers:"customers",suppliers:"suppliers",appointments:"work_assignments",projects:"project",inventory:"inventory_item",pickups:"pickup_record",purchases:"stock_receipt",repairs:"repair_items",phone:"phone_extensions",credentials:"phone_system_credentials",monitoring:"site_devices",monitoring_import:"monitoring_device_imports",history:"maintenance_events",worklogs:"site_work_logs",equipment:"site_devices",backup:"system_backup"};
+ let entityType=types[module]||"system_operation";
+ if(/supplier_return/.test(operation))entityType="supplier_return_documents";
+ else if(/site_return/.test(operation))entityType="site_return_documents";
+ else if(/construction/.test(operation))entityType="construction_plans";
+ else if(/work_assignment/.test(operation))entityType="work_assignments";
+ else if(operation.startsWith("finance."))entityType=operation.includes("terms")?"supplier_payment_terms":"accounting_payroll";
+ else if(operation.startsWith("performance."))entityType="performance_reviews";
+ const action=/import/.test(operation)?"import":/export/.test(operation)?"export":needed?({CREATE:"insert",UPDATE:"update",DELETE:"delete",VIEW:"update"}[needed.action]):/delete|cancel|void/.test(operation)?"delete":/create/.test(operation)?"insert":"update";
+ const references:string[]=[];
+ const collect=(value:unknown,depth=0)=>{if(depth>8||references.length>5000)return;if(Array.isArray(value)){for(const item of value)collect(item,depth+1);}else if(value&&typeof value==="object")for(const [key,v]of Object.entries(value)){if(/^(id|.*_ids?)$/.test(key)){for(const item of Array.isArray(v)?v:[v]){const id=uuid(item);if(id)references.push(id);}}else if(v&&typeof v==="object")collect(v,depth+1);}};
+ collect(payload);
+ return {entityType,action,target:{id:uuid(payload.id)||uuid(payload.document_id)||uuid(payload.project_id),references:[...new Set(references)]}};
+}
+async function recordAuditOutcome(response:Response){
+ const context=auditContext.getStore();
+ if(context?.preview||!context?.actorId||!context.operation||["login","logout","check_monitoring_ip_conflicts"].includes(context.operation))return response;
+ try{
+   await insert("audit_logs",{entity_type:context.entityType||"system_operation",entity_id:context.target?.id||null,action:context.action||"update",event_kind:"request",outcome:response.ok?"completed":"failed",source:"web",actor:context.actor,
+    after_data:{operation:context.operation,http_status:response.status,references:context.target?.references||[]}});
+ }catch{
+   // Business writes may already have committed: never turn success into a retryable
+   // failure. Transactional change events remain; expose the missing result event.
+   response.headers.set("X-GUC-Audit-Warning","outcome-not-recorded");
+   console.error("AUDIT_OUTCOME_NOT_RECORDED",context.requestId);
+   const body=await response.clone().json().catch(()=>null);
+   if(body&&typeof body==="object")return new Response(JSON.stringify({...body,audit_warning:"操作結果已回傳，但送出結果日誌未完整記錄，請通知管理員；不要因此重複送出。"}),{status:response.status,headers:response.headers});
+ }
+ return response;
+}
 async function auditRecords(params: URLSearchParams, user: AppUser) {
   if(user.permissions)requirePermission(user,"audit");else requireRole(user,["admin"]);
   const page=Math.max(1,Math.min(10000,Number(params.get("page"))||1)),size=Math.max(1,Math.min(100,Number(params.get("page_size"))||25));
@@ -1859,12 +1894,23 @@ async function auditRecords(params: URLSearchParams, user: AppUser) {
     const terms=[keyword,...(aliases[keyword]||[])];
     query.set("or",`(${terms.flatMap(term=>["actor","entity_type","action","source"].map(field=>`${field}.ilike.*${term}*`)).join(',')})`);
   }
+  for(const [field,allowed] of Object.entries({event_kind:["legacy","change","request"],outcome:["recorded","completed","failed"]})){
+    const value=params.get(field);if(value){if(!allowed.includes(value))throw new Error("日誌篩選格式不正確。");query.set(field,`eq.${value}`);}
+  }
+  for(const field of ["request_id","entity_id","actor_user_id"]){const value=params.get(field);if(value){if(!uuid(value))throw new Error("日誌識別碼不正確。");query.set(field,`eq.${value}`);}}
   if(params.get("id")){if(!/^\d+$/.test(params.get("id")!))throw new Error("日誌識別碼不正確。");query.set("id",`eq.${params.get("id")}`);}
   const response=await db(`audit_logs?${query}`,{headers:{Prefer:"count=exact"}});
   if(!response.ok)throw new Error("日誌查詢失敗。");
   const records=(await response.json() as Row[]).map(auditProjection),total=Number(response.headers.get("content-range")?.split('/')[1]||0);
   await auditDisplayNames(records);
-  return {records,pagination:{page,page_size:size,total,page_count:Math.max(1,Math.ceil(total/size))}};
+  let history:Row|undefined;
+  if(params.get("include_history")==="1"){
+    // Same authorized/private read path as the list; no unrestricted summary RPC.
+    const response=await db("audit_logs?select=id,created_at&order=created_at.asc,id.asc&limit=1",{headers:{Prefer:"count=exact"}});
+    if(!response.ok)throw Error("歷史範圍查詢失敗。");
+    const first=await response.json() as Row[];history={first_at:first[0]?.created_at||null,total:Number(response.headers.get("content-range")?.split('/')[1]||0)};
+  }
+  return {records,history,pagination:{page,page_size:size,total,page_count:Math.max(1,Math.ceil(total/size))}};
 }
 async function auditDisplayNames(records: Row[]) {
   const definitions: [string,string,string[]][] = [
@@ -2002,6 +2048,7 @@ async function handleRequest(request: Request) {
   try {
     const requestUrl = new URL(request.url);
     const isPreviewGateway = requestUrl.pathname.replace(/\/+$/, "").includes("/inventory-gateway-preview");
+    const requestAudit=auditContext.getStore();if(requestAudit)requestAudit.preview=isPreviewGateway;
     if(request.method === "GET") {
       const user = await currentUser(request);
       if (!user) return json({error:"請先以有效帳號登入。"},401);
@@ -2097,9 +2144,11 @@ async function handleRequest(request: Request) {
     if(request.method !== "POST") return json({error:"僅支援 GET 與 POST。"},405);
     const body=await request.json() as {operation?:unknown;payload?:unknown};
     const operation = text(body.operation), payload = body.payload&&typeof body.payload==="object"&&!Array.isArray(body.payload)?body.payload as Row:{};
+    const context=auditContext.getStore();
+    if(context){const meta=auditOperation(operation,payload);Object.assign(context,{operation,...meta});}
     if (operation === "login") { const logged = await login(payload); if(request.headers.get("x-guc-system")==="site")requirePermission(logged.user,"site"); if(!isPreviewGateway){Object.assign(auditContext.getStore()!,auditHeaders(request,logged.user));await insert("audit_logs",{entity_type:"session",entity_id:logged.user.id,action:"LOGIN",actor:logged.user.username,source:"web"});} return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
     if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);requirePermission(user,"site");requirePermission(user,"monitoring");assertPrivatePayload(payload);return json(await monitoringIpConflicts(payload));}
-    if(operation==="export_data"){const exportUser=await currentUser(request);if(!exportUser)return json({error:"請先登入。"},401);if(request.headers.get("x-guc-system")==="site")requirePermission(exportUser,"site");return json(await exportErpData(payload,exportUser));}
+    if(operation==="export_data"){const exportUser=await currentUser(request);if(!exportUser)return json({error:"請先登入。"},401);Object.assign(auditContext.getStore()!,auditHeaders(request,exportUser));if(request.headers.get("x-guc-system")==="site")requirePermission(exportUser,"site");return json(await exportErpData(payload,exportUser));}
     if (isPreviewGateway) return json({error:"Preview 環境僅允許登入與讀取；所有寫入均已封鎖。",code:"PREVIEW_READ_ONLY"},403);
     if (operation === "bootstrap_admin") {
       const existing = await get("app_users?select=id&limit=1") as Row[];
@@ -2148,7 +2197,7 @@ async function handleRequest(request: Request) {
   }
 }
 Deno.serve(request => auditContext.run(auditHeaders(request), () => requestMetrics.run({started:performance.now(),requests:0,transportMs:0},async()=>{
-  const response=await privateContext.run({},()=>handleRequest(request)),metrics=requestMetrics.getStore()!;
+  const response=await privateContext.run({},async()=>{const response=await handleRequest(request);return recordAuditOutcome(response);}),metrics=requestMetrics.getStore()!;
   response.headers.set("Server-Timing",`gateway;dur=${(performance.now()-metrics.started).toFixed(2)}, upstream;dur=${metrics.transportMs.toFixed(2)};desc="auth and database transport sum", upstream_requests;desc="${metrics.requests}"`);
   return response;
 })));
