@@ -152,6 +152,9 @@
         panel.applied = describeFilters(fields);
         close(panel, true);
       });
+      if (existingSubmit) container.addEventListener("reset", () => {
+        queueMicrotask(() => { panel.applied = describeFilters(fields); update(panel); });
+      });
       else apply.addEventListener("click", () => close(panel, true));
       popup.addEventListener("keydown", event => {
         if (event.key === "Enter" && !event.isComposing && event.target.tagName === "INPUT" && !existingSubmit) {

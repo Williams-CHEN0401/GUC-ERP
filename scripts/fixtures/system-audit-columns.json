@@ -1,0 +1,2398 @@
+[
+  {
+    "name": "accounting_material_prices",
+    "columns": [
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "unit_price",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "updated_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "accounting_payroll",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "employee_id",
+        "type": "uuid"
+      },
+      {
+        "name": "month",
+        "type": "date"
+      },
+      {
+        "name": "input",
+        "type": "jsonb"
+      },
+      {
+        "name": "calculation",
+        "type": "jsonb"
+      },
+      {
+        "name": "deleted_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_by",
+        "type": "uuid"
+      },
+      {
+        "name": "updated_by",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "accounting_worker_wages",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "worker_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "daily_wage",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "updated_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "work_date",
+        "type": "date"
+      }
+    ]
+  },
+  {
+    "name": "app_roles",
+    "columns": [
+      {
+        "name": "code",
+        "type": "text"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "is_system",
+        "type": "boolean"
+      },
+      {
+        "name": "project_scoped",
+        "type": "boolean"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_by",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "app_users",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "auth_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "username",
+        "type": "text"
+      },
+      {
+        "name": "display_name",
+        "type": "text"
+      },
+      {
+        "name": "role",
+        "type": "text"
+      },
+      {
+        "name": "is_active",
+        "type": "boolean"
+      },
+      {
+        "name": "created_by",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "can_work_on_site",
+        "type": "boolean"
+      },
+      {
+        "name": "payroll_excluded",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "name": "attachments",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "entity_type",
+        "type": "text"
+      },
+      {
+        "name": "entity_id",
+        "type": "uuid"
+      },
+      {
+        "name": "file_name",
+        "type": "text"
+      },
+      {
+        "name": "storage_path",
+        "type": "text"
+      },
+      {
+        "name": "mime_type",
+        "type": "text"
+      },
+      {
+        "name": "byte_size",
+        "type": "bigint"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "construction_details",
+    "columns": [
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "scope",
+        "type": "text"
+      },
+      {
+        "name": "planned_start_on",
+        "type": "date"
+      },
+      {
+        "name": "planned_end_on",
+        "type": "date"
+      },
+      {
+        "name": "actual_start_on",
+        "type": "date"
+      },
+      {
+        "name": "actual_end_on",
+        "type": "date"
+      },
+      {
+        "name": "acceptance_on",
+        "type": "date"
+      },
+      {
+        "name": "acceptance_note",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "construction_plan_assignees",
+    "columns": [
+      {
+        "name": "construction_plan_id",
+        "type": "uuid"
+      },
+      {
+        "name": "user_id",
+        "type": "uuid"
+      }
+    ]
+  },
+  {
+    "name": "construction_plan_items",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "construction_plan_id",
+        "type": "uuid"
+      },
+      {
+        "name": "title",
+        "type": "text"
+      },
+      {
+        "name": "sort_order",
+        "type": "integer"
+      },
+      {
+        "name": "start_day",
+        "type": "integer"
+      },
+      {
+        "name": "planned_days",
+        "type": "integer"
+      },
+      {
+        "name": "is_completed",
+        "type": "boolean"
+      },
+      {
+        "name": "completed_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "completed_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "deleted_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "construction_plans",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "construction_date",
+        "type": "date"
+      },
+      {
+        "name": "content",
+        "type": "text"
+      },
+      {
+        "name": "status",
+        "type": "text"
+      },
+      {
+        "name": "notes",
+        "type": "text"
+      },
+      {
+        "name": "created_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "deleted_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "planned_days",
+        "type": "integer"
+      },
+      {
+        "name": "subcontractor_count",
+        "type": "integer"
+      },
+      {
+        "name": "warning_work_days",
+        "type": "integer"
+      },
+      {
+        "name": "warning_min_progress",
+        "type": "numeric"
+      }
+    ]
+  },
+  {
+    "name": "contract_service_types",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "code",
+        "type": "text"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "sort_order",
+        "type": "integer"
+      },
+      {
+        "name": "is_active",
+        "type": "boolean"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "equipment_import_template",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "customer_categories",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "code",
+        "type": "text"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "sort_order",
+        "type": "integer"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "customer_contacts",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "title",
+        "type": "text"
+      },
+      {
+        "name": "phone",
+        "type": "text"
+      },
+      {
+        "name": "email",
+        "type": "text"
+      },
+      {
+        "name": "is_primary",
+        "type": "boolean"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "customer_contract_services",
+    "columns": [
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "service_type_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "created_by",
+        "type": "uuid"
+      },
+      {
+        "name": "is_active",
+        "type": "boolean"
+      },
+      {
+        "name": "notes",
+        "type": "text"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      }
+    ]
+  },
+  {
+    "name": "customer_departments",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "is_active",
+        "type": "boolean"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "customers",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "customer_code",
+        "type": "text"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "phone",
+        "type": "text"
+      },
+      {
+        "name": "email",
+        "type": "text"
+      },
+      {
+        "name": "address",
+        "type": "text"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "customer_category",
+        "type": "text"
+      },
+      {
+        "name": "is_private",
+        "type": "boolean"
+      },
+      {
+        "name": "deleted_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "deleted_by",
+        "type": "uuid"
+      }
+    ]
+  },
+  {
+    "name": "inventory_items",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "inventory_code",
+        "type": "text"
+      },
+      {
+        "name": "model",
+        "type": "text"
+      },
+      {
+        "name": "brand",
+        "type": "text"
+      },
+      {
+        "name": "item_name",
+        "type": "text"
+      },
+      {
+        "name": "unit",
+        "type": "text"
+      },
+      {
+        "name": "opening_quantity",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "item_type",
+        "type": "text"
+      },
+      {
+        "name": "cost_price",
+        "type": "numeric"
+      },
+      {
+        "name": "sale_price",
+        "type": "numeric"
+      },
+      {
+        "name": "inventory_status",
+        "type": "text"
+      },
+      {
+        "name": "default_supplier_id",
+        "type": "uuid"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "category_id",
+        "type": "uuid"
+      },
+      {
+        "name": "meters_per_unit",
+        "type": "numeric(14,2)"
+      }
+    ]
+  },
+  {
+    "name": "maintenance_details",
+    "columns": [
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "reported_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "scheduled_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "arrived_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "issue_description",
+        "type": "text"
+      },
+      {
+        "name": "resolution",
+        "type": "text"
+      },
+      {
+        "name": "warranty_status",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "maintenance_event_equipment",
+    "columns": [
+      {
+        "name": "event_id",
+        "type": "uuid"
+      },
+      {
+        "name": "equipment_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "maintenance_event_workers",
+    "columns": [
+      {
+        "name": "event_id",
+        "type": "uuid"
+      },
+      {
+        "name": "user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "maintenance_events",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "work_log_id",
+        "type": "uuid"
+      },
+      {
+        "name": "service_id",
+        "type": "uuid"
+      },
+      {
+        "name": "event_type",
+        "type": "text"
+      },
+      {
+        "name": "occurred_at",
+        "type": "date"
+      },
+      {
+        "name": "description",
+        "type": "text"
+      },
+      {
+        "name": "cause",
+        "type": "text"
+      },
+      {
+        "name": "result",
+        "type": "text"
+      },
+      {
+        "name": "notes",
+        "type": "text"
+      },
+      {
+        "name": "status",
+        "type": "text"
+      },
+      {
+        "name": "voided_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "voided_by",
+        "type": "uuid"
+      },
+      {
+        "name": "void_reason",
+        "type": "text"
+      },
+      {
+        "name": "created_by",
+        "type": "uuid"
+      },
+      {
+        "name": "updated_by",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "inventory_category_id",
+        "type": "uuid"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "phone_terminal_version_id",
+        "type": "uuid"
+      },
+      {
+        "name": "handling_process",
+        "type": "text"
+      },
+      {
+        "name": "spreadsheet_fields",
+        "type": "jsonb"
+      },
+      {
+        "name": "spreadsheet_import_id",
+        "type": "uuid"
+      },
+      {
+        "name": "worker_names_text",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "pickup_records",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "pickup_date",
+        "type": "date"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "created_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_by_username",
+        "type": "text"
+      },
+      {
+        "name": "work_log_id",
+        "type": "uuid"
+      },
+      {
+        "name": "request_id",
+        "type": "uuid"
+      },
+      {
+        "name": "request_row",
+        "type": "integer"
+      },
+      {
+        "name": "work_assignment_id",
+        "type": "uuid"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "pickup_document_id",
+        "type": "uuid"
+      },
+      {
+        "name": "pickup_document_no",
+        "type": "text"
+      },
+      {
+        "name": "source_receipt_line_id",
+        "type": "uuid"
+      },
+      {
+        "name": "quantity_unit",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "product_categories",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "code_prefix",
+        "type": "text"
+      },
+      {
+        "name": "is_active",
+        "type": "boolean"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "project_costs",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "cost_type",
+        "type": "text"
+      },
+      {
+        "name": "amount",
+        "type": "numeric"
+      },
+      {
+        "name": "occurred_on",
+        "type": "date"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "project_workers",
+    "columns": [
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "is_assignee",
+        "type": "boolean"
+      },
+      {
+        "name": "can_view",
+        "type": "boolean"
+      },
+      {
+        "name": "can_create_work_log",
+        "type": "boolean"
+      },
+      {
+        "name": "can_update_work_log",
+        "type": "boolean"
+      },
+      {
+        "name": "can_delete_work_log",
+        "type": "boolean"
+      },
+      {
+        "name": "granted_by",
+        "type": "uuid"
+      },
+      {
+        "name": "granted_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "projects",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "project_code",
+        "type": "text"
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "project_type",
+        "type": "text"
+      },
+      {
+        "name": "status",
+        "type": "text"
+      },
+      {
+        "name": "assigned_to",
+        "type": "text"
+      },
+      {
+        "name": "description",
+        "type": "text"
+      },
+      {
+        "name": "estimated_cost",
+        "type": "numeric"
+      },
+      {
+        "name": "actual_cost",
+        "type": "numeric"
+      },
+      {
+        "name": "started_on",
+        "type": "date"
+      },
+      {
+        "name": "completed_on",
+        "type": "date"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "project_date",
+        "type": "date"
+      },
+      {
+        "name": "construction_category",
+        "type": "text"
+      },
+      {
+        "name": "department_id",
+        "type": "uuid"
+      },
+      {
+        "name": "deleted_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "delete_reason",
+        "type": "text"
+      },
+      {
+        "name": "contract_start_date",
+        "type": "date"
+      },
+      {
+        "name": "contract_end_date",
+        "type": "date"
+      }
+    ]
+  },
+  {
+    "name": "repair_items",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "repair_no",
+        "type": "text"
+      },
+      {
+        "name": "received_on",
+        "type": "date"
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "quantity",
+        "type": "integer"
+      },
+      {
+        "name": "serial_number",
+        "type": "text"
+      },
+      {
+        "name": "issue_description",
+        "type": "text"
+      },
+      {
+        "name": "supplier_id",
+        "type": "uuid"
+      },
+      {
+        "name": "sent_to_supplier_on",
+        "type": "date"
+      },
+      {
+        "name": "returned_from_supplier_on",
+        "type": "date"
+      },
+      {
+        "name": "returned_to_customer_on",
+        "type": "date"
+      },
+      {
+        "name": "status",
+        "type": "text"
+      },
+      {
+        "name": "supplier_reference",
+        "type": "text"
+      },
+      {
+        "name": "notes",
+        "type": "text"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source_maintenance_event_id",
+        "type": "uuid"
+      },
+      {
+        "name": "department_id",
+        "type": "uuid"
+      }
+    ]
+  },
+  {
+    "name": "role_permissions",
+    "columns": [
+      {
+        "name": "role_code",
+        "type": "text"
+      },
+      {
+        "name": "module",
+        "type": "text"
+      },
+      {
+        "name": "can_view",
+        "type": "boolean"
+      },
+      {
+        "name": "can_create",
+        "type": "boolean"
+      },
+      {
+        "name": "can_update",
+        "type": "boolean"
+      },
+      {
+        "name": "can_delete",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "name": "site_assets",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "site_id",
+        "type": "uuid"
+      },
+      {
+        "name": "floor_id",
+        "type": "uuid"
+      },
+      {
+        "name": "route_id",
+        "type": "uuid"
+      },
+      {
+        "name": "device_id",
+        "type": "uuid"
+      },
+      {
+        "name": "attachment_id",
+        "type": "uuid"
+      },
+      {
+        "name": "asset_type",
+        "type": "text"
+      },
+      {
+        "name": "title",
+        "type": "text"
+      },
+      {
+        "name": "description",
+        "type": "text"
+      },
+      {
+        "name": "taken_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "work_log_id",
+        "type": "uuid"
+      },
+      {
+        "name": "original_name",
+        "type": "text"
+      },
+      {
+        "name": "mime_type",
+        "type": "text"
+      },
+      {
+        "name": "file_size",
+        "type": "bigint"
+      },
+      {
+        "name": "nas_path",
+        "type": "text"
+      },
+      {
+        "name": "upload_status",
+        "type": "text"
+      },
+      {
+        "name": "uploaded_by",
+        "type": "text"
+      },
+      {
+        "name": "uploaded_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "sha256",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "site_return_documents",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "kind",
+        "type": "text"
+      },
+      {
+        "name": "document_no",
+        "type": "text"
+      },
+      {
+        "name": "return_date",
+        "type": "date"
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "status",
+        "type": "text"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "created_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "updated_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      }
+    ]
+  },
+  {
+    "name": "site_return_lines",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "document_id",
+        "type": "uuid"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "quantity_unit",
+        "type": "text"
+      },
+      {
+        "name": "lengths",
+        "type": "jsonb"
+      }
+    ]
+  },
+  {
+    "name": "site_work_log_workers",
+    "columns": [
+      {
+        "name": "work_log_id",
+        "type": "uuid"
+      },
+      {
+        "name": "user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "site_work_logs",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "site_id",
+        "type": "uuid"
+      },
+      {
+        "name": "log_no",
+        "type": "text"
+      },
+      {
+        "name": "log_date",
+        "type": "date"
+      },
+      {
+        "name": "reporter_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "title",
+        "type": "text"
+      },
+      {
+        "name": "summary",
+        "type": "text"
+      },
+      {
+        "name": "work_type",
+        "type": "text"
+      },
+      {
+        "name": "status",
+        "type": "text"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "time_period",
+        "type": "text"
+      },
+      {
+        "name": "deleted_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "deleted_by",
+        "type": "uuid"
+      },
+      {
+        "name": "delete_reason",
+        "type": "text"
+      },
+      {
+        "name": "department_id",
+        "type": "uuid"
+      },
+      {
+        "name": "completed_content",
+        "type": "text"
+      },
+      {
+        "name": "pending_content",
+        "type": "text"
+      },
+      {
+        "name": "access_creator_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "construction_plan_id",
+        "type": "uuid"
+      },
+      {
+        "name": "construction_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "reporter_on_site",
+        "type": "boolean"
+      },
+      {
+        "name": "subcontractor_count",
+        "type": "integer"
+      }
+    ]
+  },
+  {
+    "name": "stock_adjustments",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "before_quantity",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "after_quantity",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "difference_quantity",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "adjusted_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "reason",
+        "type": "text"
+      },
+      {
+        "name": "idempotency_key",
+        "type": "uuid"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "site_return_line_id",
+        "type": "uuid"
+      },
+      {
+        "name": "site_return_version",
+        "type": "integer"
+      },
+      {
+        "name": "supplier_return_document_id",
+        "type": "uuid"
+      },
+      {
+        "name": "supplier_return_version",
+        "type": "integer"
+      },
+      {
+        "name": "quantity_unit",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "stock_receipt_customers",
+    "columns": [
+      {
+        "name": "stock_receipt_id",
+        "type": "uuid"
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_by",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "department_id",
+        "type": "uuid"
+      }
+    ]
+  },
+  {
+    "name": "stock_receipts",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_date",
+        "type": "date"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "quantity",
+        "type": "numeric"
+      },
+      {
+        "name": "supplier",
+        "type": "text"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "supplier_id",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_document_id",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_line_no",
+        "type": "integer"
+      },
+      {
+        "name": "receipt_document_no",
+        "type": "text"
+      },
+      {
+        "name": "unit_price",
+        "type": "numeric(14,2)"
+      }
+    ]
+  },
+  {
+    "name": "stock_transaction_documents",
+    "columns": [
+      {
+        "name": "kind",
+        "type": "text"
+      },
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "numbering_scope_id",
+        "type": "uuid"
+      },
+      {
+        "name": "numbering_date",
+        "type": "date"
+      },
+      {
+        "name": "sequence_no",
+        "type": "integer"
+      },
+      {
+        "name": "document_no",
+        "type": "text"
+      },
+      {
+        "name": "source_request_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "merged_into",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_tax_mode",
+        "type": "text"
+      },
+      {
+        "name": "receipt_tax_rate_basis_points",
+        "type": "integer"
+      },
+      {
+        "name": "receipt_project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_discount_amount",
+        "type": "numeric(14,0)"
+      },
+      {
+        "name": "receipt_delivery_state",
+        "type": "text"
+      },
+      {
+        "name": "receipt_delivery_date",
+        "type": "date"
+      },
+      {
+        "name": "receipt_delivery_project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_delivery_pickup_id",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_delivery_confirmed_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "receipt_delivery_actor_id",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_created_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "receipt_create_fingerprint",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "supplier_payment_terms",
+    "columns": [
+      {
+        "name": "supplier_id",
+        "type": "uuid"
+      },
+      {
+        "name": "effective_month",
+        "type": "date"
+      },
+      {
+        "name": "closing_day",
+        "type": "integer"
+      },
+      {
+        "name": "payment_day",
+        "type": "integer"
+      },
+      {
+        "name": "payment_month_offset",
+        "type": "integer"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "updated_by",
+        "type": "uuid"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "supplier_return_customers",
+    "columns": [
+      {
+        "name": "document_id",
+        "type": "uuid"
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "department_id",
+        "type": "uuid"
+      }
+    ]
+  },
+  {
+    "name": "supplier_return_documents",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "kind",
+        "type": "text"
+      },
+      {
+        "name": "return_date",
+        "type": "date"
+      },
+      {
+        "name": "supplier_id",
+        "type": "uuid"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "tax_mode",
+        "type": "text"
+      },
+      {
+        "name": "tax_rate_basis_points",
+        "type": "integer"
+      },
+      {
+        "name": "discount_amount",
+        "type": "numeric"
+      },
+      {
+        "name": "deleted_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "updated_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      }
+    ]
+  },
+  {
+    "name": "supplier_return_lines",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "document_id",
+        "type": "uuid"
+      },
+      {
+        "name": "line_no",
+        "type": "integer"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "unit_price",
+        "type": "numeric(14,2)"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "suppliers",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "name",
+        "type": "text"
+      },
+      {
+        "name": "contact_name",
+        "type": "text"
+      },
+      {
+        "name": "phone",
+        "type": "text"
+      },
+      {
+        "name": "email",
+        "type": "text"
+      },
+      {
+        "name": "address",
+        "type": "text"
+      },
+      {
+        "name": "note",
+        "type": "text"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "source",
+        "type": "text"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "work_assignments",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "project_id",
+        "type": "uuid"
+      },
+      {
+        "name": "assignee_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "created_by_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "assignment_type",
+        "type": "text"
+      },
+      {
+        "name": "instructions",
+        "type": "text"
+      },
+      {
+        "name": "inventory_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "pickup_quantity",
+        "type": "numeric"
+      },
+      {
+        "name": "status",
+        "type": "text"
+      },
+      {
+        "name": "completed_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "completion_acknowledged_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "updated_by",
+        "type": "text"
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid"
+      },
+      {
+        "name": "department_id",
+        "type": "uuid"
+      },
+      {
+        "name": "appointment_type",
+        "type": "text"
+      },
+      {
+        "name": "appointment_date",
+        "type": "date"
+      },
+      {
+        "name": "contact_name",
+        "type": "text"
+      },
+      {
+        "name": "contact_phone",
+        "type": "text"
+      },
+      {
+        "name": "notes",
+        "type": "text"
+      },
+      {
+        "name": "reminder_days",
+        "type": "integer"
+      },
+      {
+        "name": "assigned_date",
+        "type": "date"
+      },
+      {
+        "name": "assignment_request_id",
+        "type": "uuid"
+      },
+      {
+        "name": "assignment_request_fingerprint",
+        "type": "text"
+      },
+      {
+        "name": "construction_plan_id",
+        "type": "uuid"
+      },
+      {
+        "name": "construction_item_id",
+        "type": "uuid"
+      },
+      {
+        "name": "construction_plan_title",
+        "type": "text"
+      },
+      {
+        "name": "construction_item_title",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "name": "work_log_access_requests",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "name": "work_log_id",
+        "type": "uuid"
+      },
+      {
+        "name": "applicant_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "status",
+        "type": "text"
+      },
+      {
+        "name": "requested_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "reviewer_user_id",
+        "type": "uuid"
+      },
+      {
+        "name": "reviewed_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "acknowledged_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "row_version",
+        "type": "integer"
+      }
+    ]
+  }
+]
