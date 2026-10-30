@@ -36,6 +36,22 @@ test('new repair keeps its selected type and status when a same-name constructio
  field.value='資訊維護';form.elements.workType.value='維修紀錄';form.elements.status.value='in_progress';
  ctx.syncWorkLogProjectDefaults();assert.equal(form.elements.workType.value,'維修紀錄');assert.equal(form.elements.status.value,'in_progress');assert.equal(form.elements.departmentId.required,true);
 });
+
+test('an explicitly selected daily type survives existing-project default refreshes',()=>{
+ const {ctx,state,field,form}=fixture();state.projects[0].rawType='repair';
+ field.value='資訊維護';ctx.syncWorkLogProjectDefaults();assert.equal(form.elements.workType.value,'維修紀錄');
+ for(const type of ['送貨','文書作業','場勘','工程施工']){
+  form.elements.workType.value=type;form.elements.workType.dataset={userSelected:'true'};
+  ctx.syncWorkLogProjectDefaults();ctx.syncWorkLogProjectNames();ctx.syncWorkLogProjectDefaults();
+  assert.equal(form.elements.workType.value,type);assert.equal(field.value,'資訊維護');
+ }
+});
+
+test('a daily type selected before the work title stays selected when choosing the work',()=>{
+ const {ctx,field,form}=fixture();field.value='';form.elements.workType.value='送貨';form.elements.workType.dataset={userSelected:'true'};
+ ctx.syncWorkLogProjectDefaults();field.value='其他科室查修';form.elements.departmentId.value='d2';ctx.syncWorkLogProjectDefaults();
+ assert.equal(form.elements.workType.value,'送貨');assert.equal(form.elements.departmentId.required,false);
+});
 test('maintenance retains shared title across departments and preserves a new free-text title',()=>{
  const {ctx,field,form}=fixture();ctx.syncWorkLogProjectNames();ctx.syncWorkLogProjectDefaults();assert.equal(form.elements.workType.value,'維護保養');
  form.elements.departmentId.value='d2';ctx.syncWorkLogProjectNames();ctx.syncWorkLogProjectDefaults();assert.equal(field.value,'資訊維護');assert.equal(form.elements.workType.value,'維護保養');
