@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {dailyTypeSelectionServer} from './daily-type-selection-fixture.mjs';
+import {ids} from './worklog-save-fixture.mjs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const f=await dailyTypeSelectionServer(),{server,db,first}=f;
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
+const output=new URL('../tmp/daily-type-selection/',import.meta.url);await mkdir(output,{recursive:true});
+let browser;const errors=[];
+try{
+ browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}});
+ page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.dismiss());
+ await page.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin)return route.abort();if(url.pathname==='/api/nas')return route.fulfill({json:{available:false}});return route.continue();});
+ await page.goto(origin+'/?page=worklogs');await page.waitForFunction(()=>state.currentUser);
+ if(await page.locator('#systemChooser').evaluate(e=>e.classList.contains('open')))await page.locator('[data-system-choice="erp"]').click();
+ await page.waitForFunction(()=>scopeRequests.size===0);assert.equal(await page.evaluate(()=>PREVIEW_MODE),false);
+ const form=page.locator('#modalForm'),type=form.locator('[name="workType"]'),name=form.locator('[name="projectName"]');
+ const start=async()=>{await page.locator('[data-open="workLogModal"]').click();await form.locator('[name="customerCategory"]').selectOption('cleaning_team');await form.locator('[name="customerId"]').selectOption(ids.customer);await form.locator('[name="departmentId"]').selectOption(ids.department);};
+ const original=(await db.query('select to_jsonb(l) record from site_work_logs l where id=$1',[first.work_log.id])).rows[0].record;
+ const events=(await db.query('select to_jsonb(e) record from maintenance_events e where work_log_id=$1 order by id',[first.work_log.id])).rows;
+ await start();await form.locator('#workLogProjectChoice').selectOption(first.work_log.project_id);
+ assert.equal(await type.inputValue(),'維修紀錄');await type.selectOption('送貨');assert.equal(await type.inputValue(),'送貨');
+ assert.equal(await name.inputValue(),first.work_log.title);assert.equal(await form.locator('#maintenanceEditor').isVisible(),false);
+ // Simulate an ordinary reference refresh after an explicit choice.
+ await page.evaluate(()=>{syncWorkLogProjectNames();syncWorkLogProjectDefaults();});assert.equal(await type.inputValue(),'送貨');
+ await form.locator('[name="logDate"]').fill('2026-10-29');await form.locator('[name="timePeriod"]').fill('下午送貨');
+ await form.locator('[name="workerIds"]').first().check();
+ await page.screenshot({path:fileURLToPath(new URL('delivery-form-desktop.png',output)),fullPage:true});
+ const save=async()=>{assert.equal(await form.evaluate(e=>e.checkValidity()),true);const wait=page.waitForResponse(r=>r.url().includes('/api/inventory')&&r.request().method()==='POST'&&r.request().postDataJSON()?.operation==='upsert_customer_project_work_log');await form.locator('button[type="submit"]').click();const response=await wait,body=await response.json();assert.equal(response.status(),201,JSON.stringify(body));assert.equal(body.audit_warning,undefined);await page.locator('#simpleModal.open').waitFor({state:'hidden'});return body.result;};
+ const saved=await save(),logId=saved.work_log.id;
+ const read=async()=> (await db.query('select * from site_work_logs where id=$1',[logId])).rows[0];
+ assert.equal((await read()).work_type,'送貨');assert.equal((await read()).project_id,first.work_log.project_id);
+ assert.equal((await db.query('select project_type from projects where id=$1',[first.work_log.project_id])).rows[0].project_type,'repair');
+ await page.reload();await page.locator(`[data-work-log-row="${logId}"]`).dblclick();assert.equal(await type.inputValue(),'送貨');await form.locator('[name="timePeriod"]').fill('下午送貨完成');await save();assert.equal((await read()).work_type,'送貨');
+ await page.reload();await page.locator(`[data-work-log-row="${logId}"]`).dblclick();await type.selectOption('場勘');await form.locator('[name="completedContent"]').fill('另行場勘');await save();assert.equal((await read()).work_type,'場勘');
+ await page.reload();await page.locator(`[data-work-log-row="${logId}"]`).dblclick();await type.selectOption('送貨');await save();assert.equal((await read()).work_type,'送貨');
+ assert.deepEqual((await db.query('select to_jsonb(l) record from site_work_logs l where id=$1',[first.work_log.id])).rows[0].record,original);
+ assert.deepEqual((await db.query('select to_jsonb(e) record from maintenance_events e where work_log_id=$1 order by id',[first.work_log.id])).rows,events);
+ await start();assert.equal(await type.getAttribute('data-user-selected'),null);await type.selectOption('送貨');await form.locator('#workLogProjectChoice').selectOption(first.work_log.project_id);assert.equal(await type.inputValue(),'送貨');
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:fileURLToPath(new URL('delivery-form-mobile.png',output)),fullPage:true});
+ assert.deepEqual(errors,[]);
+ await writeFile(new URL('result.json',output),JSON.stringify({passed:true,checks:['project default','manual choice survives refresh','delivery selected before work','Gateway and workforce RPC save','reload and edit','first repair and events unchanged','project type unchanged','new modal resets marker','mobile form'],errors},null,2));
+ console.log('PASS daily type UI → Gateway → workforce RPC → isolated SQL → reload/edit; original repair and project unchanged.');
+}finally{await browser?.close();await new Promise(resolve=>server.close(resolve));await db.close();}
