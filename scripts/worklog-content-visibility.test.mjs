@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const between=(a,b)=>app.slice(app.indexOf(a),app.indexOf(b,app.indexOf(a)));
 function harness(){
- const values={eventType:'SOFTWARE_CONFIG',eventServiceId:'service',eventOccurredAt:'2026-09-15',eventCause:'無法連線',eventHandlingProcess:'檢查網路設定',eventNotes:'',eventInventoryCategoryId:'',eventInventoryItemId:''};
+ const values={eventType:'SOFTWARE_CONFIG',eventServiceId:'service',eventOccurredAt:'2026-09-15',eventCause:'無法連線',eventHandlingProcess:'檢查網路設定',eventNotes:'',eventPendingContent:'',eventInventoryCategoryId:'',eventInventoryItemId:''};
  const card={dataset:{equipmentIds:'[]'},querySelector:s=>({value:values[s.match(/name="([^"]+)"/)[1]]})};
  const label={hidden:false},modal={dataset:{type:'workLogModal',id:''}},form={elements:{summary:{value:'原本工作內容',closest:()=>label},hasMaintenance:{value:'yes'},workType:{value:'維修紀錄'},projectName:{value:'應用數學系查修'}},querySelectorAll:()=>[card]};
  const ctx=vm.createContext({document:{querySelector:s=>s==='#simpleModal'?modal:form},projectTypeFromWorkType:t=>({'維修紀錄':'repair','送貨':'delivery','文書作業':'clerical'}[t]||'maintenance'),isEquipmentRepairEvent:t=>['REPAIR','REPLACEMENT'].includes(t),syncMaintenanceVisibility:()=>{}});

@@ -259,3 +259,7 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 /* System audit: keep the existing palette and dialog, add readable evidence columns. */
 .audit-history{padding:14px 16px;margin:12px 0 18px;background:var(--bg,#f5f4ee);border:1px solid var(--border,#dedfd3);border-radius:9px;line-height:1.7;color:var(--muted,#737a6d)}
 .audit-filter-actions{display:flex;gap:8px;align-items:center}.audit-table{overflow-x:auto}.audit-table table{min-width:950px}.audit-table td{vertical-align:top;white-space:normal}.audit-table td:nth-child(5){max-width:340px;overflow-wrap:anywhere}.audit-table td:first-child{min-width:150px}.audit-table small{display:block;margin-top:5px}.audit-failed{background:#f6e8df;color:#8b4027}#auditRelated,#auditEntityHistory{margin:6px 10px 0 0}@media(max-width:640px){.audit-filter-actions{grid-column:1/-1}.audit-filters{grid-template-columns:repeat(2,minmax(0,1fr))}#logPagination{flex-wrap:wrap}}
+/* Maintenance follow-up metadata stays on its own line on desktop and mobile. */
+[data-maintenance-pending-items] label { align-items:flex-start; }
+[data-maintenance-pending-items] label span { min-width:0; overflow-wrap:anywhere; }
+[data-maintenance-pending-items] small { display:block; margin-top:4px; font-weight:400; }

@@ -491,7 +491,7 @@ const datasets: Record<string, DatasetDefinition> = {
   phone_terminal_points: { path: "phone_terminal_points?select=id,customer_id,contract_service_type_id,phone_extension_id,endpoint_side,frame_name,frame_block,frame_position,terminal_code,slot_identifier,floor,installation_location,notes,source,source_reference,building_name,source_extension_number,source_phone_type,resolved_phone_type,field_match_status,field_match_message,row_version,created_at,updated_at&order=phone_extension_id.asc,endpoint_side.asc" },
   phone_credential_access_logs: { path: "phone_credential_access_logs?select=id,phone_system_id,customer_id,contract_service_type_id,action,actor,source,created_at&order=created_at.desc&limit=200", adminOnly: true },
   equipment_registry: { path: "equipment_registry?select=id,equipment_type,customer_id,service_id,site_id,source_table,source_id,display_name,search_key,status,installation_date,installation_precision,metadata,created_at,updated_at&status=eq.active&order=display_name.asc", paged: true },
-  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,handling_process,result,notes,inventory_category_id,inventory_item_id,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
+  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,handling_process,result,notes,pending_content,pending_completions,pending_sources,inventory_category_id,inventory_item_id,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
   maintenance_event_equipment: { path: "maintenance_event_equipment?select=event_id,equipment_id,created_at&order=created_at.asc", paged: true },
   maintenance_event_workers: { path: "maintenance_event_workers?select=event_id,user_id,created_at&order=created_at.asc", paged: true }
 };
@@ -1051,6 +1051,9 @@ function maintenanceEventsInput(value: unknown) {
     const cause = nullable(row.cause,2000);
     const handlingProcess = nullable(row.handling_process,2000);
     const notes = nullable(row.notes,2000);
+    const pending = nullable(row.pending_content,2000);
+    const clientKey = row.client_key === undefined ? null : uuid(row.client_key);
+    if ((row.client_key !== undefined && !clientKey) || (row.pending_content !== undefined && (typeof row.pending_content !== "string" || pending === null))) throw new Error(`第 ${index+1} 筆未完成內容或事件識別碼不正確。`);
     const equipmentIds = Array.isArray(row.equipment_ids) ? row.equipment_ids.map(uuid) : [];
     const workerIds = Array.isArray(row.worker_user_ids) ? row.worker_user_ids.map(uuid) : [];
     if ((text(row.id) && !id) || (id && (!Number.isInteger(rowVersion) || Number(rowVersion) < 1)) || !serviceId || !occurredAt
@@ -1066,7 +1069,10 @@ function maintenanceEventsInput(value: unknown) {
       ...(Object.prototype.hasOwnProperty.call(row,"inventory_item_id") ? {inventory_item_id:inventoryItemId} : {}),
       ...(Object.prototype.hasOwnProperty.call(row,"handling_process") ? {handling_process:handlingProcess || null} : {}),
       id, row_version: rowVersion, service_id: serviceId, occurred_at: occurredAt, event_type: eventType,
-      description, cause: cause || null, result, notes: notes || null, equipment_ids: equipmentIds, worker_user_ids: workerIds };
+      description, cause: cause || null, result,
+      ...(Object.prototype.hasOwnProperty.call(row,"notes") ? {notes:notes || null} : {}),
+      ...(row.pending_content !== undefined ? {pending_content:pending} : {}),
+      ...(clientKey ? {client_key:clientKey} : {}), equipment_ids: equipmentIds, worker_user_ids: workerIds };
   });
 }
 
@@ -1529,12 +1535,14 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
       const requestId=payload.request_id==null||payload.request_id===""?null:uuid(payload.request_id);
       if(payload.request_id!=null&&payload.request_id!==""&&!requestId)throw new Error("工作日誌送出識別碼不正確。");
       const parameters={p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_maintenance_events:maintenanceEventsInput(payload.maintenance_events??[]),p_actor:actor,p_department_id:departmentIdInput(payload.department_id),p_request_id:requestId};
+      const hasRepairPending=Object.hasOwn(payload,"resolved_maintenance_items")||parameters.p_maintenance_events.some(event=>Object.hasOwn(event,"pending_content")||Object.hasOwn(event,"client_key"));
+      if(hasRepairPending&&(!Object.hasOwn(payload,"completed_content")||!Object.hasOwn(payload,"pending_content")))throw new Error("維修未完成資料需由完整工作日誌表單送出。");
       if(Object.hasOwn(payload,"completed_content")||Object.hasOwn(payload,"pending_content")){
         if(!Object.hasOwn(payload,"completed_content")||!Object.hasOwn(payload,"pending_content")||!requestId)throw new Error("請完整送出已完成／未完成內容與送出識別碼。");
         const completed=payload.completed_content,pending=payload.pending_content;
         if(!(completed===null&&pending===null)&&!(typeof completed==="string"&&typeof pending==="string"&&completed.length<=2000&&pending.length<=2000))throw new Error("已完成／未完成內容格式不正確。");
         if(typeof completed==="string"&&typeof pending==="string"&&[completed.trim(),pending.trim()].filter(Boolean).join("\n")!==(summary||""))throw new Error("工作內容與已完成／未完成內容不一致。");
-        if(Object.hasOwn(payload,"reporter_on_site")||Object.hasOwn(payload,"subcontractor_count")||Object.hasOwn(payload,"resolved_pending_items")){
+        if(Object.hasOwn(payload,"reporter_on_site")||Object.hasOwn(payload,"subcontractor_count")||Object.hasOwn(payload,"resolved_pending_items")||hasRepairPending){
           if(typeof payload.reporter_on_site!=="boolean"||typeof payload.subcontractor_count!=="number"||!Number.isInteger(payload.subcontractor_count)||payload.subcontractor_count<0||payload.subcontractor_count>1000||!Array.isArray(payload.resolved_pending_items)||payload.resolved_pending_items.length>100)throw new Error("到場、代工人數或待辦資料不正確。");
           return rpc("save_work_log_workforce_v1",{p_actor_user_id:user!.id,p_payload:{...payload,maintenance_events:parameters.p_maintenance_events}});
         }
@@ -2107,7 +2115,7 @@ async function handleRequest(request: Request) {
       if(scopeName==="pending_work_log_items"){
         const project=uuid(params.get("project_id")),day=date(params.get("from")),exclude=uuid(params.get("exclude_id"));
         if(!project||!day||params.get("exclude_id")&&!exclude)throw new Error("工作內容或日期不正確。");
-        return json(await rpc("pending_work_log_items_v1",{p_actor_user_id:user.id,p_project_id:project,p_log_date:day,p_exclude_id:exclude}));
+        return json(await rpc(params.get("work_type")==="維修紀錄" ? "pending_maintenance_items_v1" : "pending_work_log_items_v1",{p_actor_user_id:user.id,p_project_id:project,p_log_date:day,p_exclude_id:exclude}));
       }
       if(scopeName==="construction_plans"){
         const projectId=params.get("project_id");if(projectId&&!uuid(projectId))throw new Error("工作內容編號不正確。");

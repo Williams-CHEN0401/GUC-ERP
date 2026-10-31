@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {maintenancePendingServer} from './maintenance-pending-fixture.mjs';
+import {ids} from './worklog-save-fixture.mjs';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const f=await maintenancePendingServer(),{server,db,first}=f;
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
+const output=new URL('../tmp/maintenance-pending/',import.meta.url);await mkdir(output,{recursive:true});
+let browser;const errors=[];
+try{
+ browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}});
+ page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.dismiss());
+ await page.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin)return route.abort();if(url.pathname==='/api/nas')return route.fulfill({json:{available:false}});return route.continue();});
+ await page.goto(origin+'/?page=worklogs');await page.waitForFunction(()=>state.currentUser);
+ if(await page.locator('#systemChooser').evaluate(e=>e.classList.contains('open')))await page.locator('[data-system-choice="erp"]').click();
+ await page.waitForFunction(()=>scopeRequests.size===0);assert.equal(await page.evaluate(()=>PREVIEW_MODE),false);
+ const form=page.locator('#modalForm');
+ const start=async(projectId=first.work_log.project_id)=>{await page.locator('[data-open="workLogModal"]').click();await form.locator('[name="customerCategory"]').selectOption('cleaning_team');await form.locator('[name="customerId"]').selectOption(ids.customer);await form.locator('[name="departmentId"]').selectOption(ids.department);await form.locator('#workLogProjectChoice').selectOption(projectId);await form.locator('[name="logDate"]').fill('2026-10-30');};
+ const save=async()=>{assert.equal(await form.evaluate(e=>e.checkValidity()),true);const wait=page.waitForResponse(r=>r.url().includes('/api/inventory')&&r.request().method()==='POST'&&r.request().postDataJSON()?.operation==='upsert_customer_project_work_log');await form.locator('button[type="submit"]').click();const response=await wait,body=await response.json();assert.equal(response.status(),201,JSON.stringify(body));assert.equal(body.audit_warning,undefined);try{await page.locator('#simpleModal.open').waitFor({state:'hidden',timeout:8000});}catch(e){console.error(JSON.stringify({body,payload:response.request().postDataJSON(),state:await page.evaluate(()=>({logs:state.siteData.logs,projects:state.projects,events:state.maintenanceEvents,errors:[...scopeErrors.entries()]}))},null,2));throw e;}return body.result;};
+ const original=(await db.query('select * from maintenance_events where work_log_id=$1',[first.work_log.id])).rows[0];
+ // Old notes remain distinct and cannot accidentally become new unfinished work.
+ await page.locator(`[data-work-log-row="${first.work_log.id}"]`).dblclick();
+ assert.equal(await form.locator('[name="eventNotes"]').inputValue(),original.notes);assert.equal(await form.locator('[name="eventNotes"]').getAttribute('readonly'),'');
+ assert.equal(await form.locator('[name="eventPendingContent"]').inputValue(),original.pending_content);
+ await page.locator('#simpleModal button[data-close]').first().click();
+ await start();const checkboxes=form.locator('[data-maintenance-pending-index]');await checkboxes.nth(2).waitFor();
+ assert.equal(await checkboxes.count(),3);await checkboxes.nth(0).check();await checkboxes.nth(1).check();
+ assert.equal(await form.locator('[data-maintenance-event]').count(),1);
+ assert.equal(await form.locator('[name="eventServiceId"]').inputValue(),original.service_id);assert.equal(await form.locator('[name="eventType"]').inputValue(),original.event_type);
+ assert.equal(await form.locator('[name="eventOccurredAt"]').inputValue(),'2026-10-30');assert.equal(await form.locator('[data-maintenance-event]').getAttribute('data-event-id'),'');
+ // Uncheck removes generated text only, retaining the user's own processing notes.
+ await form.locator('[name="eventHandlingProcess"]').fill((await form.locator('[name="eventHandlingProcess"]').inputValue())+'\n保留手動輸入');
+ await checkboxes.nth(0).uncheck();await checkboxes.nth(1).uncheck();assert.equal(await form.locator('[name="eventHandlingProcess"]').inputValue(),'保留手動輸入');
+ await page.locator('#simpleModal button[data-close]').first().click();assert.deepEqual((await db.query('select * from maintenance_events where id=$1',[original.id])).rows[0],original,'cancel has no writes');
+ await start();await checkboxes.nth(2).waitFor();await checkboxes.nth(0).check();await checkboxes.nth(1).check();
+ await form.locator('[name="eventPendingContent"]').fill('下次檢查錄音功能');await form.locator('[name="workerIds"]').first().check();
+ assert.match(await form.locator('[data-maintenance-pending-summary]').innerText(),/1 項/);
+ await form.locator('[data-maintenance-pending-items]').scrollIntoViewIfNeeded();
+ await page.screenshot({path:fileURLToPath(new URL('followup-desktop.png',output)),fullPage:true});
+ const saved=await save();const target=(await db.query('select * from maintenance_events where work_log_id=$1',[saved.work_log.id])).rows[0];
+ assert.equal(target.pending_content,'下次檢查錄音功能');assert.equal(target.pending_sources.length,2);assert.equal(target.notes,null);
+ assert.equal((await db.query('select * from maintenance_events where id=$1',[original.id])).rows[0].notes,original.notes);
+ await page.reload();await page.locator(`[data-work-log-row="${saved.work_log.id}"]`).dblclick();assert.equal(await form.locator('[name="eventPendingContent"]').inputValue(),'下次檢查錄音功能');assert.match(await form.locator('details').last().innerText(),/處理紀錄/);
+ await save();
+ await start(saved.work_log.project_id);await checkboxes.nth(1).waitFor();assert.equal(await checkboxes.count(),2,'root remaining plus current new item');
+ await page.setViewportSize({width:390,height:844});await checkboxes.first().check();
+ await page.screenshot({path:fileURLToPath(new URL('followup-mobile.png',output)),fullPage:true});
+ const overflow=await form.evaluate(el=>el.scrollWidth>el.clientWidth+2);assert.equal(overflow,false,'mobile form does not overflow');
+ await page.locator('#simpleModal button[data-close]').first().click();
+ // The previous daily type fix is still available for this repair project.
+ await start();await form.locator('[name="workType"]').selectOption('送貨');assert.equal(await form.locator('#maintenanceEditor').isVisible(),false);await form.locator('[name="workerIds"]').first().check();const delivery=await save();assert.equal(delivery.work_log.work_type,'送貨');
+ await db.exec("insert into role_permissions(role_code,module,can_view,can_create,can_update,can_delete) values('operator','worklogs',true,false,false,false) on conflict(role_code,module) do update set can_view=true,can_create=false,can_update=false,can_delete=false");
+ const readonly=await browser.newPage();await readonly.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin)return route.abort();if(url.pathname==='/api/public-config')return route.fulfill({contentType:'application/javascript',body:'globalThis.GUC_PUBLIC_CONFIG={localProduction:true,productionOrigin:location.origin};sessionStorage.setItem("GUC_ERP_ACCESS_TOKEN","isolated-operator");'});if(url.pathname==='/api/nas')return route.fulfill({json:{available:false}});return route.continue();});
+ await readonly.goto(origin+'/?page=worklogs');await readonly.waitForFunction(()=>state.currentUser);
+ if(await readonly.locator('#systemChooser').evaluate(e=>e.classList.contains('open')))await readonly.locator('[data-system-choice="erp"]').click();
+ await readonly.locator(`[data-work-log-row="${first.work_log.id}"]`).dblclick();assert.equal(await readonly.locator('#modalForm [name="eventPendingContent"]').isDisabled(),true);assert.equal(await readonly.locator('#modalForm button[type="submit"]').count(),0);await readonly.close();
+ assert.deepEqual(errors,[]);
+ await writeFile(new URL('result.json',output),JSON.stringify({passed:true,checks:['historic notes separate','checkbox prefill','same source grouped','uncheck preserves edits','cancel no writes','Gateway + SQL save','history and reload/edit','root continuation','mobile layout','delivery regression','read-only account cannot edit pending fields'],errors},null,2));
+ console.log('PASS maintenance UI → Gateway → SQL → reload/edit, cancel/deselect, grouped cards, history, mobile and delivery regression.');
+}catch(e){console.error(e.stack);process.exitCode=1;}finally{await browser?.close();await new Promise(resolve=>server.close(resolve));await db.close();}
