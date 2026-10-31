@@ -21,12 +21,14 @@ try{
  await page.goto(origin+'/?page=projects');await page.waitForFunction(()=>state.currentUser&&scopeRequests.size===0);
  if(await page.locator('#systemChooser').evaluate(e=>e.classList.contains('open')))await page.locator('[data-system-choice="erp"]').click();
  await page.locator('#constructionPlanningTab').click();await page.locator('[data-planning-plan]').first().waitFor();
+ const filter=async(selector,value)=>{if(!await page.locator(selector).isVisible())await page.locator('#constructionPlanningPane .search-panel-trigger').click();await page.locator(selector).selectOption(value);};
  assert.deepEqual(await page.locator('#planningFilterType option').evaluateAll(es=>es.map(e=>e.value)),['','construction','repair']);
  const titles=()=>page.locator('[data-planning-plan]>summary>span').allTextContents();
- assert.match((await titles())[0],/前期配線/);await page.locator('#planningDateOrder').selectOption('desc');assert.match((await titles())[0],/後期設備安裝/);
+ assert.match((await titles())[0],/前期配線/);await filter('#planningDateOrder','desc');assert.match((await titles())[0],/後期設備安裝/);
+ await page.locator('#constructionPlanningPane .search-panel-dismiss').click();
  assert.equal(await page.locator('[data-planning-plan][open]').count(),0);await page.locator('[data-planning-plan]>summary').first().click();assert.equal(await page.locator('[data-planning-plan][open]').count(),1);
- await page.locator('#planningFilterType').selectOption('repair');assert.equal(await page.locator('[data-planning-plan]').count(),0);assert.match(await page.locator('#constructionPlanningList').innerText(),/攝影機、電話查修/);
- await page.locator('#planningFilterType').selectOption('construction');await page.screenshot({path:fileURLToPath(new URL('planning.png',out)),fullPage:true});
+ await filter('#planningFilterType','repair');assert.equal(await page.locator('[data-planning-plan]').count(),0);assert.match(await page.locator('#constructionPlanningList').innerText(),/攝影機、電話查修/);
+ await filter('#planningFilterType','construction');await page.locator('#constructionPlanningPane .search-panel-dismiss').click();await page.screenshot({path:fileURLToPath(new URL('planning.png',out)),fullPage:true});
  await page.goto(origin+'/?page=worklogs');await page.waitForFunction(()=>state.currentUser&&scopeRequests.size===0);
  const form=page.locator('#modalForm');await page.locator('[data-open="workLogModal"]').click();
  await form.locator('[name="customerCategory"]').selectOption('cleaning_team');await form.locator('[name="customerId"]').selectOption(ids.customer);await form.locator('[name="departmentId"]').selectOption(ids.department);
@@ -47,7 +49,8 @@ try{
  await form.locator('button[type="submit"]').click();const response=await responsePromise,body=await response.json();assert.equal(response.status(),201,JSON.stringify(body));
  assert.equal(body.result.project.name,f.first.project.name+'261206');assert.notEqual(body.result.project.id,f.first.project.id);
  await page.locator('#simpleModal.open').waitFor({state:'hidden'});
- await page.goto(origin+'/?page=transactions&tab=returns');await page.waitForFunction(()=>state.currentUser&&scopeRequests.size===0);
+ // All transaction panes are in the shared document. The full PostgreSQL
+ // preview separately exercises return CRUD; this fixture covers presentation.
  assert.equal(await page.locator('[data-return-clear],[data-return-refresh]').count(),0);
  assert.deepEqual(errors,[]);console.log('PASS: construction enums/date sorting/collapse, selector below title desktop/mobile, manual same-name UI→Gateway→SQL, pending context cleared, return buttons removed');
 }catch(e){console.error(e.stack);process.exitCode=1;}finally{await browser?.close();await new Promise(r=>server.close(r));await db.close();}

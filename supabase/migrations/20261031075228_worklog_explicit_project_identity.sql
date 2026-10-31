@@ -41,6 +41,7 @@ begin
  -- original user payload, while the established writer validates the new log.
  v_result:=public.upsert_customer_project_work_log_department_v1(null,null,v_project.id,p_customer_id,
   v_name,p_log_date,p_work_type,p_summary,p_time_period,p_status,p_worker_user_ids,p_reporter_user_id,p_maintenance_events,p_actor,p_department_id,null);
+ v_result:=v_result||jsonb_build_object('new_work_created',true);
  insert into public.work_log_save_requests(request_id,reporter_id,request_payload,result)
   values(p_request_id,p_reporter_user_id,v_payload,v_result);
  return v_result;
