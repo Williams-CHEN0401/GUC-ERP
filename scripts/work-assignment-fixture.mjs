@@ -61,5 +61,5 @@ export async function restRead(db,path){
  if(params.has('order'))query+=' order by '+params.get('order').split(',').map(part=>{const [column,direction='asc']=part.split('.');if(!['asc','desc'].includes(direction))throw Error('Invalid order');return identifier(column)+' '+direction;}).join(',');
  query+=' limit '+bind(Number(params.get('limit')||1000))+' offset '+bind(Number(params.get('offset')||0));
  const rows=(await db.query(query,values)).rows;
- return rows.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,value instanceof Date&&['log_date','received_on','project_date','pickup_date'].includes(key)?value.toISOString().slice(0,10):value])));
+ return rows.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,value instanceof Date&&['log_date','occurred_at','received_on','project_date','pickup_date'].includes(key)?value.toISOString().slice(0,10):value])));
 }

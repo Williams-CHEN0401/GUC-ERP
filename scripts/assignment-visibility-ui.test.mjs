@@ -13,24 +13,15 @@ function harness(){
  const choose=value=>{node('#assignmentScope').value=value;for(const[name,fn]of listeners)if(name==='change')fn({target:{id:'assignmentScope',value,closest:()=>null}});};
  return {context,state,node,choose};
 }
-test('admin defaults to all after async data arrives, preserves chosen scope, and resets for another account',()=>{
- const h=harness(),mine={id:'mine'},other={id:'other'};
- h.state.dashboard.assignments.pending=[mine];
+test('every Dashboard uses the assignee ID, including admins with stale all-person data',()=>{
+ const h=harness(),mine={id:'mine',assignee_user_id:'admin'},other={id:'other',assignee_user_id:'worker'};
+ h.state.dashboard.assignments={pending:[mine,other],all_pending:[mine,other]};
  assert.deepEqual(h.context.assignmentPendingRows(),[mine]);
- h.state.dashboard.assignments.all_pending=[mine,other];
- assert.deepEqual(h.context.assignmentPendingRows(),[mine,other]);
- assert.equal(h.node('#pendingAssignmentTitle').textContent,'所有人的待辦');
- h.choose('mine');assert.deepEqual(h.context.assignmentPendingRows(),[mine]);
- h.state.dashboard.assignments.all_pending=[mine,other,{id:'new'}];
- assert.deepEqual(h.context.assignmentPendingRows(),[mine]);
- h.state.currentUser.id='second-admin';assert.equal(h.context.assignmentPendingRows().length,3);
-});
-test('non-admin cannot select all even if stale privileged data remains in memory',()=>{
- const h=harness();h.state.dashboard.assignments={pending:[{id:'mine'}],all_pending:[{id:'private'}]};
- h.context.assignmentPendingRows();h.state.currentUser={id:'worker',role:'operator'};
- h.choose('all');assert.deepEqual(h.context.assignmentPendingRows(),[{id:'mine'}]);
- assert.equal(h.node('#assignmentScope').label.hidden,true);
- assert.equal(h.node('#assignmentScope').value,'mine');
+ assert.equal(h.node('#pendingAssignmentTitle').textContent,'我的待辦');
+ h.state.currentUser={id:'worker',role:'operator'};
+ assert.deepEqual(h.context.assignmentPendingRows(),[other]);
+ h.state.currentUser={id:'unassigned',role:'admin'};
+ assert.equal(h.context.assignmentPendingRows().length,0);
 });
 test('other-person cards are read-only, names are escaped, and own entries beyond personal page still complete',()=>{
  const h=harness(),row={id:'beyond-page',assignment_type:'general',assignee_user_id:'admin',assignee:'<人員>',creator:'<管理員>',project:'工作',instructions:'測試'};
@@ -67,12 +58,11 @@ test('grouping retains separate requests, creators, legacy rows and construction
  assert.equal(h.context.groupPendingAssignments([]).length,0);
 });
 
-test('grouping follows authorized all/mine scope and keeps pickup quantities per person',()=>{
+test('Dashboard grouping never includes coworkers and pickup quantity remains per assignee',()=>{
  const h=harness(),other={id:'other',assignment_type:'pickup',assignment_request_id:'r',created_by_user_id:'creator',assignee_user_id:'worker',assignee:'施工人員',item:'設備',pickup_quantity:2};
  const mine={...other,id:'mine',assignee_user_id:'admin',assignee:'管理員'};
  h.state.dashboard.assignments={pending:[mine],all_pending:[other,mine],completed:[]};
- const group=()=>h.context.groupPendingAssignments(h.context.assignmentPendingRows());
- assert.equal(group().length,1);assert.match(h.context.assignmentPendingCard(group()[0]),/取貨（每位）：設備 × 2/);
- h.choose('mine');assert.equal(group()[0].assignee,'管理員');
- h.state.currentUser.role='operator';h.choose('all');assert.equal(group()[0].assignment_members.length,1);
+ const groups=h.context.groupPendingAssignments(h.context.assignmentPendingRows());
+ assert.equal(groups.length,1);assert.equal(groups[0].assignment_members.length,1);
+ assert.match(h.context.assignmentPendingCard(groups[0]),/取貨：設備 × 2/);
 });

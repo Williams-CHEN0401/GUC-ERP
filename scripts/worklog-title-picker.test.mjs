@@ -21,8 +21,9 @@ test('selecting moves only the chosen ID and preserves independent status and da
  assert.equal(input.value,target.name);assert.equal(ctx.workLogSaveProject(original).id,target.id);assert.equal(form.elements.workType.value,'文書作業');assert.equal(form.elements.status.value,'completed');assert.equal(form.elements.status.disabled,false);assert.equal(form.elements.workType.disabled,false);assert.match(hint.textContent,/只將這筆日誌/);assert.match(hint.textContent,/取貨保留原工作/);
  input.value='手動新名稱';ctx.syncWorkLogTitleChoice();assert.equal(choice.value,'');assert.equal(ctx.workLogSaveProject(original).id,original.id);assert.equal(form.elements.workType.value,'文書作業');assert.equal(form.elements.status.value,'completed');assert.equal(form.elements.workType.disabled,false);assert.match(hint.textContent,/同步原工作內容/);
 });
-test('native title suggestions resolve the same project and preserve server-aligned permission boundary',()=>{
- const {ctx,input,target,original}=fixture();input.value=target.name;ctx.syncWorkLogTitleChoice();assert.equal(ctx.workLogSaveProject(original).id,target.id);
+test('typed same name is manual, while an explicit chosen ID preserves the permission boundary',()=>{
+ const {ctx,input,target,original,choice}=fixture();input.value=target.name;ctx.syncWorkLogTitleChoice();assert.equal(ctx.workLogChosenProject(),null);assert.equal(ctx.workLogSaveProject(null),null);
+ choice.value=target.id;ctx.syncWorkLogTitleChoice(true);assert.equal(ctx.workLogSaveProject(original).id,target.id);
  ctx.canModule=()=>false;assert.throws(()=>ctx.workLogSaveProject(original),/權限/);
 });
 test('save confirmation checks project identity, not only duplicated title fields',()=>{
