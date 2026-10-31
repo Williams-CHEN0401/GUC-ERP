@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
-import {maintenancePendingServer} from './maintenance-pending-fixture.mjs';
+import {workflowIdentityServer as maintenancePendingServer} from './workflow-identity-fixture.mjs';
 import {ids} from './worklog-save-fixture.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const f=await maintenancePendingServer(),{server,db,first}=f;
@@ -38,7 +38,7 @@ try{
  assert.match(await form.locator('[data-maintenance-pending-summary]').innerText(),/1 項/);
  await form.locator('[data-maintenance-pending-items]').scrollIntoViewIfNeeded();
  await page.screenshot({path:fileURLToPath(new URL('followup-desktop.png',output)),fullPage:true});
- const saved=await save();const target=(await db.query('select * from maintenance_events where work_log_id=$1',[saved.work_log.id])).rows[0];
+ const saved=await save();assert.equal(saved.work_log.project_id,first.work_log.project_id,'explicit existing work stays on its ID');const target=(await db.query('select * from maintenance_events where work_log_id=$1',[saved.work_log.id])).rows[0];
  assert.equal(target.pending_content,'下次檢查錄音功能');assert.equal(target.pending_sources.length,2);assert.equal(target.notes,null);
  assert.equal((await db.query('select * from maintenance_events where id=$1',[original.id])).rows[0].notes,original.notes);
  await page.reload();await page.locator(`[data-work-log-row="${saved.work_log.id}"]`).dblclick();assert.equal(await form.locator('[name="eventPendingContent"]').inputValue(),'下次檢查錄音功能');assert.match(await form.locator('details').last().innerText(),/處理紀錄/);
