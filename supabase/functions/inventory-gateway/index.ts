@@ -304,7 +304,7 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["accounting_tax","accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
@@ -314,7 +314,7 @@ async function hydratePermissions(user:AppUser):Promise<AppUser> {
 }
 function hasPermission(user:AppUser,module:string,action:PermissionAction="VIEW"):boolean {
  if(user.role==="admin")return true;
- if(!user.permissions&&["accounting_payables","accounting_payroll","performance","purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
+ if(!user.permissions&&["accounting_tax","accounting_payables","accounting_payroll","performance","purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
  if(!user.permissions)return ["operator","viewer"].includes(user.role) && (action==="VIEW"||user.role==="operator"&&!["settings","backup","customers","suppliers","inventory","credentials"].includes(module)&&action!=="DELETE");
  return user.permissions.some(p=>p.module===module&&p[`can_${action.toLowerCase()}` as keyof Permission]===true);
 }
@@ -2071,6 +2071,17 @@ async function handleRequest(request: Request) {
       const params = requestUrl.searchParams;
       if(params.get("scope")==="finance"){
         const module=params.get("module")||"";
+        if(module==="accounting_ledger"||module==="accounting_analysis"||module==="accounting_labor"){
+          if(module==="accounting_labor") { requirePermission(user,"accounting_payroll"); if(!date(params.get("month")))throw Error("請選擇有效月份。"); }
+          else if(module==="accounting_analysis"){requirePermission(user,"accounting_prices");requirePermission(user,params.get("mode")==="project"?"accounting_reports":"accounting_tax");}
+          else {requirePermission(user,"accounting_prices");requirePermission(user,params.get("ledger_scope")==="purchases"?"accounting_payables":"quotation_invoices");}
+          if(params.get("id")&&!uuid(params.get("id")))throw Error("資料識別不正確。");
+          let result;
+          if(module==="accounting_ledger")result=await rpc("accounting_ledger_read_v1",{p_actor:user.id,p_filters:{scope:params.get("ledger_scope")||"sales",year:params.get("year")||"2026",month:params.get("month")||null,supplier_id:params.get("supplier_id")||null,quotation_id:params.get("quotation_id")||null}});
+          else if(module==="accounting_analysis")result=await rpc("accounting_analysis_read_v1",{p_actor:user.id,p_mode:params.get("mode")||"annual",p_year:Number(params.get("year")||2026),p_project:params.get("id")||null});
+          else result=await rpc("accounting_labor_read_v1",{p_actor:user.id,p_month:date(params.get("month")),p_payroll:params.get("id")||null});
+          return new Response(JSON.stringify({finance:result,current_user:publicUser(user)}),{headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store, private"}});
+        }
         if(!["accounting_payables","accounting_payroll"].includes(module))throw Error("不支援的會計查詢。");
         requirePermission(user,module);
         const month=date(params.get("month"));if(!month)throw Error("請選擇有效月份。");
@@ -2178,11 +2189,18 @@ async function handleRequest(request: Request) {
     Object.assign(auditContext.getStore()!,auditHeaders(request,user));
     if(operation === "logout"){await insert("audit_logs",{entity_type:"session",entity_id:user.id,action:"LOGOUT",actor:user.username,source:"web"});return json({ok:true});}
     if(request.headers.get("x-guc-system")==="site")requirePermission(user,"site");
+    if(operation.startsWith("ledger.")||operation.startsWith("analysis.")){
+      const ledger=operation.startsWith("ledger."),op=operation.slice(ledger?7:9);
+      requirePermission(user,"accounting_prices");
+      requirePermission(user,ledger?(op.startsWith("supplier_")?"accounting_payables":"quotation_invoices"):(op.startsWith("tax_")||op==="overhead_save"?"accounting_tax":"accounting_reports"));
+      const result=await rpc(ledger?"accounting_ledger_command_v1":"accounting_analysis_command_v1",{p_actor:user.id,p_operation:op,p_payload:payload});
+      return json({ok:true,result,current_user:publicUser(user)},201);
+    }
     if(operation.startsWith("finance.")){
       const op=operation.slice(8),module=op==="terms_save"?"accounting_payables":"accounting_payroll";
       requirePermission(user,module);
       if(isPreviewGateway&&op!=="payroll_calculate")return json({error:"目前為唯讀預覽。"},403);
-      const result=await rpc("accounting_finance_command_v1",{p_actor:user.id,p_operation:op,p_payload:payload});
+      const result=await rpc(["labor_allocate","employer_month_save"].includes(op)?"accounting_labor_command_v1":"accounting_finance_command_v1",{p_actor:user.id,p_operation:op,p_payload:payload});
       return json({ok:true,result,current_user:publicUser(user)},op==="payroll_calculate"?200:201);
     }
     if(operation.startsWith("performance.")){
