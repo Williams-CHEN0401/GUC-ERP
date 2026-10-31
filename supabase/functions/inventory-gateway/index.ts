@@ -2205,7 +2205,7 @@ async function handleRequest(request: Request) {
     if (operation === "import_phone_terminal_rows") {
       return json({ ok: true, result, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
     }
-    return json({ ok: true, result: result ?? null, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
+    return json({ ok: true, result: publicMutationResult(result ?? null), current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
   } catch(error) {
     const message=error instanceof Error?error.message:"系統暫時無法完成操作。";
     if(message==="DEVICE_VERIFICATION_REQUIRED")return json({error:"請在設備管理輸入目前登入帳號的正確密碼，完成驗證後才能顯示帳密。",code:"DEVICE_VERIFICATION_REQUIRED"},403);
@@ -2213,6 +2213,9 @@ async function handleRequest(request: Request) {
     return json({error:message,code:status===403?"FORBIDDEN":status===404?"NOT_FOUND":status===409?"CONFLICT":"VALIDATION_ERROR"},status);
   }
 }
+// Legacy single-row writers return the table composite. Internal cost snapshots
+// are only exposed through the accounting report's current-reader ACL checks.
+function publicMutationResult(value: unknown): unknown { if(Array.isArray(value))return value.map(publicMutationResult);if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).filter(([key])=>!["cable_unit_cost_snapshot","cable_cost_source_receipt_ids","cable_cost_project_id_snapshot"].includes(key)).map(([key,item])=>[key,publicMutationResult(item)]));return value; }
 Deno.serve(request => auditContext.run(auditHeaders(request), () => requestMetrics.run({started:performance.now(),requests:0,transportMs:0},async()=>{
   const response=await privateContext.run({},async()=>{const response=await handleRequest(request);return recordAuditOutcome(response);}),metrics=requestMetrics.getStore()!;
   response.headers.set("Server-Timing",`gateway;dur=${(performance.now()-metrics.started).toFixed(2)}, upstream;dur=${metrics.transportMs.toFixed(2)};desc="auth and database transport sum", upstream_requests;desc="${metrics.requests}"`);

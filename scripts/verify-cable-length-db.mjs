@@ -40,4 +40,42 @@ check('anonymous role cannot invoke new cost helper',()=>assert.throws(()=>sql(`
 check('explicit manual price override keeps its original conversion after default changes',()=>{rpc('save_accounting_material_price_v1',{p_actor_user_id:actor,p_project_id:project,p_item_id:item100,p_unit_price:1000,p_row_version:null});assert.equal(material(item100).amount,800);sql(`update inventory_items set meters_per_unit=200 where id=${L(item100)}`);assert.equal(material(item100).amount,800);assert.equal(material(item100).unit_price,10);});
 check('old package rows cannot re-enter inventory with a new default specification',()=>{const historical=create(30,'包裝歷史');receipt(historical,300);const req=pickup(1,historical,uid(),'package');assert.deepEqual(stock(historical),{packages:0,meters:0});sql(`update inventory_items set meters_per_unit=50 where id=${L(historical)}`);assert.equal(material(historical).quantity,30);assert.equal(material(historical).amount,300);const row=JSON.parse(sql(`select row_to_json(p) from pickup_records p where request_id=${L(req)}`));assert.throws(()=>rpc('delete_pickup_records',{p_ids:`{${row.id}}`,p_actor:'williams'}),/歷史單據的包裝長度/);assert.deepEqual(stock(historical),{packages:0,meters:0});});
 check('meter edits and cancellations preserve their ledger and original cost',()=>{const editable=create(100,'修改退料');receipt(editable,500);const req=pickup(20,editable);const doc=uid(),args={...returnArgs,p_document_id:doc,p_request_id:uid(),p_rows:[{inventory_item_id:editable,quantity:5,quantity_unit:'meter'}]};rpc('save_site_return_v1',args);sql(`update inventory_items set meters_per_unit=200 where id=${L(editable)}`);let row=JSON.parse(sql(`select row_to_json(p) from pickup_records p where request_id=${L(req)}`));rpc('save_pickup_document_v1',{p_document_id:row.pickup_document_id,p_existing:[{id:row.id,row_version:row.row_version}],p_pickup_date:date,p_project_id:project,p_rows:[{id:row.id,inventory_item_id:editable,quantity:15,quantity_unit:'meter',note:'修改數量'}],p_actor_user_id:actor});assert.deepEqual(stock(editable),{packages:0,meters:90});assert.equal(material(editable).amount,50);rpc('save_site_return_v1',{...args,p_action:'update',p_row_version:1,p_request_id:uid(),p_rows:[{inventory_item_id:editable,quantity:3,quantity_unit:'meter'}]});assert.equal(material(editable).amount,60);assert.deepEqual(stock(editable),{packages:0,meters:88});rpc('save_site_return_v1',{...args,p_action:'cancel',p_row_version:2,p_request_id:uid(),p_rows:[]});assert.deepEqual(stock(editable),{packages:0,meters:85});assert.equal(material(editable).amount,75);rpc('delete_pickup_records',{p_ids:`{${row.id}}`,p_actor:'williams'});assert.deepEqual(stock(editable),{packages:0,meters:100});});
+check('repeated full returns use outstanding cost rather than all past withdrawals',()=>{
+ const cable=create(100,'循環領退');receipt(cable,1000);pickup(100,cable);
+ const save=(doc,quantity,version=null)=>rpc('save_site_return_v1',{...returnArgs,p_document_id:doc,p_request_id:uid(),p_action:version?'update':'create',p_row_version:version,p_rows:[{inventory_item_id:cable,quantity,quantity_unit:'meter'}]});
+ save(uid(),100);assert.equal(material(cable).amount,0);
+ receipt(cable,500);pickup(100,cable);const next=uid();save(next,50);
+ assert.equal(material(cable).amount,250);save(next,100,1);
+ assert.equal(material(cable).quantity,0);assert.equal(material(cable).amount,0);
+});
+check('return quantity edits and project changes use the corresponding outstanding cost',()=>{
+ const cable=create(100,'退料修改');receipt(cable,1000);pickup(100,cable);
+ const doc=uid(),save=(quantity,version=null,projectId=project)=>rpc('save_site_return_v1',{...returnArgs,p_document_id:doc,p_request_id:uid(),p_action:version?'update':'create',p_row_version:version,p_project_id:projectId,p_rows:[{inventory_item_id:cable,quantity,quantity_unit:'meter'}]});
+ save(50);receipt(cable,500);pickup(100,cable);save(200,1);
+ assert.equal(material(cable).quantity,0);assert.equal(material(cable).amount,0);
+ save(50,2);const other=sql(`insert into projects(name,customer_id,project_type,project_date,status,source,updated_by) values(${L(name+'改案')},${L(customer)},'construction','${date}','in_progress','web','williams') returning id`);
+ rpc('create_pickup_records_batch_v2',{p_rows:[{pickup_date:date,project_id:other,inventory_item_id:cable,quantity:50,quantity_unit:'meter'}],p_created_by_user_id:actor,p_created_by_username:'williams',p_work_log_id:null,p_request_id:uid(),p_actor:'williams'});
+ save(50,3,other);const otherMaterial=rpc('work_content_report_v1',{p_actor_user_id:actor,p_project_id:other,p_from:null,p_to:null,p_work_type:'construction',p_accounting:true}).report.materialStats.find(m=>m.id===cable);
+ assert.equal(otherMaterial.quantity,0);assert.equal(otherMaterial.amount,0);assert.equal(material(cable).quantity,200);assert.equal(material(cable).amount,1500);
+});
+check('private receipt sources are checked on both creation and each report read',()=>{
+ const cable=create(100,'私人進價');receipt(cable,500);receipt(cable,900);
+ const privateReceipt=sql(`select id from stock_receipts where inventory_item_id=${L(cable)} order by created_at desc,id desc limit 1`);
+ const privateCustomer=sql('select id from customers where is_private limit 1');
+ sql(`insert into stock_receipt_customers(stock_receipt_id,customer_id) values(${L(privateReceipt)},${L(privateCustomer)})`);
+ pickup(10,cable);assert.equal(material(cable).amount,90);
+ const viewers=sql('select viewer_user_ids::text from erp_private_access');
+ try {
+  sql(`update erp_private_access set viewer_user_ids=array_remove(viewer_user_ids,${L(actor)}::uuid)`);
+  assert.equal(material(cable).quantity,10);assert.equal(material(cable).amount,50);assert.equal(material(cable).price_source,'receipt');
+  pickup(10,cable);assert.equal(sql(`select cable_unit_cost_snapshot from pickup_records where inventory_item_id=${L(cable)} order by created_at desc,id desc limit 1`),'5.0000000000000000');
+  assert.equal(material(cable).quantity,20);assert.equal(material(cable).amount,100);
+  assert.equal(sql(`select public.erp_private_prepare_v1(${L(actor)});select public.cable_cost_sources_visible_v1(array[${L(uid())}::uuid]);`).split('\n').at(-1),'f');
+ } finally {sql(`update erp_private_access set viewer_user_ids=${L(viewers)}::uuid[]`);}
+ assert.equal(material(cable).amount,140);
+ const doc=uid();rpc('save_site_return_v1',{...returnArgs,p_document_id:doc,p_request_id:uid(),p_rows:[{inventory_item_id:cable,quantity:10,quantity_unit:'meter'}]});
+ assert.equal(material(cable).amount,70);
+ try {sql(`update erp_private_access set viewer_user_ids=array_remove(viewer_user_ids,${L(actor)}::uuid)`);assert.equal(material(cable).quantity,10);assert.equal(material(cable).amount,50);}
+ finally {sql(`update erp_private_access set viewer_user_ids=${L(viewers)}::uuid[]`);}
+});
 console.log(JSON.stringify({passed:passed.length,database,productionWrites:false,fixture:{actor,item,item100,item200,project,customer},finalStock:stock()},null,2));

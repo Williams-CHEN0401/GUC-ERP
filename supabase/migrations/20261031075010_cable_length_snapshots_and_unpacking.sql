@@ -10,8 +10,8 @@ alter table public.site_return_lines add column meters_per_unit_snapshot numeric
  add column package_unit_snapshot text, add column cable_snapshot_source text check(cable_snapshot_source in('recorded','migration_baseline'));
 alter table public.accounting_material_prices add column meters_per_unit_snapshot numeric(14,2) check(meters_per_unit_snapshot>0),
  add column package_unit_snapshot text, add column cable_snapshot_source text check(cable_snapshot_source in('recorded','migration_baseline'));
-alter table public.pickup_records add column cable_unit_cost_snapshot numeric check(cable_unit_cost_snapshot>=0);
-alter table public.site_return_lines add column cable_unit_cost_snapshot numeric check(cable_unit_cost_snapshot>=0);
+alter table public.pickup_records add column cable_unit_cost_snapshot numeric check(cable_unit_cost_snapshot>=0), add column cable_cost_source_receipt_ids uuid[] not null default '{}';
+alter table public.site_return_lines add column cable_unit_cost_snapshot numeric check(cable_unit_cost_snapshot>=0), add column cable_cost_source_receipt_ids uuid[] not null default '{}', add column cable_cost_project_id_snapshot uuid;
 update public.stock_receipts r set meters_per_unit_snapshot=i.meters_per_unit,package_unit_snapshot=i.unit,cable_snapshot_source='migration_baseline'
  from public.inventory_items i where i.id=r.inventory_item_id and i.meters_per_unit is not null;
 update public.pickup_records r set meters_per_unit_snapshot=i.meters_per_unit,package_unit_snapshot=i.unit,cable_snapshot_source='migration_baseline'
@@ -23,23 +23,40 @@ update public.accounting_material_prices r set meters_per_unit_snapshot=i.meters
 
 -- Price basis stays the existing net-of-tax material reference cost; no FIFO
 -- accounting is introduced. Future default-length edits cannot change this.
-create function public.cable_reference_unit_cost_v1(p_item_id uuid,p_project_id uuid) returns numeric
-language sql stable security invoker set search_path='' as $$
- select coalesce(
-  (select p.unit_price/coalesce(p.meters_per_unit_snapshot,1) from public.accounting_material_prices p where p.project_id=p_project_id and p.inventory_item_id=p_item_id),
-  (select (case when d.receipt_tax_mode='inclusive' then round(r.unit_price*10000/(10000+d.receipt_tax_rate_basis_points),2) else r.unit_price end)/coalesce(r.meters_per_unit_snapshot,1)
+create function public.cable_reference_cost_snapshot_v1(p_item_id uuid,p_project_id uuid,p_actor_user_id uuid default null) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare result jsonb;
+begin
+ if p_actor_user_id is not null then perform public.erp_private_prepare_v1(p_actor_user_id);end if;
+ select jsonb_build_object('unit_cost',p.unit_price/coalesce(p.meters_per_unit_snapshot,1),'source_receipt_ids','[]'::jsonb) into result
+ from public.accounting_material_prices p where p.project_id=p_project_id and p.inventory_item_id=p_item_id;
+ if result is not null then return result;end if;
+ select jsonb_build_object('unit_cost',(case when d.receipt_tax_mode='inclusive' then round(r.unit_price*10000/(10000+d.receipt_tax_rate_basis_points),2) else r.unit_price end)/coalesce(r.meters_per_unit_snapshot,1),'source_receipt_ids',jsonb_build_array(r.id)) into result
    from public.stock_receipts r left join public.stock_transaction_documents d on d.kind='receipt' and d.id=r.receipt_document_id
    where r.inventory_item_id=p_item_id and r.unit_price is not null and d.receipt_delivery_state is distinct from 'pending'
-   order by r.receipt_date desc,r.created_at desc,r.id desc limit 1));
+   and (p_actor_user_id is null or public.erp_private_json_visible_v1(to_jsonb(r)))
+   order by r.receipt_date desc,r.created_at desc,r.id desc limit 1;
+ return coalesce(result,jsonb_build_object('unit_cost',null,'source_receipt_ids','[]'::jsonb));
+end $$;
+-- Missing/deleted source receipts are also hidden: losing provenance must never
+-- turn a private price snapshot into public accounting data.
+create function public.cable_cost_sources_visible_v1(p_source_ids uuid[]) returns boolean
+language sql stable security invoker set search_path='' as $$
+ select not exists(select 1 from unnest(p_source_ids) sources(source_id) where not exists(
+  select 1 from public.stock_receipts r where r.id=sources.source_id and public.erp_private_json_visible_v1(to_jsonb(r))));
 $$;
-update public.pickup_records p set cable_unit_cost_snapshot=public.cable_reference_unit_cost_v1(p.inventory_item_id,p.project_id)
- where p.meters_per_unit_snapshot is not null;
-update public.site_return_lines l set cable_unit_cost_snapshot=public.cable_reference_unit_cost_v1(l.inventory_item_id,d.project_id)
- from public.site_return_documents d where d.id=l.document_id and l.meters_per_unit_snapshot is not null;
+create function public.cable_reference_unit_cost_v1(p_item_id uuid,p_project_id uuid) returns numeric
+language sql security invoker set search_path='' as $$
+ select (public.cable_reference_cost_snapshot_v1(p_item_id,p_project_id,nullif(current_setting('app.private_actor',true),'')::uuid)->>'unit_cost')::numeric;
+$$;
+with baseline as materialized(select p.id,public.cable_reference_cost_snapshot_v1(p.inventory_item_id,p.project_id) data from public.pickup_records p where p.meters_per_unit_snapshot is not null)
+update public.pickup_records p set cable_unit_cost_snapshot=(b.data->>'unit_cost')::numeric,cable_cost_source_receipt_ids=array(select jsonb_array_elements_text(b.data->'source_receipt_ids')::uuid) from baseline b where b.id=p.id;
+with baseline as materialized(select l.id,public.cable_reference_cost_snapshot_v1(l.inventory_item_id,d.project_id) data from public.site_return_lines l join public.site_return_documents d on d.id=l.document_id where l.meters_per_unit_snapshot is not null)
+update public.site_return_lines l set cable_unit_cost_snapshot=(b.data->>'unit_cost')::numeric,cable_cost_source_receipt_ids=array(select jsonb_array_elements_text(b.data->'source_receipt_ids')::uuid),cable_cost_project_id_snapshot=(select project_id from public.site_return_documents where id=l.document_id) from baseline b where b.id=l.id;
 set constraints all immediate;
 
 create function public.stamp_cable_transaction_v1() returns trigger language plpgsql security invoker set search_path='' as $$
-declare profile public.inventory_items;project uuid;cost numeric;
+declare profile public.inventory_items;project uuid;cost numeric;reference jsonb;actor uuid;
 begin
  select * into profile from public.inventory_items where id=new.inventory_item_id for update;
  if tg_op='UPDATE' and new.inventory_item_id=old.inventory_item_id then
@@ -47,23 +64,41 @@ begin
   new.meters_per_unit_snapshot:=old.meters_per_unit_snapshot;
   new.package_unit_snapshot:=old.package_unit_snapshot;
   new.cable_snapshot_source:=old.cable_snapshot_source;
-  if tg_table_name in('pickup_records','site_return_lines') then new.cable_unit_cost_snapshot:=old.cable_unit_cost_snapshot;end if;
+  if tg_table_name in('pickup_records','site_return_lines') then new.cable_unit_cost_snapshot:=old.cable_unit_cost_snapshot;new.cable_cost_source_receipt_ids:=old.cable_cost_source_receipt_ids;end if;
  else
   new.meters_per_unit_snapshot:=profile.meters_per_unit;
   new.package_unit_snapshot:=profile.unit;
   new.cable_snapshot_source:='recorded';
   if tg_table_name='pickup_records' then
-   if profile.meters_per_unit is not null then new.cable_unit_cost_snapshot:=public.cable_reference_unit_cost_v1(new.inventory_item_id,new.project_id);end if;
-  elsif tg_table_name='site_return_lines' then
-   select project_id into project from public.site_return_documents where id=new.document_id;
    if profile.meters_per_unit is not null then
-    select case when count(*) filter(where p.cable_unit_cost_snapshot is null)>0 then null else sum((case when p.quantity_unit='meter' then p.quantity else p.quantity*coalesce(p.meters_per_unit_snapshot,1) end)*p.cable_unit_cost_snapshot)
-     /nullif(sum(case when p.quantity_unit='meter' then p.quantity else p.quantity*coalesce(p.meters_per_unit_snapshot,1) end),0)
-     end
-     into cost from public.pickup_records p where p.project_id=project and p.inventory_item_id=new.inventory_item_id;
-    new.cable_unit_cost_snapshot:=cost;
+    select id into actor from public.app_users where username=new.updated_by and is_active;
+    actor:=coalesce(actor,new.created_by_user_id);
+    if actor is null then raise exception '無法確認領料者，不能建立成本快照。';end if;
+    reference:=public.cable_reference_cost_snapshot_v1(new.inventory_item_id,new.project_id,actor);
+    new.cable_unit_cost_snapshot:=(reference->>'unit_cost')::numeric;
+    new.cable_cost_source_receipt_ids:=array(select jsonb_array_elements_text(reference->'source_receipt_ids')::uuid);
    end if;
   end if;
+ end if;
+ if tg_table_name='site_return_lines' then
+   select project_id into project from public.site_return_documents where id=new.document_id;
+   if tg_op='UPDATE' and new.inventory_item_id=old.inventory_item_id and new.quantity=old.quantity and project=old.cable_cost_project_id_snapshot then
+    new.cable_cost_project_id_snapshot:=old.cable_cost_project_id_snapshot;
+   else
+    new.cable_cost_project_id_snapshot:=project;
+   if profile.meters_per_unit is not null then
+    with movements as (
+     select (case when p.quantity_unit='meter' then p.quantity else p.quantity*coalesce(p.meters_per_unit_snapshot,1) end) qty,p.cable_unit_cost_snapshot price
+     from public.pickup_records p where p.project_id=project and p.inventory_item_id=new.inventory_item_id
+     union all
+     select -(case when l.quantity_unit='meter' then l.quantity else l.quantity*coalesce(l.meters_per_unit_snapshot,1) end),l.cable_unit_cost_snapshot
+     from public.site_return_lines l join public.site_return_documents d on d.id=l.document_id
+     where d.project_id=project and d.status='active' and l.inventory_item_id=new.inventory_item_id and l.document_id<>new.document_id and l.quantity>0)
+    select case when count(*) filter(where price is null)>0 then null else sum(qty*price)/nullif(sum(qty),0) end into cost from movements;
+    new.cable_unit_cost_snapshot:=cost;
+    new.cable_cost_source_receipt_ids:=array(select distinct unnest(p.cable_cost_source_receipt_ids) from public.pickup_records p where p.project_id=project and p.inventory_item_id=new.inventory_item_id);
+   end if;
+   end if;
  end if;
  -- Explicit accounting price edits intentionally establish a new package quote
  -- at the current specification; unrelated item profile edits do not.
@@ -373,7 +408,7 @@ begin
  select coalesce(array_agg(p.id),'{}') into allowed from public.projects p where public.site_return_project_visible_v1(p_actor_user_id,p.id);
  return jsonb_build_object(
  'documents',coalesce((select jsonb_agg(to_jsonb(d)||jsonb_build_object('account',u.display_name,'lines',
-  coalesce((select jsonb_agg(to_jsonb(l)-'cable_unit_cost_snapshot' order by l.id) from public.site_return_lines l where l.document_id=d.id and l.quantity>0),'[]')) order by d.return_date desc,d.created_at desc)
+  coalesce((select jsonb_agg(to_jsonb(l)-'cable_unit_cost_snapshot'-'cable_cost_source_receipt_ids' order by l.id) from public.site_return_lines l where l.document_id=d.id and l.quantity>0),'[]')) order by d.return_date desc,d.created_at desc)
   from public.site_return_documents d join public.app_users u on u.id=d.created_by_user_id where d.status<>'deleted' and d.project_id=any(allowed)),'[]'),
  'projects',coalesce((select jsonb_agg(jsonb_build_object('id',id,'customer_id',customer_id,'name',name,'code',project_code,'department_id',department_id) order by project_code) from public.projects where id=any(allowed)),'[]'),
  'customers',coalesce((select jsonb_agg(jsonb_build_object('id',c.id,'name',c.name,'code',c.customer_code,'category',c.customer_category) order by c.customer_code) from public.customers c where c.id in(select customer_id from public.projects where id=any(allowed))),'[]'),
@@ -417,25 +452,25 @@ begin
  and (p_from is null or l.log_date>=p_from) and (p_to is null or l.log_date<=p_to)
  and public.erp_private_json_visible_v1(to_jsonb(l))),
  materials as materialized (
- select r.*,case when r.quantity_unit='meter' then r.quantity else r.quantity*coalesce(r.meters_per_unit_snapshot,1) end report_quantity,i.item_name,i.brand,i.model,case when i.meters_per_unit is not null then '米' else i.unit end unit,i.category_id,
+ select r.*,case when public.cable_cost_sources_visible_v1(r.cable_cost_source_receipt_ids) then r.cable_unit_cost_snapshot end visible_cable_cost,case when r.quantity_unit='meter' then r.quantity else r.quantity*coalesce(r.meters_per_unit_snapshot,1) end report_quantity,i.item_name,i.brand,i.model,case when i.meters_per_unit is not null then '米' else i.unit end unit,i.category_id,
  coalesce(nullif(btrim(c.name),''),'未分類') category_name
  from public.pickup_records r join public.inventory_items i on i.id=r.inventory_item_id
  left join public.product_categories c on c.id=i.category_id
  where r.project_id=p_project_id and (p_from is null or r.pickup_date>=p_from) and (p_to is null or r.pickup_date<=p_to)
- and public.erp_private_json_visible_v1(to_jsonb(r))),
+ and public.erp_private_json_visible_v1(to_jsonb(r)-'cable_cost_source_receipt_ids')),
  workers as materialized (
  select w.user_id,l.id,l.log_date,u.display_name,u.is_active from logs l
  join public.site_work_log_workers w on w.work_log_id=l.id join public.app_users u on u.id=w.user_id where l.reporter_on_site or w.user_id is distinct from l.reporter_user_id),
  contractor_days as (select log_date,max(subcontractor_count) headcount,count(*) records from logs where subcontractor_count>0 group by log_date),
  returned as materialized (
- select l.id,l.inventory_item_id,l.cable_unit_cost_snapshot,case when l.quantity_unit='meter' then l.quantity else l.quantity*coalesce(l.meters_per_unit_snapshot,1) end quantity,d.return_date,d.document_no,d.id document_id,u.display_name account
+ select l.id,l.inventory_item_id,case when public.cable_cost_sources_visible_v1(l.cable_cost_source_receipt_ids) then l.cable_unit_cost_snapshot end visible_cable_cost,case when l.quantity_unit='meter' then l.quantity else l.quantity*coalesce(l.meters_per_unit_snapshot,1) end quantity,d.return_date,d.document_no,d.id document_id,u.display_name account
  from public.site_return_lines l join public.inventory_items i on i.id=l.inventory_item_id join public.site_return_documents d on d.id=l.document_id
  join public.app_users u on u.id=d.created_by_user_id
  where d.project_id=p_project_id and d.status='active' and l.quantity>0
  and (p_from is null or d.return_date>=p_from) and (p_to is null or d.return_date<=p_to)
  and public.erp_private_json_visible_v1(to_jsonb(d))),
- issued_totals as (select inventory_item_id,sum(report_quantity) quantity,sum(report_quantity*cable_unit_cost_snapshot) cable_amount,count(*) filter(where cable_unit_cost_snapshot is null) unpriced,count(*) records,min(pickup_date) first_date,max(pickup_date) recent_date from materials group by inventory_item_id),
- returned_totals as (select inventory_item_id,sum(quantity) quantity,sum(quantity*cable_unit_cost_snapshot) cable_amount,count(*) filter(where cable_unit_cost_snapshot is null) unpriced,count(*) records,min(return_date) first_date,max(return_date) recent_date from returned group by inventory_item_id),
+ issued_totals as (select inventory_item_id,sum(report_quantity) quantity,sum(report_quantity*visible_cable_cost) cable_amount,count(*) filter(where visible_cable_cost is null) unpriced,count(*) records,min(pickup_date) first_date,max(pickup_date) recent_date from materials group by inventory_item_id),
+ returned_totals as (select inventory_item_id,sum(quantity) quantity,sum(quantity*visible_cable_cost) cable_amount,count(*) filter(where visible_cable_cost is null) unpriced,count(*) records,min(return_date) first_date,max(return_date) recent_date from returned group by inventory_item_id),
  mat as (
  select i.id,i.item_name name,i.brand,i.model,case when i.meters_per_unit is not null then '米' else coalesce(nullif(i.unit,''),'未標示單位') end unit,
  i.unit package_unit,coalesce(i.meters_per_unit,1) meters_per_unit,
@@ -624,7 +659,7 @@ begin
  end if;
  return result;
 end $function$;
-revoke all on function public.cable_reference_unit_cost_v1(uuid,uuid),public.stamp_cable_transaction_v1(),public.unpack_cable_for_pickup_v1(),public.guard_cable_historical_package_v1() from public,anon,authenticated;
-grant execute on function public.cable_reference_unit_cost_v1(uuid,uuid),public.stamp_cable_transaction_v1(),public.unpack_cable_for_pickup_v1(),public.guard_cable_historical_package_v1() to service_role;
+revoke all on function public.cable_reference_cost_snapshot_v1(uuid,uuid,uuid),public.cable_cost_sources_visible_v1(uuid[]),public.cable_reference_unit_cost_v1(uuid,uuid),public.stamp_cable_transaction_v1(),public.unpack_cable_for_pickup_v1(),public.guard_cable_historical_package_v1() from public,anon,authenticated;
+grant execute on function public.cable_reference_cost_snapshot_v1(uuid,uuid,uuid),public.cable_cost_sources_visible_v1(uuid[]),public.cable_reference_unit_cost_v1(uuid,uuid),public.stamp_cable_transaction_v1(),public.unpack_cable_for_pickup_v1(),public.guard_cable_historical_package_v1() to service_role;
 comment on column public.pickup_records.cable_unit_cost_snapshot is '每米未稅參考成本快照；原有人工價格優先／最近已收貨單價，含稅先依既有規則換未稅。';
 notify pgrst,'reload schema';
