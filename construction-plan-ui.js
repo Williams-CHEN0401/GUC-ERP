@@ -30,11 +30,11 @@ function collectConstructionWarning(form){
  return {warning_work_days:Number(days),warning_min_progress:Number(minimum)};
 }
 let planningGeneration=0;
+function planningControls(){return tableState.planning ||= {page:1,perPage:10,direction:'asc',search:''};}
 function renderPlanningProjects(){
  syncCustomerFilterGroup('planningFilter');
  refreshFilterOptions('#planningFilterType',PROJECT_WORK_TYPES.filter(([code])=>['construction','repair'].includes(code)),'所有類型');
- tableState.planning ||= {page:1,perPage:10,direction:'asc',search:''};
- const control=tableState.planning,plans=state.constructionPlans||[];
+ const control=planningControls(),plans=state.constructionPlans||[];
  const direction=document.querySelector('#planningDateOrder')?.value||'asc';
  const orderedPlans=[...plans].sort((a,b)=>(a.construction_date.localeCompare(b.construction_date)||a.id.localeCompare(b.id))*(direction==='desc'?-1:1));
  const firstDate=project=>orderedPlans.find(plan=>plan.project_id===project.id)?.construction_date;
@@ -58,8 +58,8 @@ async function refreshConstructionPane(){
  try{const data=await apiRequest({method:'GET',scope:'construction_plans'});if(generation!==planningGeneration)return;mergeConstructionContext(data);renderPlanningProjects();}
  catch(error){if(generation===planningGeneration)host.innerHTML=`<p role="alert">${esc(error.message)}</p>`;}
 }
-document.addEventListener('input',event=>{if(event.target.id==='planningSearch'){tableState.planning.search=event.target.value;tableState.planning.page=1;renderPlanningProjects();}});
-document.addEventListener('change',event=>{if(event.target.id.startsWith('planningFilter')||event.target.id==='planningDateOrder'){tableState.planning.page=1;renderPlanningProjects();}});
+document.addEventListener('input',event=>{if(event.target.id==='planningSearch'){const control=planningControls();control.search=event.target.value;control.page=1;renderPlanningProjects();}});
+document.addEventListener('change',event=>{if(event.target.id.startsWith('planningFilter')||event.target.id==='planningDateOrder'){planningControls().page=1;renderPlanningProjects();}});
 function renderConstructionDashboard(){
  let host=document.querySelector('#constructionProgressDashboard');if(!host){host=document.createElement('article');host.id='constructionProgressDashboard';host.className='panel';document.querySelector('#dashboard')?.append(host);}
  const expanded=new Set([...host.querySelectorAll('[data-dashboard-plan][open]')].map(row=>row.dataset.dashboardPlan));
