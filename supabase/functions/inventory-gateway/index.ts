@@ -613,7 +613,7 @@ async function exportErpData(payload:Row,user:AppUser){
  requirePermission(user,'data_export');
  if(!spec)throw new Error('不支援的匯出清單。');
  requirePermission(user,spec.module);
- if(resource==='assignments'&&payload.filters?.assignment_scope==='all')throw new Error('您的帳號沒有執行此操作的權限。');
+ if(resource==='assignments'&&(payload.filters as Row|undefined)?.assignment_scope==='all')throw new Error('您的帳號沒有執行此操作的權限。');
  const prices=hasPermission(user,'purchase_prices');
  if(payload.describe===true)return buildErpExport(payload,{},prices);
  // Validate columns/scope before doing any large read. Price columns are denied here too.
@@ -865,7 +865,7 @@ async function siteSpreadsheetHistory(sourceId:string,user:AppUser) {
   const userIds=[...new Set(workers.map(row=>uuid(row.user_id)).filter((id):id is string=>!!id))],people:Row[]=[];
   for(let offset=0;offset<userIds.length;offset+=100)people.push(...await get(`app_users?id=in.(${userIds.slice(offset,offset+100).join(",")})&select=id,display_name`) as Row[]);
   const byUser=new Map(people.map(person=>[person.id,person]));
-  const result=events.map(event=>({...event,workers:workers.filter(worker=>worker.event_id===event.id).map(worker=>byUser.get(worker.user_id)).filter(Boolean)}))
+  const result=events.map<Row>(event=>({...event,workers:workers.filter(worker=>worker.event_id===event.id).map(worker=>byUser.get(worker.user_id)).filter(Boolean)}))
     .sort((a,b)=>String(b.occurred_at||"").localeCompare(String(a.occurred_at||""))||String(b.created_at).localeCompare(String(a.created_at)));
   return {equipment,events:result,summary:{total:result.length,last_maintenance:result.find(event=>event.occurred_at)?.occurred_at||null}};
 }
@@ -1333,6 +1333,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     return rpc("save_site_return_v1",{p_actor_user_id:user.id,p_document_id:documentId,p_request_id:requestId,p_row_version:action==="create"?null:payload.row_version,p_action:action,p_return_date:writing?date(payload.return_date):null,p_customer_id:writing?uuid(payload.customer_id):null,p_project_id:writing?uuid(payload.project_id):null,p_rows:rows,p_note:note||""});
   }
   if(operation==="confirm_receipt_delivery"){
+    if(!user)throw new Error("請先以有效帳號登入。");
     requirePermission(user,"purchases","VIEW");
     const document_id=uuid(payload.document_id),delivery_date=date(payload.delivery_date),customer_id=uuid(payload.customer_id),project_id=uuid(payload.project_id),destination=text(payload.destination);
     if(!document_id||!delivery_date||!["company","site"].includes(destination)||(destination==="site"&&(!customer_id||!project_id))||(destination==="company"&&(payload.customer_id||payload.project_id)))throw Error("請選擇有效的送達位置、日期與工作內容。");
@@ -2012,7 +2013,7 @@ async function dashboardSnapshot(user: AppUser, allLists=false) {
   const constructionUsers=[...((construction.site_workers||[]) as Row[])],knownConstructionUsers=new Set(constructionUsers.map(row=>row.id));
   // The existing scope lists active workers. Preserve historical names for
   // disabled accounts only when an already-authorized visible plan refers to them.
-  const missingConstructionUserIds=[...new Set(visibleConstruction.flatMap(p=>[...p.assignee_user_ids,p.created_by_user_id]).map(uuid).filter((id):id is string=>!!id&&!knownConstructionUsers.has(id)))];
+  const missingConstructionUserIds=[...new Set(visibleConstruction.flatMap(p=>[...(p.assignee_user_ids as unknown[]),p.created_by_user_id]).map(uuid).filter((id):id is string=>!!id&&!knownConstructionUsers.has(id)))];
   for(let start=0;start<missingConstructionUserIds.length;start+=100)constructionUsers.push(...await getAll(`app_users?select=id,display_name&id=in.(${missingConstructionUserIds.slice(start,start+100)})&order=id.asc`) as Row[]);
   const constructionProjection=(p:Row)=>{
     const project=((construction.projects||[]) as Row[]).find(row=>row.id===p.project_id);

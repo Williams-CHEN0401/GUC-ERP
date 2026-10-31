@@ -86,6 +86,16 @@ test('return scope cannot be combined with an unrelated entity to bypass its rea
  for(const entity of ['users','customers','projects',''])assert.equal((await h.read('scope=site_returns&entity='+entity)).status,400);
  assert.equal(h.calls.length,0);
 });
+
+test('receipt delivery confirmation rejects an absent identity before calling the database',async()=>{
+ const h=harness([permission('purchases','view')]);
+ const payload={document_id:id(2),delivery_date:'2026-10-31',destination:'company'};
+ await assert.rejects(h.context.change('confirm_receipt_delivery',payload,null),/請先以有效帳號登入/);
+ assert.equal(h.calls.length,0);
+ await h.context.change('confirm_receipt_delivery',payload,h.user);
+ assert.equal(h.calls[0].name,'confirm_receipt_delivery_v1');
+ assert.equal(h.calls[0].args.p_actor_user_id,h.user.id);
+});
 test('history create/update permissions inspect the nested event ID independently',async()=>{
  for(const action of ['create','update']){
   const h=harness([permission('site','view'),permission('history','view',action)]);
