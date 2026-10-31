@@ -64,7 +64,7 @@
               <span class="workspace-caption">工作內容・庫存・工作紀錄</span>
             </header>
             <div class="dashboard-focus">
-              <article class="panel assignment-panel"><div class="panel-head"><div><h2>工作指派</h2><p id="assignmentVisibilityHint">只顯示與目前登入帳號相關的未完成工作與完成通知</p></div><button class="primary" type="button" data-open="workAssignmentModal">＋ 建立工作指派</button></div><div class="assignment-columns"><section><div class="assignment-list-heading"><h3 id="pendingAssignmentTitle">我的待辦</h3><label class="assignment-scope-control" hidden>查看範圍<select id="assignmentScope"><option value="all">所有人的待辦</option><option value="mine">我的待辦</option></select></label></div><div id="pendingAssignmentList" class="assignment-list"></div></section><section><h3>完成通知</h3><div id="completedAssignmentList" class="assignment-list"></div></section></div></article>
+              <article class="panel assignment-panel"><div class="panel-head"><div><h2>工作指派</h2><p id="assignmentVisibilityHint">只顯示與目前登入帳號相關的未完成工作與完成通知</p></div></div><div class="assignment-columns"><section><div class="assignment-list-heading"><h3 id="pendingAssignmentTitle">我的待辦</h3></div><div id="pendingAssignmentList" class="assignment-list"></div></section><section><h3>完成通知</h3><div id="completedAssignmentList" class="assignment-list"></div></section></div></article>
               <article class="panel dashboard-equal-card"><div class="panel-head"><div><h2>工作內容</h2><p id="dashboardWorklogDate">顯示前一日全部工作日誌</p></div><button class="text-button" data-goto="worklogs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>日期</th><th>客戶／工作內容</th><th>施工人員</th><th>工作摘要</th></tr></thead><tbody id="dashboardWorklogTable"></tbody></table></div></article>
               <div class="dashboard-pair"><article class="panel"><div class="panel-head"><div><h2>維修品管理</h2><p>依收件日期選取最新 15 筆</p></div><button class="text-button" data-goto="repairs">查看全部 →</button></div><div class="table-card"><table><thead><tr><th>收件日期</th><th>維修單／客戶</th><th>品項／故障內容</th><th>狀態</th></tr></thead><tbody id="dashboardRepairTable"></tbody></table></div></article>
               <article class="panel project-panel"><div class="panel-head"><div><h2>待辦工作</h2><p>尚未完成的工作內容，最多 15 筆</p></div><button class="text-button" data-goto="projects">查看全部 →</button></div><div class="project-list" id="activeProjectList"></div></article></div>
@@ -72,6 +72,8 @@
           </section>
 
           <section class="page" id="appointments" data-page="appointments">
+            <div class="section-tabs" id="appointmentTabs"><button class="active" type="button" data-appointment-tab="list">客戶預約清單</button><button type="button" data-appointment-tab="assignments">工作指派管理</button></div>
+            <div id="appointmentListPane">
             <div class="page-actions"><div><h2>客戶預約事項</h2></div><button class="primary" data-open="appointmentModal">＋ 新增預約事項</button></div>
             <div class="filterbar">
               <label class="search"><input id="appointmentSearch" type="search" placeholder="搜尋客戶、內容、聯絡人或備註"></label>
@@ -83,7 +85,8 @@
               <label>科室名稱<select id="appointmentFilterDepartment" disabled><option value="">所有科室</option></select></label>
               <label>預約起始日期<input id="appointmentFilterFrom" type="date"></label><label>預約結束日期<input id="appointmentFilterTo" type="date"></label>
             </div>
-            <div class="table-card"><table><thead><tr><th data-table-sort="appointment" data-key="appointment_date">預約日期</th><th data-table-sort="appointment" data-key="customer">客戶名稱</th><th data-table-sort="appointment" data-key="department">科室名稱</th><th data-table-sort="appointment" data-key="typeLabel">預約類型</th><th data-table-sort="appointment" data-key="instructions">預約／報修內容</th><th data-table-sort="appointment" data-key="assignee">責任人</th><th data-table-sort="appointment" data-key="statusLabel">狀態</th><th data-table-sort="appointment" data-key="assigned_date">指派日期</th><th>操作</th></tr></thead><tbody id="appointmentTable"></tbody></table></div><div id="appointmentPagination"></div>
+            <div class="table-card"><table><thead><tr><th data-table-sort="appointment" data-key="appointment_date">預約日期</th><th data-table-sort="appointment" data-key="customer">客戶名稱</th><th data-table-sort="appointment" data-key="department">科室名稱</th><th data-table-sort="appointment" data-key="typeLabel">預約類型</th><th data-table-sort="appointment" data-key="instructions">預約／報修內容</th><th data-table-sort="appointment" data-key="assignee">責任人</th><th data-table-sort="appointment" data-key="statusLabel">狀態</th><th data-table-sort="appointment" data-key="assigned_date">指派日期</th><th>操作</th></tr></thead><tbody id="appointmentTable"></tbody></table></div><div id="appointmentPagination"></div></div>
+            <div id="assignmentManagementPane" hidden><div class="page-actions"><div><h2>工作指派管理</h2><p>依工作內容管理權限操作；已完成或取消的紀錄保留歷史。</p></div><button type="button" class="primary" data-open="workAssignmentModal">＋ 建立工作指派</button></div><div class="filterbar"><label class="search"><input id="assignmentManagementSearch" type="search" placeholder="搜尋工作、客戶、負責人或說明"></label><label>狀態<select id="assignmentManagementStatus"><option value="active">未完成</option><option value="">全部狀態</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label><button class="outline" type="button" id="assignmentManagementReload">重新讀取</button></div><p id="assignmentManagementNotice" role="status"></p><div class="table-card"><table><thead><tr><th>工作內容／客戶</th><th>負責人／指派人</th><th>類型／工作說明</th><th>狀態</th><th>操作</th></tr></thead><tbody id="assignmentManagementTable"></tbody></table></div></div>
           </section>
           <section class="page" id="transactions" data-page="transactions">
             <div class="section-tabs" data-tabs="transaction"><button class="active" data-tab="pickups">取貨</button><button data-tab="receipts">進貨</button><button data-tab="supplier-returns">退貨</button><button data-tab="returns">案場餘料入庫</button></div>
@@ -264,6 +267,7 @@
     <script src="/work-content-report.js" defer></script>
     <script src="/shared-report-ui.js" defer></script>
     <script src="/assignment-ui.js" defer></script>
+    <script src="/assignment-management.js" defer></script>
     <script src="/app.js" defer></script>
     <script src="/performance-ui.js" defer></script>
     <script src="/construction-checklist.js" defer></script>

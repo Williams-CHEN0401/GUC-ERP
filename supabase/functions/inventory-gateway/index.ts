@@ -327,7 +327,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  customers:["create_contract_service_type","update_contract_service_type","delete_contract_service_type","create_customer_department","update_customer_department","deactivate_customer_department","create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
  suppliers:["create_supplier","update_supplier","delete_supplier"],
  appointments:["upsert_customer_appointment"],
- projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
+ projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","update_work_assignment","cancel_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups","update_pickup_document","delete_pickup_document"],
  purchases:["create_supplier_return","update_supplier_return","delete_supplier_return","create_site_return","update_site_return","delete_site_return","cancel_site_return","delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
@@ -346,7 +346,7 @@ function operationPermission(operation:string,payload:Row):{module:string;action
  if(!module)return null;
  if((["upsert_project_site_entry","delete_project_site_entry"].includes(operation)&&payload.module==="logs")||(operation==="delete_site_entry"&&payload.entity==="work_log"))module="worklogs";
  let action:PermissionAction=operation==="check_monitoring_ip_conflicts"||operation==="reveal_phone_system_credential"?"VIEW":/^(delete|batch_delete|void)_/.test(operation)?"DELETE":/^(update|bulk_update|batch_update|set|restore)_/.test(operation)?"UPDATE":/^(upsert|save|manage)_/.test(operation)?payload.id||payload.row_version?"UPDATE":"CREATE":"CREATE";
-  if(operation==="deactivate_customer_department"||operation==="cancel_site_return")action="DELETE";
+  if(operation==="deactivate_customer_department"||operation==="cancel_site_return"||operation==="cancel_work_assignment")action="DELETE";
   if(["complete_work_assignment","acknowledge_work_assignment","close_work_content"].includes(operation))action="UPDATE";
  if(operation==="save_equipment_history")action=(payload.event as Row)?.id?"UPDATE":"CREATE";
  if(operation==="manage_customer_service")action=({create:"CREATE",update:"UPDATE",delete:"DELETE"} as Record<string,PermissionAction>)[text(payload.action)]||"UPDATE";
@@ -362,6 +362,7 @@ function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyA
 }
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
+ if(scope==="assignment_management"){if(entity)throw new Error("不支援其他資料查詢。");requirePermission(user,"appointments");requirePermission(user,"projects");return;}
  if(["receipt_supplier_items","receipt_delivery_options"].includes(scope)){if(entity)throw Error("不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
  if(scope==="site_returns"){if(params.has("entity"))throw Error("案場餘料入庫不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
  if(scope==="system_backup_authorization"){
@@ -612,7 +613,7 @@ async function exportErpData(payload:Row,user:AppUser){
  requirePermission(user,'data_export');
  if(!spec)throw new Error('不支援的匯出清單。');
  requirePermission(user,spec.module);
- if(resource==='assignments'&&payload.filters?.assignment_scope==='all'&&user.role!=='admin')throw new Error('您的帳號沒有執行此操作的權限。');
+ if(resource==='assignments'&&payload.filters?.assignment_scope==='all')throw new Error('您的帳號沒有執行此操作的權限。');
  const prices=hasPermission(user,'purchase_prices');
  if(payload.describe===true)return buildErpExport(payload,{},prices);
  // Validate columns/scope before doing any large read. Price columns are denied here too.
@@ -1255,9 +1256,16 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     const args={p_reminder_days:reminderDays,p_id:id,p_row_version:rowVersion,p_customer_id:customerId,p_department_id:departmentIdInput(payload.department_id),p_appointment_type:payload.appointment_type,p_appointment_date:when,p_contact_name:contact,p_contact_phone:phone,p_instructions:instructions,p_assignee_user_id:assigneeId,p_status:payload.status,p_notes:notes,p_actor_user_id:user!.id,p_actor:actor};
     return assignedDate?rpc("upsert_customer_appointment_v3",{...args,p_assigned_date:assignedDate}):rpc("upsert_customer_appointment_v2",args);
   }
+  if (["update_work_assignment","cancel_work_assignment"].includes(operation)) {
+    if(!user)throw new Error("請先登入。");
+    requirePermission(user,"appointments");requirePermission(user,"projects");requirePermission(user,"projects",operation==="cancel_work_assignment"?"DELETE":"UPDATE");
+    const id=uuid(payload.id),version=Number(payload.row_version);if(!id||!Number.isInteger(version)||version<1)throw new Error("工作指派資料或版本不正確。");
+    const args={p_actor_user_id:user.id,p_actor:actor,p_id:id,p_row_version:version};
+    return operation==="cancel_work_assignment"?rpc("cancel_work_assignment_v1",args):rpc("update_work_assignment_v1",{...args,p_payload:payload});
+  }
   if (operation === "create_work_assignment") {
     requireOperation(user,operation,payload,["admin"]);
-    if(user!.role!=="admin")throw new Error("只有管理員可以建立工作指派。");
+    requirePermission(user!,"appointments");requirePermission(user!,"projects");requirePermission(user!,"projects","CREATE");
     if(Object.prototype.hasOwnProperty.call(payload,"assignee_user_ids")){
       const ids=Array.isArray(payload.assignee_user_ids)?payload.assignee_user_ids.map(value=>uuid(value)):[];
       const requestId=uuid(payload.request_id),mode=text(payload.project_mode)||"existing",type=text(payload.assignment_type),instructions=limited(payload.instructions,2000);
@@ -1975,16 +1983,15 @@ async function dashboardSnapshot(user: AppUser, allLists=false) {
   const previousBusinessDate=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(Date.now()-86400000));
   const scoped=user.project_scoped?await privateReadRpc("work_log_scope_v1",{p_user_id:user.id},user) as Row:null;
   const assignmentTypes=[...(hasPermission(user,"worklogs")||hasPermission(user,"projects")?["general"]:[]),...(hasPermission(user,"pickups")?["pickup"]:[]),...(hasPermission(user,"appointments")?["appointment"]:[])];
-  const [projects,repairs,logs,pendingAssignments,completedAssignments,allPendingAssignments]=await Promise.all([
+  const [projects,repairs,logs,pendingAssignments,completedAssignments]=await Promise.all([
     !hasPermission(user,"projects")?[]:scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,allLists?undefined:15):readList("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
     !hasPermission(user,"repairs")?[]:readList("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
     !hasPermission(user,"worklogs")?[]:scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):getAll(`site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
     !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,assignment_request_id,project_id,customer_id,appointment_type,appointment_date,construction_plan_id,construction_item_id,construction_plan_title,construction_item_title,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=in.(pending,in_progress)&order=created_at.asc,id.asc&limit=100`),
     !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,assignment_request_id,project_id,customer_id,appointment_type,appointment_date,construction_plan_id,construction_item_id,construction_plan_title,construction_item_title,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`),
-    user.role!=="admin"||!assignmentTypes.length?[]:getAll(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,assignment_request_id,project_id,customer_id,appointment_type,appointment_date,construction_plan_id,construction_item_id,construction_plan_title,construction_item_title,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&status=in.(pending,in_progress)&order=created_at.asc,id.asc`)
   ]) as Row[][];
   const unique=(rows:Row[],field:string)=>[...new Set(rows.map(row=>uuid(row[field])).filter(Boolean))];
-  const assignments=[...pendingAssignments,...completedAssignments,...allPendingAssignments],projectIds=unique([...logs,...assignments],"project_id"),itemIds=unique([...repairs,...assignments],"inventory_item_id"),logIds=unique(logs,"id"),assignmentUserIds=[...new Set([...unique(assignments,"assignee_user_id"),...unique(assignments,"created_by_user_id")])];
+  const assignments=[...pendingAssignments,...completedAssignments],projectIds=unique([...logs,...assignments],"project_id"),itemIds=unique([...repairs,...assignments],"inventory_item_id"),logIds=unique(logs,"id"),assignmentUserIds=[...new Set([...unique(assignments,"assignee_user_id"),...unique(assignments,"created_by_user_id")])];
   const [relatedProjects,items,workers,assignmentUsers]=await Promise.all([
     projectIds.length?getAll(`projects?select=id,project_code,name,customer_id&id=in.(${projectIds})&order=id.asc`):[],
     itemIds.length?getAll(`inventory_items?select=id,item_name,brand,model&id=in.(${itemIds})&order=id.asc`):[],
@@ -2001,7 +2008,7 @@ async function dashboardSnapshot(user: AppUser, allLists=false) {
   const construction=hasPermission(user,"worklogs")||hasPermission(user,"projects")?await rpc("construction_scope_v1",{p_actor_user_id:user.id,p_project_id:null}) as Row:{};
   const constructionOwnedProjects=new Set(((construction.project_workers||[]) as Row[]).filter(w=>w.user_id===user.id&&w.is_assignee===true).map(w=>w.project_id));
   const pendingConstruction=((construction.construction_plans||[]) as Row[]).filter(p=>["pending","in_progress"].includes(String(p.status))&&Array.isArray(p.assignee_user_ids)&&p.assignee_user_ids.length);
-  const visibleConstruction=pendingConstruction.filter(p=>user.role==="admin"||(p.assignee_user_ids as string[]).includes(user.id));
+  const visibleConstruction=pendingConstruction.filter(p=>(p.assignee_user_ids as string[]).includes(user.id));
   const constructionUsers=[...((construction.site_workers||[]) as Row[])],knownConstructionUsers=new Set(constructionUsers.map(row=>row.id));
   // The existing scope lists active workers. Preserve historical names for
   // disabled accounts only when an already-authorized visible plan refers to them.
@@ -2012,8 +2019,7 @@ async function dashboardSnapshot(user: AppUser, allLists=false) {
     return {...p,id:`construction:${p.id}`,construction_plan_id:p.id,assignment_type:"construction",project_code:project?.project_code||"—",project:project?.name||"—",customer:lookup((construction.customers||[]) as Row[],project?.customer_id,"name"),instructions:p.content,creator:lookup(constructionUsers,p.created_by_user_id,"display_name"),assignee:(p.assignee_user_ids as string[]).map(id=>lookup(constructionUsers,id,"display_name")).join("、")};
   };
   const constructionTasks=pendingConstruction.filter(p=>(p.assignee_user_ids as string[]).includes(user.id)).map(constructionProjection);
-  const allConstructionTasks=user.role==="admin"?pendingConstruction.map(constructionProjection):[];
-  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{construction_progress:((construction.construction_plans||[]) as Row[]).filter(p=>constructionOwnedProjects.has(p.project_id)).map(p=>({...p,project:lookup((construction.projects||[]) as Row[],p.project_id,"name")})),previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:[...pendingAssignments.map(assignmentProjection),...constructionTasks],completed:completedAssignments.map(assignmentProjection),...(user.role==="admin"?{all_pending:[...allPendingAssignments.map(assignmentProjection),...allConstructionTasks]}:{})}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
+  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{construction_progress:((construction.construction_plans||[]) as Row[]).filter(p=>constructionOwnedProjects.has(p.project_id)).map(p=>({...p,project:lookup((construction.projects||[]) as Row[],p.project_id,"name")})),previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:[...pendingAssignments.map(assignmentProjection),...constructionTasks],completed:completedAssignments.map(assignmentProjection)}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
 }
 async function monitoringIpConflicts(payload: Row) {
   const customerId=uuid(payload.customer_id),ips=Array.isArray(payload.ips)?[...new Set(payload.ips.map(v=>ipAddress(v)).filter(Boolean))]:[];
@@ -2107,6 +2113,7 @@ async function handleRequest(request: Request) {
       const scopeName = text(params.get("scope")) || "dashboard";
       if(scopeName==="receipt_supplier_items"){const supplier=uuid(params.get("supplier_id"));if(!supplier)throw Error("供應商編號不正確。");return json(await rpc("receipt_supplier_items_v1",{p_actor_user_id:user.id,p_supplier_id:supplier}));}
       if(scopeName==="receipt_delivery_options")return json(await rpc("receipt_delivery_options_v1",{p_actor_user_id:user.id}));
+      if(scopeName==="assignment_management")return json({...await rpc("work_assignment_management_v1",{p_actor_user_id:user.id}) as Row,current_user:publicUser(user),errors:[]});
       if(scopeName==="site_returns")return json({...await rpc("site_return_list_v1",{p_actor_user_id:user.id}) as Row,current_user:publicUser(user),errors:[]});
       if(scopeName==="materials"||scopeName==="work_report"){
         const id=params.get("project_id");if(id&&!uuid(id))throw new Error("工作內容編號不正確。");
