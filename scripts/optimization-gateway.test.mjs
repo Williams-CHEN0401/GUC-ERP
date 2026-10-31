@@ -17,24 +17,23 @@ test('dashboard limits summary cards but returns every previous-day log and curr
  const result=await h.context.dashboardSnapshot(user);assert.equal(result.dashboard.worklogs[0].customer,'測試客戶');assert.equal(result.dashboard.worklogs[0].workers,'施工人員');
  for(const path of h.calls.slice(0,2))assert.equal(new URLSearchParams(path.split('?')[1]).get('limit'),'15');
  const logQuery=new URLSearchParams(h.calls.find(p=>p.startsWith('site_work_logs?')).split('?')[1]);assert.equal(logQuery.get('order'),'created_at.asc,id.asc');assert.equal(logQuery.get('limit'),null);assert.ok(logQuery.get('log_date')?.startsWith('eq.'));
- const assignmentQueries=h.calls.filter(p=>p.startsWith('work_assignments?')).map(path=>new URLSearchParams(path.split('?')[1]));assert.equal(assignmentQueries.length,3);
+ const assignmentQueries=h.calls.filter(p=>p.startsWith('work_assignments?')).map(path=>new URLSearchParams(path.split('?')[1]));assert.equal(assignmentQueries.length,2);
  const mine=assignmentQueries.find(q=>q.has('assignee_user_id')),notices=assignmentQueries.find(q=>q.has('created_by_user_id')),all=assignmentQueries.find(q=>!q.has('assignee_user_id')&&!q.has('created_by_user_id'));
  assert.equal(mine.get('assignee_user_id'),`eq.${user.id}`);assert.equal(mine.get('limit'),'100');assert.equal(mine.get('status'),'in.(pending,in_progress)');
  assert.equal(notices.get('created_by_user_id'),`eq.${user.id}`);assert.equal(notices.get('limit'),'100');assert.equal(notices.get('completion_acknowledged_at'),'is.null');
- assert.equal(all.get('limit'),null);assert.equal(all.get('status'),'in.(pending,in_progress)');assert.equal(all.get('order'),'created_at.asc,id.asc');
- assert.ok(h.calls.every(p=>!p.startsWith('pickup_records')));assert.equal(h.calls.length,10);
+ assert.equal(all,undefined);assert.equal(result.dashboard.assignments.all_pending,undefined);
+ assert.ok(h.calls.every(p=>!p.startsWith('pickup_records')));assert.equal(h.calls.length,9);
 });
-test('dashboard export removes both summary and assignment page limits and reads every database page',async()=>{
- const h=harness(),queryPaths=[];h.context.get=async path=>{queryPaths.push(path);const params=new URLSearchParams(path.split('?')[1]),offset=Number(params.get('offset')||0);if(path.startsWith('projects?')&&params.get('status')==='neq.completed')return offset===0?Array.from({length:1000},(_,n)=>({id:id(n+10),name:'工作'+n,status:'pending'})):offset===1000?[{id:id(1010),name:'最後工作',status:'pending'}]:[];if(path.startsWith('work_assignments?')&&!params.has('assignee_user_id')&&!params.has('created_by_user_id'))return offset===0?Array.from({length:1000},(_,n)=>({id:id(n+2000),status:'pending'})):offset===1000?[{id:id(3000),status:'in_progress'}]:[];return[];};h.context.rpc=async()=>({construction_plans:[]});
- const result=await h.context.dashboardSnapshot(user,true);assert.equal(result.dashboard.projects.length,1001);assert.equal(result.dashboard.assignments.all_pending.length,1001);
- const pages=queryPaths.filter(p=>p.startsWith('projects?')&&p.includes('status=neq.completed'));assert.deepEqual(pages.map(p=>new URLSearchParams(p.split('?')[1]).get('offset')),['0','1000','1001']);
- const assignments=queryPaths.filter(p=>p.startsWith('work_assignments?')).map(p=>new URLSearchParams(p.split('?')[1])),personal=assignments.filter(p=>p.has('assignee_user_id')||p.has('created_by_user_id')),all=assignments.filter(p=>!p.has('assignee_user_id')&&!p.has('created_by_user_id'));
- assert.equal(personal.length,2);assert(personal.every(p=>p.getAll('limit').join()==='1000'));assert.deepEqual(all.map(p=>p.get('offset')),['0','1000','1001']);assert(all.every(p=>p.getAll('limit').join()==='1000'));
- // The normal administrator page must also read all pages; the personal cards
- // retain their original 100-row cap independently of the administrator list.
- queryPaths.length=0;const page=await h.context.dashboardSnapshot(user);assert.equal(page.dashboard.assignments.all_pending.length,1001);
- const pageQueries=queryPaths.filter(p=>p.startsWith('work_assignments?')).map(p=>new URLSearchParams(p.split('?')[1]));assert(pageQueries.filter(p=>p.has('assignee_user_id')||p.has('created_by_user_id')).every(p=>p.get('limit')==='100'));
- assert.deepEqual(pageQueries.filter(p=>!p.has('assignee_user_id')&&!p.has('created_by_user_id')).map(p=>p.get('offset')),['0','1000','1001']);
+test('dashboard export paginates only the current assignee and retains summary pagination',async()=>{
+ const h=harness(),paths=[];
+ h.context.get=async path=>{paths.push(path);const p=new URLSearchParams(path.split('?')[1]),offset=Number(p.get('offset')||0);
+ if(path.startsWith('work_assignments?')&&p.has('assignee_user_id'))return offset===0?Array.from({length:1000},(_,n)=>({id:id(n+2000),status:'pending',assignee_user_id:user.id})):offset===1000?[{id:id(3000),status:'in_progress',assignee_user_id:user.id}]:[];return[];};
+ h.context.rpc=async()=>({construction_plans:[]});
+ const result=await h.context.dashboardSnapshot(user,true);
+ assert.equal(result.dashboard.assignments.pending.length,1001);assert.equal(result.dashboard.assignments.all_pending,undefined);
+ const queries=paths.filter(p=>p.startsWith('work_assignments?')).map(p=>new URLSearchParams(p.split('?')[1]));
+ assert.ok(queries.every(p=>p.has('assignee_user_id')||p.has('created_by_user_id')));
+ assert.deepEqual(queries.filter(p=>p.has('assignee_user_id')).map(p=>p.get('offset')),['0','1000','1001']);
 });
 test('audit endpoint is admin-only, server-paginated, ordered, bounded, filtered, and redacts nested credentials',async()=>{
  const h=harness();let path;h.context.db=async p=>{path=p;return Response.json([{id:1,action:'UPDATE',before_data:{password:'bad',nested:[{access_token:'bad'}]},after_data:{notes:'Bearer sensitive-token',name:'名稱'}}],{headers:{'content-range':'25-49/80'}});};

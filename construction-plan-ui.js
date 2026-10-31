@@ -30,19 +30,27 @@ function collectConstructionWarning(form){
  return {warning_work_days:Number(days),warning_min_progress:Number(minimum)};
 }
 let planningGeneration=0;
+function planningControls(){return tableState.planning ||= {page:1,perPage:10,direction:'asc',search:''};}
 function renderPlanningProjects(){
- syncProjectFilters('planningFilter');
- tableState.planning ||= {page:1,perPage:10,sortKey:'code',direction:'asc',search:''};
- const control=tableState.planning,plans=state.constructionPlans||[];
- const rows=sortRows(state.projects.filter(p=>p.rawType==="construction").map(p=>({...p,customer:byId(state.customers,p.customerId)?.name||'',statusText:workLogStatusText(p.status).replace('已完成','已結案')})).filter(p=>projectFilterMatches(p,'planningFilter')&&matches([p.code,p.name,p.customer,p.type,p.status,p.statusText,p.owner],control.search)),control.sortKey,control.direction);
+ syncCustomerFilterGroup('planningFilter');
+ refreshFilterOptions('#planningFilterType',PROJECT_WORK_TYPES.filter(([code])=>['construction','repair'].includes(code)),'所有類型');
+ const control=planningControls(),plans=state.constructionPlans||[];
+ const direction=document.querySelector('#planningDateOrder')?.value||'asc';
+ const orderedPlans=[...plans].sort((a,b)=>(a.construction_date.localeCompare(b.construction_date)||a.id.localeCompare(b.id))*(direction==='desc'?-1:1));
+ const firstDate=project=>orderedPlans.find(plan=>plan.project_id===project.id)?.construction_date;
+ const rows=state.projects.filter(p=>['construction','repair'].includes(p.rawType)).map(p=>({...p,customer:byId(state.customers,p.customerId)?.name||'',statusText:workLogStatusText(p.status).replace('已完成','已結案')})).filter(p=>projectFilterMatches(p,'planningFilter')&&matches([p.code,p.name,p.customer,p.type,p.status,p.statusText,p.owner],control.search)).sort((a,b)=>{
+  const left=firstDate(a),right=firstDate(b);
+  if(!left||!right)return left?-1:right?1:a.code.localeCompare(b.code);
+  return left.localeCompare(right)*(direction==='desc'?-1:1)||a.code.localeCompare(b.code);
+ });
  const page=tablePage('planning',rows);
- document.querySelector('#constructionPlanningList').innerHTML=page.rows.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3><p>${esc(project.customer)} · ${esc(project.type)} · ${esc(project.owner||'未指派')}</p>${constructionPlanButton(project)}${plans.filter(p=>p.project_id===project.id).sort((a,b)=>a.construction_date.localeCompare(b.construction_date)||a.id.localeCompare(b.id)).map(constructionPlanningCard).join('')||'<p>尚無施工規劃</p>'}</article>`).join('')||'<p class="dashboard-empty">沒有符合篩選的施工規劃。</p>';
+ document.querySelector('#constructionPlanningList').innerHTML=page.rows.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3><p>${esc(project.customer)} · ${esc(project.type)} · ${esc(project.owner||'未指派')}</p>${constructionPlanButton(project)}${orderedPlans.filter(p=>p.project_id===project.id).map(constructionPlanningCard).join('')||'<p>尚無施工規劃</p>'}</article>`).join('')||'<p class="dashboard-empty">沒有符合篩選的施工規劃。</p>';
  renderPagination('planning','planningPagination',page.total);
 }
 function constructionPlanningCard(plan){
  const project=byId(state.projects,plan.project_id),customer=byId(state.customers,project?.customerId);
  const logs=state.siteData.logs.filter(log=>log.construction_plan_id===plan.id&&!log.deleted_at).sort((a,b)=>a.log_date.localeCompare(b.log_date));
- return `<article class="construction-monitor-card ${plan.progress_alert||plan.contract_overdue?'is-warning':''}"><header class="construction-monitor-heading"><div><h4>${esc(plan.content)}</h4><p>${esc(customer?.name||'')}｜${esc(project?.name||'')} · ${esc(plan.construction_date)}</p></div>${constructionMonitorBadges(plan)}</header>${constructionProgress(plan)}${constructionWarning(plan)}${constructionContractSummary(plan)}<details class="construction-plan-card construction-plan-fold" data-planning-plan="${esc(plan.id)}"><summary><span>施工規劃明細</span><small>預計${plan.planned_days||'未設定'}天完成｜已完成${Number(plan.completed_item_count||0)}項</small></summary><div class="construction-plan-body">${constructionChecklist(plan)}${constructionGantt(plan)}<p>指派施工人員：${esc((plan.assignee_user_ids||[]).map(id=>byId(state.siteWorkers,id)?.displayName||'停用使用者').join('、')||'未指派')}${plan.subcontractor_count?'、代工 '+Number(plan.subcontractor_count)+' 人':''}</p>${plan.notes?`<p class="construction-content">備註：${esc(plan.notes)}</p>`:''}<div class="construction-plan-actions">${plan.can_manage?`<button type="button" class="outline" data-edit-construction-plan="${esc(plan.id)}">修改規劃</button><button type="button" class="outline danger" data-delete-construction-plan="${esc(plan.id)}">刪除規劃</button>`:''}${plan.can_create_log?`<button type="button" class="primary" data-construction-log="${esc(plan.id)}">填寫工作日誌</button>`:''}</div><details class="construction-log-list"><summary>相關工作日誌（${logs.length}）</summary>${logs.map(log=>`<article><div><strong>${esc(log.log_date)} · ${esc(plan.items?.find(i=>i.id===log.construction_item_id)?.title||'原有未分類日誌')} · ${esc(byId(state.siteWorkers,log.access_creator_user_id)?.displayName||'原建立人')}</strong><p class="construction-content">${esc(log.summary||'—')}</p></div><div class="construction-plan-actions"><button type="button" class="outline" data-construction-open-log="${esc(log.id)}">${canWorkLog('UPDATE',log.id)?'修改日誌':'查看日誌'}</button>${canWorkLog('DELETE',log.id)?`<button type="button" class="outline danger" data-construction-delete-log="${esc(log.id)}">刪除日誌</button>`:''}</div></article>`).join('')||'<p>尚無可查看的工作日誌。</p>'}</details></div></details></article>`;
+ return `<article class="construction-monitor-card ${plan.progress_alert||plan.contract_overdue?'is-warning':''}"><details class="construction-plan-card construction-plan-fold" data-planning-plan="${esc(plan.id)}"><summary><span>${esc(plan.content)}<small>${esc(plan.construction_date)}</small></span><small>預計${plan.planned_days||'未設定'}天完成｜已完成${Number(plan.completed_item_count||0)}項</small></summary><div class="construction-plan-body"><p>${esc(customer?.name||'')}｜${esc(project?.name||'')}</p>${constructionMonitorBadges(plan)}${constructionProgress(plan)}${constructionWarning(plan)}${constructionContractSummary(plan)}${constructionChecklist(plan)}${constructionGantt(plan)}<p>指派施工人員：${esc((plan.assignee_user_ids||[]).map(id=>byId(state.siteWorkers,id)?.displayName||'停用使用者').join('、')||'未指派')}${plan.subcontractor_count?'、代工 '+Number(plan.subcontractor_count)+' 人':''}</p>${plan.notes?`<p class="construction-content">備註：${esc(plan.notes)}</p>`:''}<div class="construction-plan-actions">${plan.can_manage?`<button type="button" class="outline" data-edit-construction-plan="${esc(plan.id)}">修改規劃</button><button type="button" class="outline danger" data-delete-construction-plan="${esc(plan.id)}">刪除規劃</button>`:''}${plan.can_create_log?`<button type="button" class="primary" data-construction-log="${esc(plan.id)}">填寫工作日誌</button>`:''}</div><details class="construction-log-list"><summary>相關工作日誌（${logs.length}）</summary>${logs.map(log=>`<article><div><strong>${esc(log.log_date)} · ${esc(plan.items?.find(i=>i.id===log.construction_item_id)?.title||'原有未分類日誌')} · ${esc(byId(state.siteWorkers,log.access_creator_user_id)?.displayName||'原建立人')}</strong><p class="construction-content">${esc(log.summary||'—')}</p></div><div class="construction-plan-actions"><button type="button" class="outline" data-construction-open-log="${esc(log.id)}">${canWorkLog('UPDATE',log.id)?'修改日誌':'查看日誌'}</button>${canWorkLog('DELETE',log.id)?`<button type="button" class="outline danger" data-construction-delete-log="${esc(log.id)}">刪除日誌</button>`:''}</div></article>`).join('')||'<p>尚無可查看的工作日誌。</p>'}</details></div></details></article>`;
 }
 async function refreshConstructionPane(){
  const host=document.querySelector('#constructionPlanningList');if(!host)return;
@@ -50,8 +58,8 @@ async function refreshConstructionPane(){
  try{const data=await apiRequest({method:'GET',scope:'construction_plans'});if(generation!==planningGeneration)return;mergeConstructionContext(data);renderPlanningProjects();}
  catch(error){if(generation===planningGeneration)host.innerHTML=`<p role="alert">${esc(error.message)}</p>`;}
 }
-document.addEventListener('input',event=>{if(event.target.id==='planningSearch'){tableState.planning.search=event.target.value;tableState.planning.page=1;renderPlanningProjects();}});
-document.addEventListener('change',event=>{if(event.target.id.startsWith('planningFilter')){tableState.planning.page=1;renderPlanningProjects();}});
+document.addEventListener('input',event=>{if(event.target.id==='planningSearch'){const control=planningControls();control.search=event.target.value;control.page=1;renderPlanningProjects();}});
+document.addEventListener('change',event=>{if(event.target.id.startsWith('planningFilter')||event.target.id==='planningDateOrder'){planningControls().page=1;renderPlanningProjects();}});
 function renderConstructionDashboard(){
  let host=document.querySelector('#constructionProgressDashboard');if(!host){host=document.createElement('article');host.id='constructionProgressDashboard';host.className='panel';document.querySelector('#dashboard')?.append(host);}
  const expanded=new Set([...host.querySelectorAll('[data-dashboard-plan][open]')].map(row=>row.dataset.dashboardPlan));
@@ -136,7 +144,9 @@ function syncConstructionLogSelectors(initial=false){
  const log=byId(state.siteData.logs,modal.dataset.id),lockedPlan=constructionPlanById(activeConstructionLogPlanId);
  const project=lockedPlan?byId(state.projects,lockedPlan.project_id):workLogChosenProject()||(!workLogContextChanged(workLogOriginalProject())?workLogOriginalProject():null);
  let host=form.querySelector('[data-construction-selectors]');
- if(!host){host=document.createElement('div');host.className='span-2 form-grid';host.dataset.constructionSelectors='true';form.prepend(host);}
+ if(!host){host=document.createElement('div');host.className='span-2 form-grid';host.dataset.constructionSelectors='true';}
+ const title=form.querySelector('.work-log-title-picker')||form.elements.projectName?.closest('label');
+ if(title)title.after(host);else form.append(host);
  const editable=!log||canWorkLog('UPDATE',log.id);
  const previous=initial?activeConstructionLogPlanId:form.elements.constructionPlanId?.value||'';
  const itemId=initial?(log?.construction_item_id||activeConstructionItemId||''):form.elements.constructionItemId?.value||'';

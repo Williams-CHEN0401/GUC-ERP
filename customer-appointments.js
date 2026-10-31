@@ -49,6 +49,7 @@ function projectFilterMatches(project,prefix='projectFilter'){
 }
 function renderAppointments(){
   if(!document.querySelector('#appointmentTable'))return;
+  if(typeof renderAssignmentManagement==='function')renderAssignmentManagement();
   syncCustomerFilterGroup('appointmentFilter');
   refreshFilterOptions('#appointmentFilterAssignee',(state.siteWorkers||[]).map(u=>[u.id,u.displayName]),'所有責任人');
   const type=document.querySelector('#appointmentFilterType').value,status=document.querySelector('#appointmentFilterStatus').value,assignee=document.querySelector('#appointmentFilterAssignee').value;

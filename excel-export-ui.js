@@ -23,7 +23,7 @@
   ['repairs','repairTable','repairs',()=>({q:value('repairSearch'),status:value('repairStatusFilter')})],
   ['appointments','appointmentTable','appointments',()=>({q:value('appointmentSearch'),...projectFilters('appointmentFilter'),status:value('appointmentFilterStatus'),assignee:value('appointmentFilterAssignee'),from:value('appointmentFilterFrom'),to:value('appointmentFilterTo')})],
   ['users','userTable','users',()=>({q:value('userSearch')})],
-  ['assignments','pendingAssignmentList','dashboard',()=>({assignment_scope:canAdmin()&&value('assignmentScope')==='all'?'all':'mine'})],
+  ['assignments','pendingAssignmentList','dashboard',()=>({assignment_scope:'mine'})],
   ['dashboard_projects','activeProjectList','projects',()=>({}),'匯出全部待辦 Excel'],
   ['dashboard_worklogs','dashboardWorklogTable','worklogs',()=>({}),'匯出前日日誌 Excel'],
   ['dashboard_repairs','dashboardRepairTable','repairs',()=>({}),'匯出維修品 Excel'],

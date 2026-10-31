@@ -327,7 +327,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  customers:["create_contract_service_type","update_contract_service_type","delete_contract_service_type","create_customer_department","update_customer_department","deactivate_customer_department","create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
  suppliers:["create_supplier","update_supplier","delete_supplier"],
  appointments:["upsert_customer_appointment"],
- projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
+ projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","update_work_assignment","cancel_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
  inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups","update_pickup_document","delete_pickup_document"],
  purchases:["create_supplier_return","update_supplier_return","delete_supplier_return","create_site_return","update_site_return","delete_site_return","cancel_site_return","delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
@@ -346,7 +346,7 @@ function operationPermission(operation:string,payload:Row):{module:string;action
  if(!module)return null;
  if((["upsert_project_site_entry","delete_project_site_entry"].includes(operation)&&payload.module==="logs")||(operation==="delete_site_entry"&&payload.entity==="work_log"))module="worklogs";
  let action:PermissionAction=operation==="check_monitoring_ip_conflicts"||operation==="reveal_phone_system_credential"?"VIEW":/^(delete|batch_delete|void)_/.test(operation)?"DELETE":/^(update|bulk_update|batch_update|set|restore)_/.test(operation)?"UPDATE":/^(upsert|save|manage)_/.test(operation)?payload.id||payload.row_version?"UPDATE":"CREATE":"CREATE";
-  if(operation==="deactivate_customer_department"||operation==="cancel_site_return")action="DELETE";
+  if(operation==="deactivate_customer_department"||operation==="cancel_site_return"||operation==="cancel_work_assignment")action="DELETE";
   if(["complete_work_assignment","acknowledge_work_assignment","close_work_content"].includes(operation))action="UPDATE";
  if(operation==="save_equipment_history")action=(payload.event as Row)?.id?"UPDATE":"CREATE";
  if(operation==="manage_customer_service")action=({create:"CREATE",update:"UPDATE",delete:"DELETE"} as Record<string,PermissionAction>)[text(payload.action)]||"UPDATE";
@@ -362,6 +362,7 @@ function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyA
 }
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
+ if(scope==="assignment_management"){if(entity)throw new Error("不支援其他資料查詢。");requirePermission(user,"appointments");requirePermission(user,"projects");return;}
  if(["receipt_supplier_items","receipt_delivery_options"].includes(scope)){if(entity)throw Error("不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
  if(scope==="site_returns"){if(params.has("entity"))throw Error("案場餘料入庫不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
  if(scope==="system_backup_authorization"){
@@ -491,7 +492,7 @@ const datasets: Record<string, DatasetDefinition> = {
   phone_terminal_points: { path: "phone_terminal_points?select=id,customer_id,contract_service_type_id,phone_extension_id,endpoint_side,frame_name,frame_block,frame_position,terminal_code,slot_identifier,floor,installation_location,notes,source,source_reference,building_name,source_extension_number,source_phone_type,resolved_phone_type,field_match_status,field_match_message,row_version,created_at,updated_at&order=phone_extension_id.asc,endpoint_side.asc" },
   phone_credential_access_logs: { path: "phone_credential_access_logs?select=id,phone_system_id,customer_id,contract_service_type_id,action,actor,source,created_at&order=created_at.desc&limit=200", adminOnly: true },
   equipment_registry: { path: "equipment_registry?select=id,equipment_type,customer_id,service_id,site_id,source_table,source_id,display_name,search_key,status,installation_date,installation_precision,metadata,created_at,updated_at&status=eq.active&order=display_name.asc", paged: true },
-  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,handling_process,result,notes,inventory_category_id,inventory_item_id,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
+  maintenance_events: { path: "maintenance_events?select=id,work_log_id,service_id,event_type,occurred_at,description,cause,handling_process,result,notes,pending_content,pending_completions,pending_sources,inventory_category_id,inventory_item_id,status,row_version,created_at,updated_at&order=occurred_at.desc,created_at.desc", paged: true },
   maintenance_event_equipment: { path: "maintenance_event_equipment?select=event_id,equipment_id,created_at&order=created_at.asc", paged: true },
   maintenance_event_workers: { path: "maintenance_event_workers?select=event_id,user_id,created_at&order=created_at.asc", paged: true }
 };
@@ -612,7 +613,7 @@ async function exportErpData(payload:Row,user:AppUser){
  requirePermission(user,'data_export');
  if(!spec)throw new Error('不支援的匯出清單。');
  requirePermission(user,spec.module);
- if(resource==='assignments'&&payload.filters?.assignment_scope==='all'&&user.role!=='admin')throw new Error('您的帳號沒有執行此操作的權限。');
+ if(resource==='assignments'&&(payload.filters as Row|undefined)?.assignment_scope==='all')throw new Error('您的帳號沒有執行此操作的權限。');
  const prices=hasPermission(user,'purchase_prices');
  if(payload.describe===true)return buildErpExport(payload,{},prices);
  // Validate columns/scope before doing any large read. Price columns are denied here too.
@@ -864,7 +865,7 @@ async function siteSpreadsheetHistory(sourceId:string,user:AppUser) {
   const userIds=[...new Set(workers.map(row=>uuid(row.user_id)).filter((id):id is string=>!!id))],people:Row[]=[];
   for(let offset=0;offset<userIds.length;offset+=100)people.push(...await get(`app_users?id=in.(${userIds.slice(offset,offset+100).join(",")})&select=id,display_name`) as Row[]);
   const byUser=new Map(people.map(person=>[person.id,person]));
-  const result=events.map(event=>({...event,workers:workers.filter(worker=>worker.event_id===event.id).map(worker=>byUser.get(worker.user_id)).filter(Boolean)}))
+  const result=events.map<Row>(event=>({...event,workers:workers.filter(worker=>worker.event_id===event.id).map(worker=>byUser.get(worker.user_id)).filter(Boolean)}))
     .sort((a,b)=>String(b.occurred_at||"").localeCompare(String(a.occurred_at||""))||String(b.created_at).localeCompare(String(a.created_at)));
   return {equipment,events:result,summary:{total:result.length,last_maintenance:result.find(event=>event.occurred_at)?.occurred_at||null}};
 }
@@ -1051,6 +1052,9 @@ function maintenanceEventsInput(value: unknown) {
     const cause = nullable(row.cause,2000);
     const handlingProcess = nullable(row.handling_process,2000);
     const notes = nullable(row.notes,2000);
+    const pending = nullable(row.pending_content,2000);
+    const clientKey = row.client_key === undefined ? null : uuid(row.client_key);
+    if ((row.client_key !== undefined && !clientKey) || (row.pending_content !== undefined && (typeof row.pending_content !== "string" || pending === null))) throw new Error(`第 ${index+1} 筆未完成內容或事件識別碼不正確。`);
     const equipmentIds = Array.isArray(row.equipment_ids) ? row.equipment_ids.map(uuid) : [];
     const workerIds = Array.isArray(row.worker_user_ids) ? row.worker_user_ids.map(uuid) : [];
     if ((text(row.id) && !id) || (id && (!Number.isInteger(rowVersion) || Number(rowVersion) < 1)) || !serviceId || !occurredAt
@@ -1066,7 +1070,10 @@ function maintenanceEventsInput(value: unknown) {
       ...(Object.prototype.hasOwnProperty.call(row,"inventory_item_id") ? {inventory_item_id:inventoryItemId} : {}),
       ...(Object.prototype.hasOwnProperty.call(row,"handling_process") ? {handling_process:handlingProcess || null} : {}),
       id, row_version: rowVersion, service_id: serviceId, occurred_at: occurredAt, event_type: eventType,
-      description, cause: cause || null, result, notes: notes || null, equipment_ids: equipmentIds, worker_user_ids: workerIds };
+      description, cause: cause || null, result,
+      ...(Object.prototype.hasOwnProperty.call(row,"notes") ? {notes:notes || null} : {}),
+      ...(row.pending_content !== undefined ? {pending_content:pending} : {}),
+      ...(clientKey ? {client_key:clientKey} : {}), equipment_ids: equipmentIds, worker_user_ids: workerIds };
   });
 }
 
@@ -1249,9 +1256,16 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     const args={p_reminder_days:reminderDays,p_id:id,p_row_version:rowVersion,p_customer_id:customerId,p_department_id:departmentIdInput(payload.department_id),p_appointment_type:payload.appointment_type,p_appointment_date:when,p_contact_name:contact,p_contact_phone:phone,p_instructions:instructions,p_assignee_user_id:assigneeId,p_status:payload.status,p_notes:notes,p_actor_user_id:user!.id,p_actor:actor};
     return assignedDate?rpc("upsert_customer_appointment_v3",{...args,p_assigned_date:assignedDate}):rpc("upsert_customer_appointment_v2",args);
   }
+  if (["update_work_assignment","cancel_work_assignment"].includes(operation)) {
+    if(!user)throw new Error("請先登入。");
+    requirePermission(user,"appointments");requirePermission(user,"projects");requirePermission(user,"projects",operation==="cancel_work_assignment"?"DELETE":"UPDATE");
+    const id=uuid(payload.id),version=Number(payload.row_version);if(!id||!Number.isInteger(version)||version<1)throw new Error("工作指派資料或版本不正確。");
+    const args={p_actor_user_id:user.id,p_actor:actor,p_id:id,p_row_version:version};
+    return operation==="cancel_work_assignment"?rpc("cancel_work_assignment_v1",args):rpc("update_work_assignment_v1",{...args,p_payload:payload});
+  }
   if (operation === "create_work_assignment") {
     requireOperation(user,operation,payload,["admin"]);
-    if(user!.role!=="admin")throw new Error("只有管理員可以建立工作指派。");
+    requirePermission(user!,"appointments");requirePermission(user!,"projects");requirePermission(user!,"projects","CREATE");
     if(Object.prototype.hasOwnProperty.call(payload,"assignee_user_ids")){
       const ids=Array.isArray(payload.assignee_user_ids)?payload.assignee_user_ids.map(value=>uuid(value)):[];
       const requestId=uuid(payload.request_id),mode=text(payload.project_mode)||"existing",type=text(payload.assignment_type),instructions=limited(payload.instructions,2000);
@@ -1303,8 +1317,9 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "update_product_category") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),row_version=Number(payload.row_version),name=limited(payload.name,80),prefix=text(payload.code_prefix).toUpperCase(); if(!id||!Number.isInteger(row_version)||row_version<1||!name||!/^[A-Z]{1,3}$/.test(prefix)||typeof payload.is_active!=="boolean")throw new Error("請填寫有效的貨品種類資料。"); return rpc("update_product_category_v1",{p_id:id,p_row_version:row_version,p_name:name,p_code_prefix:prefix,p_is_active:payload.is_active,p_actor:actor}); }
   if (operation === "delete_product_category") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),row_version=Number(payload.row_version); if(!id||!Number.isInteger(row_version)||row_version<1)throw new Error("請重新載入貨品種類後再操作。"); return rpc("delete_product_category_v1",{p_id:id,p_row_version:row_version,p_actor:actor}); }
   if (operation === "create_product_category") { requireOperation(user,operation,payload,["admin"]); const name=limited(payload.name,80),code_prefix=text(payload.code_prefix).toUpperCase(); if(!name||!/^[A-Z]{1,3}$/.test(code_prefix)) throw new Error("貨品種類名稱須為 1–80 個字，編號字首限 1–3 個英文字母。"); return rpc("create_product_category_v1",{p_name:name,p_code_prefix:code_prefix,p_actor:actor}); }
-  if (operation === "create_inventory_item") { requireOperation(user,operation,payload,["admin"]); const category_id=uuid(payload.category_id),brand=limited(payload.brand,120),item_name=limited(payload.item_name,200),unit=limited(payload.unit,30),model=nullable(payload.model,120),opening_quantity=nonNegative(payload.opening_quantity); if (!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null) throw new Error("請完整填寫品項資料，期初庫存不可小於 0。"); return rpc("create_inventory_item_auto_number_v1",{p_category_id:category_id,p_model:model||null,p_brand:brand,p_item_name:item_name,p_unit:unit,p_opening_quantity:opening_quantity,p_actor:actor}); }
-  if (operation === "create_inventory_item_batch") { requireOperation(user,operation,payload,["admin"]); if(!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20) throw new Error("每次必須建立 1 至 20 筆品項。"); const rows=payload.rows.map((value,index)=>{ if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆品項格式不正確。`); const row=value as Row,category_id=uuid(row.category_id),brand=limited(row.brand,120),item_name=limited(row.item_name,200),unit=limited(row.unit,30),model=nullable(row.model,120),opening_quantity=nonNegative(row.opening_quantity); if(!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null||!Number.isInteger(opening_quantity)) throw new Error(`第 ${index+1} 筆品項資料不完整，期初庫存須為 0 以上整數。`); return {category_id,brand,item_name,unit,model:model||null,opening_quantity}; }); const keys=rows.map(row=>[row.category_id,row.item_name,row.brand,row.model||""].map(value=>String(value).trim().toLocaleLowerCase("zh-Hant")).join("|")); if(new Set(keys).size!==keys.length) throw new Error("同一批次中有重複品項，請檢查種類、名稱、品牌與型號。"); return rpc("create_inventory_items_batch_v1",{p_rows:rows,p_actor:actor}); }
+  const cableMeters=(value:unknown)=>{const meters=value==null||value===''?null:Number(value);if(meters!==null&&(!Number.isFinite(meters)||meters<=0||meters>=1e12||Math.abs(meters*100-Math.round(meters*100))>0.000001))throw Error('預設長度須為正數，最多兩位小數。');return meters;};
+  if (operation === "create_inventory_item") { requireOperation(user,operation,payload,["admin"]); const category_id=uuid(payload.category_id),brand=limited(payload.brand,120),item_name=limited(payload.item_name,200),unit=limited(payload.unit,30),model=nullable(payload.model,120),opening_quantity=nonNegative(payload.opening_quantity); if (!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null) throw new Error("請完整填寫品項資料，期初庫存不可小於 0。"); const result=await rpc("create_inventory_items_batch_v1",{p_rows:[{category_id,model:model||null,brand,item_name,unit,opening_quantity,meters_per_unit:cableMeters(payload.meters_per_unit)}],p_actor:actor}) as Row[];return result[0]; }
+  if (operation === "create_inventory_item_batch") { requireOperation(user,operation,payload,["admin"]); if(!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20) throw new Error("每次必須建立 1 至 20 筆品項。"); const rows=payload.rows.map((value,index)=>{ if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆品項格式不正確。`); const row=value as Row,category_id=uuid(row.category_id),brand=limited(row.brand,120),item_name=limited(row.item_name,200),unit=limited(row.unit,30),model=nullable(row.model,120),opening_quantity=nonNegative(row.opening_quantity); if(!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null||!Number.isInteger(opening_quantity)) throw new Error(`第 ${index+1} 筆品項資料不完整，期初庫存須為 0 以上整數。`); return {category_id,brand,item_name,unit,model:model||null,opening_quantity,meters_per_unit:cableMeters(row.meters_per_unit)}; }); const keys=rows.map(row=>[row.category_id,row.item_name,row.brand,row.model||""].map(value=>String(value).trim().toLocaleLowerCase("zh-Hant")).join("|")); if(new Set(keys).size!==keys.length) throw new Error("同一批次中有重複品項，請檢查種類、名稱、品牌與型號。"); return rpc("create_inventory_items_batch_v1",{p_rows:rows,p_actor:actor}); }
   if (operation === "update_inventory_item") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),category_id=uuid(payload.category_id),item_name=limited(payload.item_name,200),brand=limited(payload.brand,120),model=nullable(payload.model,120),unit=limited(payload.unit,30),opening_quantity=nonNegative(payload.opening_quantity),row_version=Number(payload.row_version); if (!id||!category_id||!item_name||!brand||model===null||!unit||opening_quantity===null||!Number.isInteger(opening_quantity)||!Number.isInteger(row_version)||row_version<1) throw new Error("請完整填寫品項資料，期初庫存須為 0 以上整數。"); const meters=payload.meters_per_unit==null||payload.meters_per_unit===''?null:Number(payload.meters_per_unit);if(meters!==null&&(!Number.isFinite(meters)||meters<=0||meters>=1e12||Math.abs(meters*100-Math.round(meters*100))>0.000001))throw Error('每箱／捲米數須為正數，最多兩位小數。'); const categories=await get(`product_categories?id=eq.${category_id}&is_active=eq.true&select=id,name`) as {id:string;name:string}[]; if(categories.length!==1) throw new Error("請選擇有效的貨品種類。"); const response=await db(`inventory_items?id=eq.${id}&row_version=eq.${row_version}`,{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify({item_name,category_id,item_type:categories[0].name,brand,model:model||null,unit,opening_quantity,...(Object.hasOwn(payload,"meters_per_unit")?{meters_per_unit:meters}:{}),...meta})}); if (!response.ok) { const failure=await response.json().catch(()=>({})) as {code?:string;message?:string};if(["P0001","23514"].includes(failure.code||""))throw Error(failure.message||"米數或單位不正確。"); if(failure.code==="23505") throw new Error("相同種類、名稱、品牌與型號的品項已存在。"); throw new Error("品項更新失敗。"); } const rows=await response.json(); if (!Array.isArray(rows)||rows.length!==1) throw new Error("此品項已被其他管理者更新，請重新載入後再編輯。"); return; }
   if (operation === "delete_inventory_item") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),row_version=Number(payload.row_version); if(!id||!Number.isInteger(row_version)||row_version<1) throw new Error("品項資料或版本不正確。"); return rpc("delete_inventory_item",{p_id:id,p_row_version:row_version,p_actor:actor}); }
   if (["create_site_return","update_site_return","cancel_site_return","delete_site_return"].includes(operation)) {
@@ -1318,6 +1333,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     return rpc("save_site_return_v1",{p_actor_user_id:user.id,p_document_id:documentId,p_request_id:requestId,p_row_version:action==="create"?null:payload.row_version,p_action:action,p_return_date:writing?date(payload.return_date):null,p_customer_id:writing?uuid(payload.customer_id):null,p_project_id:writing?uuid(payload.project_id):null,p_rows:rows,p_note:note||""});
   }
   if(operation==="confirm_receipt_delivery"){
+    if(!user)throw new Error("請先以有效帳號登入。");
     requirePermission(user,"purchases","VIEW");
     const document_id=uuid(payload.document_id),delivery_date=date(payload.delivery_date),customer_id=uuid(payload.customer_id),project_id=uuid(payload.project_id),destination=text(payload.destination);
     if(!document_id||!delivery_date||!["company","site"].includes(destination)||(destination==="site"&&(!customer_id||!project_id))||(destination==="company"&&(payload.customer_id||payload.project_id)))throw Error("請選擇有效的送達位置、日期與工作內容。");
@@ -1529,12 +1545,14 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
       const requestId=payload.request_id==null||payload.request_id===""?null:uuid(payload.request_id);
       if(payload.request_id!=null&&payload.request_id!==""&&!requestId)throw new Error("工作日誌送出識別碼不正確。");
       const parameters={p_id:id,p_row_version:rowVersion,p_project_id:project_id,p_customer_id:customer_id,p_project_name:project_name,p_log_date:log_date,p_work_type:work_type,p_summary:summary||null,p_time_period:time_period||null,p_status:status,p_worker_user_ids:worker_user_ids,p_reporter_user_id:user!.id,p_maintenance_events:maintenanceEventsInput(payload.maintenance_events??[]),p_actor:actor,p_department_id:departmentIdInput(payload.department_id),p_request_id:requestId};
+      const hasRepairPending=Object.hasOwn(payload,"resolved_maintenance_items")||parameters.p_maintenance_events.some(event=>Object.hasOwn(event,"pending_content")||Object.hasOwn(event,"client_key"));
+      if(hasRepairPending&&(!Object.hasOwn(payload,"completed_content")||!Object.hasOwn(payload,"pending_content")))throw new Error("維修未完成資料需由完整工作日誌表單送出。");
       if(Object.hasOwn(payload,"completed_content")||Object.hasOwn(payload,"pending_content")){
         if(!Object.hasOwn(payload,"completed_content")||!Object.hasOwn(payload,"pending_content")||!requestId)throw new Error("請完整送出已完成／未完成內容與送出識別碼。");
         const completed=payload.completed_content,pending=payload.pending_content;
         if(!(completed===null&&pending===null)&&!(typeof completed==="string"&&typeof pending==="string"&&completed.length<=2000&&pending.length<=2000))throw new Error("已完成／未完成內容格式不正確。");
         if(typeof completed==="string"&&typeof pending==="string"&&[completed.trim(),pending.trim()].filter(Boolean).join("\n")!==(summary||""))throw new Error("工作內容與已完成／未完成內容不一致。");
-        if(Object.hasOwn(payload,"reporter_on_site")||Object.hasOwn(payload,"subcontractor_count")||Object.hasOwn(payload,"resolved_pending_items")){
+        if(Object.hasOwn(payload,"reporter_on_site")||Object.hasOwn(payload,"subcontractor_count")||Object.hasOwn(payload,"resolved_pending_items")||hasRepairPending){
           if(typeof payload.reporter_on_site!=="boolean"||typeof payload.subcontractor_count!=="number"||!Number.isInteger(payload.subcontractor_count)||payload.subcontractor_count<0||payload.subcontractor_count>1000||!Array.isArray(payload.resolved_pending_items)||payload.resolved_pending_items.length>100)throw new Error("到場、代工人數或待辦資料不正確。");
           return rpc("save_work_log_workforce_v1",{p_actor_user_id:user!.id,p_payload:{...payload,maintenance_events:parameters.p_maintenance_events}});
         }
@@ -1966,16 +1984,15 @@ async function dashboardSnapshot(user: AppUser, allLists=false) {
   const previousBusinessDate=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(Date.now()-86400000));
   const scoped=user.project_scoped?await privateReadRpc("work_log_scope_v1",{p_user_id:user.id},user) as Row:null;
   const assignmentTypes=[...(hasPermission(user,"worklogs")||hasPermission(user,"projects")?["general"]:[]),...(hasPermission(user,"pickups")?["pickup"]:[]),...(hasPermission(user,"appointments")?["appointment"]:[])];
-  const [projects,repairs,logs,pendingAssignments,completedAssignments,allPendingAssignments]=await Promise.all([
+  const [projects,repairs,logs,pendingAssignments,completedAssignments]=await Promise.all([
     !hasPermission(user,"projects")?[]:scoped?((scoped.projects||[]) as Row[]).filter(p=>p.status!=="completed"&&!p.deleted_at).slice(0,allLists?undefined:15):readList("projects?deleted_at=is.null&select=id,project_code,name,customer_id,status,assigned_to,updated_at&status=neq.completed&order=updated_at.desc,id.desc&limit=15"),
     !hasPermission(user,"repairs")?[]:readList("repair_items?select=id,repair_no,received_on,customer_id,department_id,inventory_item_id,issue_description,status,created_at&order=received_on.desc,created_at.desc,id.desc&limit=15"),
     !hasPermission(user,"worklogs")?[]:scoped?((scoped.site_work_logs||[]) as Row[]).filter(log=>log.log_date===previousBusinessDate):getAll(`site_work_logs?select=id,log_date,project_id,title,summary,created_at&deleted_at=is.null&log_date=eq.${previousBusinessDate}&order=created_at.asc,id.asc`),
     !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,assignment_request_id,project_id,customer_id,appointment_type,appointment_date,construction_plan_id,construction_item_id,construction_plan_title,construction_item_title,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&assignee_user_id=eq.${user.id}&status=in.(pending,in_progress)&order=created_at.asc,id.asc&limit=100`),
     !assignmentTypes.length?[]:readList(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,assignment_request_id,project_id,customer_id,appointment_type,appointment_date,construction_plan_id,construction_item_id,construction_plan_title,construction_item_title,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&created_by_user_id=eq.${user.id}&status=eq.completed&completion_acknowledged_at=is.null&order=completed_at.asc,id.asc&limit=100`),
-    user.role!=="admin"||!assignmentTypes.length?[]:getAll(`work_assignments?assignment_type=in.(${assignmentTypes.join(",")})&select=id,assignment_request_id,project_id,customer_id,appointment_type,appointment_date,construction_plan_id,construction_item_id,construction_plan_title,construction_item_title,assignee_user_id,created_by_user_id,assignment_type,instructions,inventory_item_id,pickup_quantity,status,completed_at,completion_acknowledged_at,row_version,created_at,updated_at&status=in.(pending,in_progress)&order=created_at.asc,id.asc`)
   ]) as Row[][];
   const unique=(rows:Row[],field:string)=>[...new Set(rows.map(row=>uuid(row[field])).filter(Boolean))];
-  const assignments=[...pendingAssignments,...completedAssignments,...allPendingAssignments],projectIds=unique([...logs,...assignments],"project_id"),itemIds=unique([...repairs,...assignments],"inventory_item_id"),logIds=unique(logs,"id"),assignmentUserIds=[...new Set([...unique(assignments,"assignee_user_id"),...unique(assignments,"created_by_user_id")])];
+  const assignments=[...pendingAssignments,...completedAssignments],projectIds=unique([...logs,...assignments],"project_id"),itemIds=unique([...repairs,...assignments],"inventory_item_id"),logIds=unique(logs,"id"),assignmentUserIds=[...new Set([...unique(assignments,"assignee_user_id"),...unique(assignments,"created_by_user_id")])];
   const [relatedProjects,items,workers,assignmentUsers]=await Promise.all([
     projectIds.length?getAll(`projects?select=id,project_code,name,customer_id&id=in.(${projectIds})&order=id.asc`):[],
     itemIds.length?getAll(`inventory_items?select=id,item_name,brand,model&id=in.(${itemIds})&order=id.asc`):[],
@@ -1992,19 +2009,18 @@ async function dashboardSnapshot(user: AppUser, allLists=false) {
   const construction=hasPermission(user,"worklogs")||hasPermission(user,"projects")?await rpc("construction_scope_v1",{p_actor_user_id:user.id,p_project_id:null}) as Row:{};
   const constructionOwnedProjects=new Set(((construction.project_workers||[]) as Row[]).filter(w=>w.user_id===user.id&&w.is_assignee===true).map(w=>w.project_id));
   const pendingConstruction=((construction.construction_plans||[]) as Row[]).filter(p=>["pending","in_progress"].includes(String(p.status))&&Array.isArray(p.assignee_user_ids)&&p.assignee_user_ids.length);
-  const visibleConstruction=pendingConstruction.filter(p=>user.role==="admin"||(p.assignee_user_ids as string[]).includes(user.id));
+  const visibleConstruction=pendingConstruction.filter(p=>(p.assignee_user_ids as string[]).includes(user.id));
   const constructionUsers=[...((construction.site_workers||[]) as Row[])],knownConstructionUsers=new Set(constructionUsers.map(row=>row.id));
   // The existing scope lists active workers. Preserve historical names for
   // disabled accounts only when an already-authorized visible plan refers to them.
-  const missingConstructionUserIds=[...new Set(visibleConstruction.flatMap(p=>[...p.assignee_user_ids,p.created_by_user_id]).map(uuid).filter((id):id is string=>!!id&&!knownConstructionUsers.has(id)))];
+  const missingConstructionUserIds=[...new Set(visibleConstruction.flatMap(p=>[...(p.assignee_user_ids as unknown[]),p.created_by_user_id]).map(uuid).filter((id):id is string=>!!id&&!knownConstructionUsers.has(id)))];
   for(let start=0;start<missingConstructionUserIds.length;start+=100)constructionUsers.push(...await getAll(`app_users?select=id,display_name&id=in.(${missingConstructionUserIds.slice(start,start+100)})&order=id.asc`) as Row[]);
   const constructionProjection=(p:Row)=>{
     const project=((construction.projects||[]) as Row[]).find(row=>row.id===p.project_id);
     return {...p,id:`construction:${p.id}`,construction_plan_id:p.id,assignment_type:"construction",project_code:project?.project_code||"—",project:project?.name||"—",customer:lookup((construction.customers||[]) as Row[],project?.customer_id,"name"),instructions:p.content,creator:lookup(constructionUsers,p.created_by_user_id,"display_name"),assignee:(p.assignee_user_ids as string[]).map(id=>lookup(constructionUsers,id,"display_name")).join("、")};
   };
   const constructionTasks=pendingConstruction.filter(p=>(p.assignee_user_ids as string[]).includes(user.id)).map(constructionProjection);
-  const allConstructionTasks=user.role==="admin"?pendingConstruction.map(constructionProjection):[];
-  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{construction_progress:((construction.construction_plans||[]) as Row[]).filter(p=>constructionOwnedProjects.has(p.project_id)).map(p=>({...p,project:lookup((construction.projects||[]) as Row[],p.project_id,"name")})),previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:[...pendingAssignments.map(assignmentProjection),...constructionTasks],completed:completedAssignments.map(assignmentProjection),...(user.role==="admin"?{all_pending:[...allPendingAssignments.map(assignmentProjection),...allConstructionTasks]}:{})}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
+  return {scope:"dashboard",current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString(),dashboard:{construction_progress:((construction.construction_plans||[]) as Row[]).filter(p=>constructionOwnedProjects.has(p.project_id)).map(p=>({...p,project:lookup((construction.projects||[]) as Row[],p.project_id,"name")})),previous_business_date:previousBusinessDate,projects:projects.map(p=>({...p,customer:lookup(customers,p.customer_id,"name")})),repairs:repairs.map(p=>({...p,customer:lookup(customers,p.customer_id,"name"),item:lookup(items,p.inventory_item_id,"item_name")})),worklogs:logs.map(p=>({...p,customer:lookup(customers,relatedProjects.find(project=>project.id===p.project_id)?.customer_id,"name"),project:lookup(relatedProjects,p.project_id,"name"),workers:workers.filter(w=>w.work_log_id===p.id).map(w=>lookup(users,w.user_id,"display_name")).join("、")})),assignments:{pending:[...pendingAssignments.map(assignmentProjection),...constructionTasks],completed:completedAssignments.map(assignmentProjection)}},timing:{gateway_ms:Math.round((performance.now()-started)*100)/100}};
 }
 async function monitoringIpConflicts(payload: Row) {
   const customerId=uuid(payload.customer_id),ips=Array.isArray(payload.ips)?[...new Set(payload.ips.map(v=>ipAddress(v)).filter(Boolean))]:[];
@@ -2109,6 +2125,7 @@ async function handleRequest(request: Request) {
       const scopeName = text(params.get("scope")) || "dashboard";
       if(scopeName==="receipt_supplier_items"){const supplier=uuid(params.get("supplier_id"));if(!supplier)throw Error("供應商編號不正確。");return json(await rpc("receipt_supplier_items_v1",{p_actor_user_id:user.id,p_supplier_id:supplier}));}
       if(scopeName==="receipt_delivery_options")return json(await rpc("receipt_delivery_options_v1",{p_actor_user_id:user.id}));
+      if(scopeName==="assignment_management")return json({...await rpc("work_assignment_management_v1",{p_actor_user_id:user.id}) as Row,current_user:publicUser(user),errors:[]});
       if(scopeName==="site_returns")return json({...await rpc("site_return_list_v1",{p_actor_user_id:user.id}) as Row,current_user:publicUser(user),errors:[]});
       if(scopeName==="materials"||scopeName==="work_report"){
         const id=params.get("project_id");if(id&&!uuid(id))throw new Error("工作內容編號不正確。");
@@ -2118,7 +2135,7 @@ async function handleRequest(request: Request) {
       if(scopeName==="pending_work_log_items"){
         const project=uuid(params.get("project_id")),day=date(params.get("from")),exclude=uuid(params.get("exclude_id"));
         if(!project||!day||params.get("exclude_id")&&!exclude)throw new Error("工作內容或日期不正確。");
-        return json(await rpc("pending_work_log_items_v1",{p_actor_user_id:user.id,p_project_id:project,p_log_date:day,p_exclude_id:exclude}));
+        return json(await rpc(params.get("work_type")==="維修紀錄" ? "pending_maintenance_items_v1" : "pending_work_log_items_v1",{p_actor_user_id:user.id,p_project_id:project,p_log_date:day,p_exclude_id:exclude}));
       }
       if(scopeName==="construction_plans"){
         const projectId=params.get("project_id");if(projectId&&!uuid(projectId))throw new Error("工作內容編號不正確。");
@@ -2206,7 +2223,7 @@ async function handleRequest(request: Request) {
     if (operation === "import_phone_terminal_rows") {
       return json({ ok: true, result, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
     }
-    return json({ ok: true, result: result ?? null, current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
+    return json({ ok: true, result: publicMutationResult(result ?? null), current_user: publicUser(user), refreshed_at: new Date().toISOString() },201);
   } catch(error) {
     const message=error instanceof Error?error.message:"系統暫時無法完成操作。";
     if(message==="DEVICE_VERIFICATION_REQUIRED")return json({error:"請在設備管理輸入目前登入帳號的正確密碼，完成驗證後才能顯示帳密。",code:"DEVICE_VERIFICATION_REQUIRED"},403);
@@ -2214,6 +2231,9 @@ async function handleRequest(request: Request) {
     return json({error:message,code:status===403?"FORBIDDEN":status===404?"NOT_FOUND":status===409?"CONFLICT":"VALIDATION_ERROR"},status);
   }
 }
+// Legacy single-row writers return the table composite. Internal cost snapshots
+// are only exposed through the accounting report's current-reader ACL checks.
+function publicMutationResult(value: unknown): unknown { if(Array.isArray(value))return value.map(publicMutationResult);if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).filter(([key])=>!["cable_unit_cost_snapshot","cable_cost_source_receipt_ids","cable_cost_project_id_snapshot"].includes(key)).map(([key,item])=>[key,publicMutationResult(item)]));return value; }
 Deno.serve(request => auditContext.run(auditHeaders(request), () => requestMetrics.run({started:performance.now(),requests:0,transportMs:0},async()=>{
   const response=await privateContext.run({},async()=>{const response=await handleRequest(request);return recordAuditOutcome(response);}),metrics=requestMetrics.getStore()!;
   response.headers.set("Server-Timing",`gateway;dur=${(performance.now()-metrics.started).toFixed(2)}, upstream;dur=${metrics.transportMs.toFixed(2)};desc="auth and database transport sum", upstream_requests;desc="${metrics.requests}"`);
