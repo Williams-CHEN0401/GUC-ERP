@@ -218,6 +218,18 @@ do $$ declare definition text; old_expression text:='case when d.receipt_tax_mod
  execute replace(definition,old_expression,'public.accounting_receipt_unit_net_v1(s.id) unit_price');
 end $$;
 
+-- Workflow 20261031075010 freezes cable cost at issue time. Future snapshots
+-- must use the same discounted net receipt valuation as the shared report.
+-- Never rewrite existing snapshots: they retain their original source basis.
+do $$ declare definition text; old_expression text:='(case when d.receipt_tax_mode=''inclusive'' then round(r.unit_price*10000/(10000+d.receipt_tax_rate_basis_points),2) else r.unit_price end)/coalesce(r.meters_per_unit_snapshot,1)';begin
+ if to_regprocedure('public.cable_reference_cost_snapshot_v1(uuid,uuid,uuid)') is null then
+  raise exception 'Cable snapshot prerequisite is missing; apply reviewed workflow release first';
+ end if;
+ select pg_get_functiondef('public.cable_reference_cost_snapshot_v1(uuid,uuid,uuid)'::regprocedure) into definition;
+ if position(old_expression in definition)=0 then raise exception 'Cable snapshot cost expression changed; review migration before applying';end if;
+ execute replace(definition,old_expression,'public.accounting_receipt_unit_net_v1(r.id)/coalesce(r.meters_per_unit_snapshot,1)');
+end $$;
+
 create function public.accounting_analysis_money_json_v1(p_data jsonb) returns jsonb
 language plpgsql immutable security invoker set search_path='' as $$ declare result jsonb;begin
  if jsonb_typeof(p_data)='object' then
@@ -255,8 +267,8 @@ begin
   if exists(select 1 from public.pickup_records r where r.project_id=p_project and r.quantity>0 and public.erp_private_json_visible_v1(to_jsonb(r)) is not true)
    or exists(select 1 from public.site_return_documents d where d.project_id=p_project and d.status='active' and public.erp_private_json_visible_v1(to_jsonb(d)) is not true and exists(select 1 from public.site_return_lines l where l.document_id=d.id and l.quantity>0)) then
    material:=null;missing:=missing||jsonb_build_array('尚有未授權用料來源，不能以部分資料計算完整材料成本');end if;
-  if not coalesce(policy.materials_reviewed,false) then missing:=missing||jsonb_build_array('材料估值尚未核對：既有報表為最新進貨／人工參考單價，非實際庫存批次成本');end if;
-  materials:=jsonb_build_object('net_cost',material,'status','估算','basis','工程領用減案場餘料；採既有參考估值，不再加進貨總額','rows',source_report->'report'->'materialStats','returns',source_report->'report'->'returnRows','creditable_input_vat',null,'input_vat_note','既有領用未綁定實際進貨批次與可扣抵憑證；可歸屬進項稅待核對，不按材料估值反推');
+  if not coalesce(policy.materials_reviewed,false) then missing:=missing||jsonb_build_array('材料估值尚未核對：線材保留領退料成本快照，其餘採最新進貨／人工參考單價，非實際庫存批次成本');end if;
+  materials:=jsonb_build_object('net_cost',material,'status','估算','basis','工程領用減案場餘料；線材保留歷史成本快照，新增快照與進貨參考單價採折扣後未稅價，人工設定價格優先；不再加進貨總額','rows',source_report->'report'->'materialStats','returns',source_report->'report'->'returnRows','creditable_input_vat',null,'input_vat_note','既有領用未綁定實際進貨批次與可扣抵憑證；可歸屬進項稅待核對，不按材料估值反推');
   select coalesce(jsonb_agg(to_jsonb(c) order by occurred_on,id),'[]'),
    coalesce(sum(amount) filter(where finance_category='subcontract'),0),coalesce(sum(amount) filter(where finance_category in ('rental','equipment','transport','other_direct')),0),
    coalesce(sum(amount) filter(where finance_category='stamp'),0),coalesce(sum(amount) filter(where finance_category='nondeductible_vat'),0),coalesce(sum(amount) filter(where finance_category='other_tax'),0)
