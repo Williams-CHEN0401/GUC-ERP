@@ -1,7 +1,14 @@
 // Maintenance follow-ups share the work-log picker, session and save transaction.
 function maintenancePendingFields(event={}){
  const history=[...(event.pendingCompletions||[]).map(row=>`已完成 ${row.completed_date}｜${row.pending_text}`),...(event.pendingSources||[]).map(row=>`本次承接 ${row.completed_date}｜${row.pending_text}`)];
- return `<label data-maintenance-notes><span data-notes-label>備註（選填）</span><textarea name="eventNotes" maxlength="2000">${esc(event.notes||'')}</textarea></label><label data-maintenance-pending>未完成（選填）<textarea name="eventPendingContent" maxlength="2000" placeholder="一行一項，供下次維修勾選延續">${esc(event.pendingContent||'')}</textarea><small>只有此處的新未完成內容會列入待辦，歷史備註不會自動列入。</small></label>${history.length?`<details class="span-2"><summary>未完成事項處理紀錄（${history.length}）</summary>${history.map(line=>`<p>${esc(line)}</p>`).join('')}</details>`:''}`;
+ return `<label data-maintenance-notes><span data-notes-label>備註（選填）</span><textarea name="eventNotes" maxlength="2000">${esc(event.notes||'')}</textarea></label><label data-maintenance-pending>未完成（選填）<textarea name="eventPendingContent" maxlength="2000" placeholder="一行一項，供下次維修勾選延續">${esc(event.pendingContent||'')}</textarea><small>已結清事項會保留並標示完成日期，不再列入待辦；歷史備註不會自動列入。</small></label>${history.length?`<details class="span-2"><summary>未完成事項處理紀錄（${history.length}）</summary>${history.map(line=>`<p>${esc(line)}</p>`).join('')}</details>`:''}`;
+}
+function maintenanceActivePendingLines(content,completions=[]){
+ const completed=new Set((Array.isArray(completions)?completions:[]).map(row=>{
+  if(typeof row?.display_text==='string'&&row.display_text)return row.display_text;
+  return typeof row?.pending_text==='string'&&typeof row.completed_date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(row.completed_date)?maintenancePendingNote(row,row.completed_date):null;
+ }).filter(Boolean));
+ return [...new Set((content||'').split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!completed.has(line)))];
 }
 function syncMaintenancePendingFields(){
  const form=document.querySelector('#modalForm');if(!form)return;
@@ -23,11 +30,14 @@ function syncMaintenancePendingFields(){
   if(logId&&!canWorkLog('UPDATE',logId))for(const input of editor.querySelectorAll('input,select,textarea,button'))input.disabled=true;
   let summary=editor.querySelector('[data-maintenance-pending-summary]');
   if(!summary){summary=document.createElement('p');summary.dataset.maintenancePendingSummary='';editor.querySelector('#maintenanceEventList').before(summary);}
-  const count=[...form.querySelectorAll('[name="eventPendingContent"]')].reduce((sum,field)=>sum+new Set(field.value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean)).size,0);
+  const count=[...form.querySelectorAll('[name="eventPendingContent"]')].reduce((sum,field)=>{
+   const id=field.closest('[data-maintenance-event]')?.dataset.eventId,event=(state.maintenanceEvents||[]).find(row=>row.id===id);
+   return sum+maintenanceActivePendingLines(field.value,event?.pendingCompletions).length;
+  },0);
   summary.hidden=!repair;summary.textContent=`本次事件未完成：${count} 項${count?'；儲存時請使用「進行中」狀態。':''}`;
  }
 }
-function maintenancePendingNote(row,date){return `[${row.pending_text}](${date.slice(5)}已完成)`;}
+function maintenancePendingNote(row,date){return `${row.pending_text}(${date.slice(5)}已完成)`;}
 function detachMaintenancePendingGroup(group){
  const field=group.card.querySelector('[name="eventHandlingProcess"]');
  if(field)field.value=field.value.split(/\r?\n/).filter(line=>!group.notes.has(line)).join('\n');
@@ -90,7 +100,7 @@ function scheduleMaintenancePendingItems(){
  maintenancePendingTimer=setTimeout(async()=>{const current=()=>revision===maintenancePendingRevision&&host.isConnected&&modal.dataset.type==='workLogModal'&&modal.classList.contains('open');try{
   const data=await apiRequest({method:'GET',scope:'pending_work_log_items',workType:'維修紀錄',projectId:project.id,from:date,excludeId:modal.dataset.id||''});if(!current())return;
   form._maintenancePendingItems=data.items||[];const writable=!modal.dataset.id||canWorkLog('UPDATE',modal.dataset.id);
-  host.innerHTML='<legend>先前維修未完成事項</legend><p>勾選後帶入本次事件；儲存成功才結清原項目。仍需處理的事項請填入本次「未完成」。</p>'+(!data.items?.length?'<p>目前沒有可延續的維修未完成事項。</p>':data.items.map((row,index)=>`<label><input type="checkbox" data-maintenance-pending-index="${index}" ${row.can_complete&&writable?'':'disabled'}><span>${esc(row.log_date)}｜${esc(row.service_name)}｜${esc(MAINTENANCE_EVENT_TYPES.find(([code])=>code===row.event_type)?.[1]||row.event_type)}<br>${esc(row.pending_text)}<small>${esc(row.project_code||'')} ${esc(row.project_name)}${row.reason?'｜'+esc(row.reason):''}</small></span></label>`).join(''));
+  host.innerHTML='<legend>先前維修未完成事項</legend><p>勾選後帶入本次事件；儲存成功後，來源事件的「未完成」會保留事項並標示完成日期，不再列入待辦。仍需處理的事項請填入本次「未完成」。</p>'+(!data.items?.length?'<p>目前沒有可延續的維修未完成事項。</p>':data.items.map((row,index)=>`<label><input type="checkbox" data-maintenance-pending-index="${index}" ${row.can_complete&&writable?'':'disabled'}><span>${esc(row.log_date)}｜${esc(row.service_name)}｜${esc(MAINTENANCE_EVENT_TYPES.find(([code])=>code===row.event_type)?.[1]||row.event_type)}<br>${esc(row.pending_text)}<small>${esc(row.project_code||'')} ${esc(row.project_name)}${row.reason?'｜'+esc(row.reason):''}</small></span></label>`).join(''));
  }catch(error){if(current())host.textContent='先前維修待辦讀取失敗：'+error.message;}},200);
 }
 for(const name of ['input','change'])document.addEventListener(name,event=>{
