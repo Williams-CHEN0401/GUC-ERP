@@ -76,7 +76,7 @@ if (api.includes("VERCEL_OIDC_TOKEN") || api.includes("x-vercel-oidc-token")) th
 if (!api.includes("UPSTREAM_TIMEOUT_MS") || !api.includes("AbortController")) throw new Error("Vercel upstream timeout guard missing");
 
 const nas = readFileSync(new URL("../api/nas.mjs", import.meta.url), "utf8");
-for (const marker of ["NAS_WEBDAV_URL", "NAS_WEBDAV_USERNAME", "NAS_WEBDAV_PASSWORD", "NAS_WEBDAV_ROOT", "PROPFIND", "MKCOL", '"PUT", nasPath', "currentUser(request)"]) {
+for (const marker of ["NAS_WEBDAV_URL", "NAS_WEBDAV_USERNAME", "NAS_WEBDAV_PASSWORD", "NAS_WEBDAV_ROOT", "PROPFIND", "MKCOL", '"PUT", nasPath', "currentUser(request)", "requireLegacyAttachmentPermission(user)"]) {
   if (!nas.includes(marker)) throw new Error(`NAS upload gateway marker missing: ${marker}`);
 }
 if (!nas.includes('["preview", "production"]') || !nas.includes('inventory-gateway" : "inventory-gateway-preview')) throw new Error("NAS environment routing is missing");
@@ -84,7 +84,7 @@ for (const marker of ["ensureNestedFolder", "allocateRenamedFile", "customerName
   if (!nas.includes(marker)) throw new Error(`NAS deterministic-path marker missing: ${marker}`);
 }
 if (!nas.includes('["admin", "operator"]')) throw new Error("NAS upload role guard missing");
-if (!nas.includes('root !== "/GUC-ERP"')) throw new Error("NAS root path guard missing");
+if (!nas.includes('root !== (drawing === true ? DRAWING_ROOT : "/GUC-ERP")')) throw new Error("NAS root path guard missing");
 
 const edge = readFileSync(new URL("../supabase/functions/inventory-gateway/index.ts", import.meta.url), "utf8");
 if (!edge.includes("const user = await currentUser(request)")) throw new Error("Supabase user-token verification is missing");

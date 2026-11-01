@@ -1,0 +1,91 @@
+// Actual Gateway + migration + synthetic PostgreSQL data. No production writes.
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {constructionDrawingsServer} from './construction-drawings-fixture.mjs';
+import {planUsers} from './construction-plan-fixture.mjs';
+import {ids} from './worklog-save-fixture.mjs';
+import {callAsService} from './department-cross-system-fixture.mjs';
+import {safePart} from '../api/nas.mjs';
+const fixture=await constructionDrawingsServer(),{db,plans,gatewayHandler}=fixture;
+const read=async(user,params)=>{const response=await gatewayHandler(new Request('http://localhost/inventory-gateway?'+new URLSearchParams(params),{headers:{authorization:'Bearer isolated-plan-'+user}}));return {status:response.status,...await response.json()};};
+const post=async(user,payload,operation='create_construction_drawing_batch')=>{const response=await gatewayHandler(new Request('http://localhost/inventory-gateway',{method:'POST',headers:{authorization:'Bearer isolated-plan-'+user},body:JSON.stringify({operation,payload})}));return {status:response.status,...await response.json()};};
+const plan=plans[0],other=plans[1],base={construction_plan_id:plan.id,project_id:plan.project_id,customer_id:ids.customer,contract_service_type_id:ids.service};
+const prepared=await callAsService(db,'construction_drawing_upload_context_v1',[planUsers.owner,plan.id,ids.service,'2026-11-01']);
+const prefix=prepared.upload_root+'/'+prepared.folder_parts.join('/');
+const row=(name='drawing.pdf',overrides={})=>({id:randomUUID(),original_name:name,mime_type:'application/pdf',file_size:12,sha256:'a'.repeat(64),uploaded_at:'2026-11-01T01:00:00Z',log_date:'2026-11-01',nas_path:`${prefix}/${name}`,description:'隔離工程圖',conflict_resolution:'new',...overrides});
+const denied=response=>assert.ok(response.status>=400,JSON.stringify(response));
+const good=response=>{assert.equal(response.status,201,JSON.stringify(response));return response.result;};
+const pass=label=>console.log('PASS '+label);
+try{
+ for(const name of ['客戶...  ',' 全形Ａ／部門:*?\n','工程'.repeat(70),'🙂'.repeat(80),'A'.repeat(99)+'🙂']){
+  const normalized=await db.query('select public.construction_drawing_path_part_v1($1) part',[name]);
+  assert.equal(normalized.rows[0].part,safePart(name,'未命名'));
+ }
+ pass('SQL drawing folders match existing NAS normalization, including punctuation, NFKC and Unicode length limits');
+ for(const user of ['owner','admin','A','viewer'])assert.equal((await read(user,{scope:'construction_drawings',plan_id:plan.id})).status,200,user);
+ denied(await read('C',{scope:'construction_drawings',plan_id:plan.id}));
+ denied(await read('missing',{scope:'construction_drawings',plan_id:plan.id}));
+ pass('existing plan owner/admin/assignee/viewer visibility; outsider and anonymous denied');
+ const data=row();const saved=good(await post('owner',{...base,rows:[data]}))[0];
+ assert.equal(saved.construction_plan_id,plan.id);assert.equal(saved.contract_service_type_id,ids.service);assert.equal(saved.uploaded_by,'plan-owner');
+ assert.equal((await read('A',{scope:'construction_drawing_file',asset_id:saved.id})).asset.storage_provider,'nas');
+ denied(await read('C',{scope:'construction_drawing_file',asset_id:saved.id}));
+ assert.equal(good(await post('owner',{...base,rows:[data]}))[0].id,saved.id);
+ assert.equal((await db.query('select count(*)::int n from site_assets')).rows[0].n,1);
+ pass('owner registers; assigned worker can read; repeated registration is idempotent');
+ for(const user of ['A','viewer','C'])denied(await post(user,{...base,rows:[row(user+'.pdf')]}));
+ denied(await post('owner',{...base,project_id:other.project_id,rows:[row()]}));
+ denied(await post('owner',{...base,customer_id:randomUUID(),rows:[row()]}));
+ denied(await post('owner',{...base,contract_service_type_id:randomUUID(),rows:[row()]}));
+ denied(await post('owner',{...base,rows:[row('wrong.pdf',{nas_path:`/GUC-ERP/施工規劃/${other.project_id}/${other.id}/wrong.pdf`})]}));
+ denied(await post('owner',{...base,rows:[row('../secret.pdf')]}));
+ denied(await post('owner',{...base,rows:[row('active.html')]}));
+ denied(await post('owner',{...base,rows:[row('large.pdf',{file_size:20971521})]}));
+ denied(await post('owner',{...base,rows:[row('bad.pdf',{sha256:'bad'})]}));
+ pass('upload permission, cross-plan/customer/project, traversal, format, size and digest validation');
+ denied(await post('owner',{...base,rows:[row('drawing.pdf',{sha256:'b'.repeat(64)})]}));
+ const replacement=good(await post('owner',{...base,rows:[row('drawing.pdf',{sha256:'b'.repeat(64),conflict_resolution:'overwrite'})]}))[0];
+ assert.equal(replacement.id,saved.id);assert.equal(replacement.sha256,'b'.repeat(64));
+ assert.equal(good(await post('owner',{...base,rows:[row('drawing (1).pdf',{original_name:'drawing.pdf',conflict_resolution:'rename'})]})).length,1);
+ await assert.rejects(db.query('update site_assets set description=$1 where id=$2',['legacy overwrite',saved.id]),/施工規劃附件流程/);
+ await assert.rejects(db.query('delete from site_assets where id=$1',[saved.id]),/施工規劃附件流程/);
+ await assert.rejects(db.query('update site_assets set construction_plan_id=$1 where id=$2',[other.id,saved.id]),/不能變更/);
+ denied(await post('owner',{id:plan.id,project_id:plan.project_id,row_version:plan.row_version},'delete_construction_plan'));
+ pass('explicit duplicate handling; legacy overwrite/unlink/delete and plan deletion blocked');
+ await db.query('insert into site_assets(id,project_id,asset_type,title) values($1,$2,$3,$4)',[randomUUID(),plan.project_id,'document','old general attachment']);
+ const regular=await read('admin',{scope:'worklogs'});assert.equal(regular.status,200,JSON.stringify(regular));
+ assert.ok(regular.site_assets.every(asset=>!asset.construction_plan_id));assert.ok(regular.site_assets.some(asset=>asset.title==='old general attachment'));
+ pass('legacy attachment remains readable; drawing metadata excluded from generic worklog scope');
+ await db.query("insert into role_permissions values('plan_worker','backup',true,false,false,false)");
+ await db.query("update app_roles set project_scoped=false where code='plan_worker'");
+ const legacyBackup=await read('C',{scope:'backup'});assert.equal(legacyBackup.status,200,JSON.stringify(legacyBackup));
+ assert.ok(legacyBackup.site_assets.every(asset=>!asset.construction_plan_id));assert.ok(legacyBackup.site_assets.some(asset=>asset.title==='old general attachment'));
+ await db.query("update app_roles set project_scoped=true where code='plan_worker'");
+ pass('legacy backup VIEW without construction access does not expose drawing metadata');
+ await db.exec('set role authenticated');
+ try{await assert.rejects(db.query('select public.construction_drawings_v1($1,$2,false)',[planUsers.admin,plan.id]),/permission denied/);}finally{await db.exec('reset role');}
+ await assert.rejects(callAsService(db,'register_construction_drawings_v1',[planUsers.C,plan.id,ids.service,JSON.stringify([row('forged.pdf')])]),/權限/);
+ pass('public API SQL roles cannot invoke; service RPC still enforces actor/plan authorization');
+ const uploadContext={scope:'nas_upload_context',...base};
+ assert.equal((await read('owner',uploadContext)).status,200);
+ denied(await read('A',uploadContext));denied(await read('owner',{...uploadContext,project_id:other.project_id}));
+ await db.query("update role_permissions set can_update=false where role_code='plan_owner' and module='projects'");
+ assert.equal((await read('owner',{scope:'construction_drawings',plan_id:plan.id})).can_upload,false);
+ denied(await post('owner',{...base,rows:[row('revoked.pdf')]}));denied(await read('owner',uploadContext));
+ await db.query("update role_permissions set can_update=true where role_code='plan_owner' and module='projects'");
+ await db.query('delete from construction_plan_assignees where construction_plan_id=$1 and user_id=$2',[plan.id,planUsers.A]);
+ denied(await read('A',{scope:'construction_drawing_file',asset_id:saved.id}));
+ pass('NAS preparation binds customer/project/plan; revoked manage and assignment rights take effect immediately');
+ await callAsService(db,'configure_erp_private_access_v1',[planUsers.admin,planUsers.owner,[],null]);
+ const customer=(await db.query('select row_version from customers where id=$1',[ids.customer])).rows[0];
+ await callAsService(db,'set_customer_private_v1',[planUsers.admin,ids.customer,customer.row_version,true]);
+ assert.equal((await read('owner',{scope:'construction_drawings',plan_id:plan.id})).status,200);
+ for(const user of ['admin','B','viewer']){
+  denied(await read(user,{scope:'construction_drawings',plan_id:plan.id}));
+  denied(await read(user,{scope:'construction_drawing_file',asset_id:saved.id}));
+  denied(await read(user,uploadContext));
+ }
+ await assert.rejects(callAsService(db,'construction_drawing_file_v1',[planUsers.admin,saved.id]),/權限/);
+ pass('private customer protects plan drawings even from a general administrator; explicit private owner retains access');
+ assert.equal(fixture.external.length,0);console.log('PASS no production network or NAS writes');
+}finally{fixture.restore();fixture.server.close();await db.close();}

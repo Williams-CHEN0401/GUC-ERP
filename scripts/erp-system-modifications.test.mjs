@@ -25,7 +25,8 @@ test("附件缺少承攬內容或工作內容時前後端都拒絕", () => {
 
 test("NAS 新附件使用客戶、承攬內容、工作內容、日期完整路徑", () => {
   assert.match(js, /safePathPart\(project\?\.name/);
-  assert.match(nas, /\$\{contractServiceName\}\/\$\{projectName\}\/\$\{logDate\}/);
+  assert.match(nas, /context\.folderParts \|\| \[context\.customerName, context\.contractServiceName, context\.projectName, context\.logDate\]/);
+  assert.match(nas, /`\$\{config\.root\}\/\$\{folderParts\.join\("\/"\)\}`/);
   assert.match(edge, /safePathPart\(services\[0\]\.name\).*safePathPart\(projects\[0\]\.name\).*\$\{log_date\}/);
   assert.match(migration, /project_id = p_project_id/);
 });

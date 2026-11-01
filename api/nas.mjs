@@ -18,6 +18,30 @@ const CHUNK_BYTES = 3 * 1024 * 1024;
 const INLINE_TAIL_BYTES = 4 * 1024 * 1024;
 const CHUNK_TICKET_TTL_MS = 15 * 60 * 1000;
 const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "docx", "xlsx"]);
+const DRAWING_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf", "dwg", "dxf"]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DRAWING_ROOT = "/施工規劃圖";
+const DRAWING_MAX_FILES = 30;
+
+function validDrawingFolderParts(parts, planId) {
+  return UUID_PATTERN.test(planId) && Array.isArray(parts) && parts.length === 5
+    && parts.every(part => typeof part === "string" && part === safePart(part) && part !== "." && part !== "..")
+    && /^\d{4}-\d{2}-\d{2}$/.test(parts[3]) && parts[4] === planId;
+}
+
+function drawingFileName(value, attempt = 0) {
+  const original = String(value || ""), extension = original.split(".").pop().toLowerCase();
+  const suffix = `${attempt ? ` (${attempt})` : ""}.${extension}`;
+  return `${safePart(original.slice(0, -(extension.length + 1)), "工程圖").slice(0, 100 - suffix.length)}${suffix}`;
+}
+
+function validTicketFolder(payload, config) {
+  const drawing = Boolean(payload.construction_plan_id);
+  const length = drawing ? 5 : 4;
+  if (!Array.isArray(payload.folder_parts) || payload.folder_parts.length !== length || payload.folder_parts.some(part => part !== safePart(part))) return false;
+  if (drawing && (config.root !== DRAWING_ROOT || !validDrawingFolderParts(payload.folder_parts, payload.construction_plan_id))) return false;
+  return payload.target_folder === `${config.root}/${payload.folder_parts.join("/")}` && Number.isInteger(payload.existing_folder_depth) && payload.existing_folder_depth >= 0 && payload.existing_folder_depth <= length;
+}
 
 export class HttpError extends Error {
   constructor(status, message, code = "NAS_ERROR") {
@@ -99,11 +123,10 @@ export function verifyPreflightTicket(config, ticket, expected, authorization, n
     if (payload[key] !== expected[key]) throw ticketError();
   }
   if((payload.work_log_id||"")!==(expected.work_log_id||""))throw ticketError();
-  const expectedNames = validateFileNames(expected.file_names);
+  if ((payload.construction_plan_id || "") !== (expected.construction_plan_id || "")) throw ticketError();
+  const expectedNames = validateFileNames(expected.file_names, expected.construction_plan_id ? DRAWING_MAX_FILES : MAX_FILES, Boolean(expected.construction_plan_id));
   if (!Array.isArray(payload.file_names) || payload.file_names.length !== expectedNames.length || payload.file_names.some((name, index) => name !== expectedNames[index])) throw ticketError();
-  if (!Array.isArray(payload.folder_parts) || payload.folder_parts.length !== 4 || payload.folder_parts.some((part) => part !== safePart(part))) throw ticketError();
-  const expectedFolder = `${config.root}/${payload.folder_parts.join("/")}`;
-  if (payload.target_folder !== expectedFolder || !Number.isInteger(payload.existing_folder_depth) || payload.existing_folder_depth < 0 || payload.existing_folder_depth > 4) throw ticketError();
+  if (!validTicketFolder(payload, config)) throw ticketError();
   return payload;
 }
 
@@ -114,23 +137,23 @@ export function safePart(value, fallback = "未分類") {
     .replace(/[. ]+$/g, "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 100) || fallback;
+    .slice(0, 100).replace(/[\uD800-\uDBFF]$/, "") || fallback;
 }
 
 function encodedPath(pathname) {
   return `/${String(pathname).split("/").filter(Boolean).map((part) => encodeURIComponent(part)).join("/")}`;
 }
 
-export function nasConfig() {
+export function nasConfig(drawing = false) {
   const url = String(process.env.NAS_WEBDAV_URL || "").replace(/\/+$/, "");
   const username = String(process.env.NAS_WEBDAV_USERNAME || "");
   const password = String(process.env.NAS_WEBDAV_PASSWORD || "");
-  const root = String(process.env.NAS_WEBDAV_ROOT || "/GUC-ERP").replace(/\/+$/, "") || "/GUC-ERP";
+  const root = drawing === true ? DRAWING_ROOT : String(process.env.NAS_WEBDAV_ROOT || "/GUC-ERP").replace(/\/+$/, "") || "/GUC-ERP";
   const missing = [["NAS_WEBDAV_URL", url], ["NAS_WEBDAV_USERNAME", username], ["NAS_WEBDAV_PASSWORD", password]].filter(([, value]) => !value).map(([name]) => name);
   if (missing.length) throw new HttpError(503, `NAS 環境變數尚未完整設定（缺少：${missing.join("、")}）。`, "NAS_CONFIG_MISSING");
   const parsed = new URL(url);
   if (parsed.protocol !== "https:") throw new HttpError(500, "NAS_WEBDAV_URL 必須使用 HTTPS。", "NAS_URL_INSECURE");
-  if (root !== "/GUC-ERP") throw new HttpError(500, "NAS_WEBDAV_ROOT 必須設定為 /GUC-ERP。", "NAS_ROOT_INVALID");
+  if (root !== (drawing === true ? DRAWING_ROOT : "/GUC-ERP")) throw new HttpError(500, "NAS_WEBDAV_ROOT 必須設定為 /GUC-ERP。", "NAS_ROOT_INVALID");
   return { url, username, password, root };
 }
 
@@ -163,16 +186,18 @@ async function currentUser(request) {
   const response = await gatewayRequest("?scope=session", authorization, "ERP 登入服務");
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.current_user) throw new HttpError(401, "ERP 登入狀態已失效，請重新登入。", "AUTH_EXPIRED");
-  const user = data.current_user;
+  return { user: data.current_user, authorization };
+}
+
+function requireLegacyAttachmentPermission(user) {
   const permitted = user.role === "admin" || (Array.isArray(user.permissions)
     ? user.permissions.some(p => p.module === "equipment" && p.can_create === true) && user.permissions.some(p => p.module === "site" && p.can_view === true)
     : ["admin", "operator"].includes(user.role));
   if (!permitted || user.project_scoped) throw new HttpError(403, "目前帳號沒有附件上傳權限。", "ROLE_FORBIDDEN");
-  return { user: data.current_user, authorization };
 }
 
-async function resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization, workLogId = "") {
-  const params = new URLSearchParams({ scope: "nas_upload_context", customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}) });
+async function resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization, workLogId = "", constructionPlanId = "") {
+  const params = new URLSearchParams({ scope: "nas_upload_context", customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}), ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}) });
   const response = await gatewayRequest(`?${params}`, authorization, "ERP 承攬資料服務");
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new HttpError([400, 401, 403, 404, 409].includes(response.status) ? response.status : 502, data.error || "無法讀取 ERP 承攬資料。", "CONTRACT_LOOKUP_FAILED");
@@ -183,6 +208,12 @@ async function resolveUploadContext(customerId, contractServiceTypeId, projectId
   if (!customer || !contractService || !linked) throw new HttpError(400, "找不到客戶承攬內容或關聯已失效，請重新選擇。", "CONTRACT_NOT_FOUND");
   const project = Array.isArray(data.projects) ? data.projects.find((row) => row.id === projectId && row.customer_id === customerId) : null;
   if (!project) throw new HttpError(400, "找不到此客戶的專案；缺少專案時禁止上傳。", "PROJECT_REQUIRED");
+  if (constructionPlanId) {
+    if (data.construction_plan_id !== constructionPlanId || data.can_upload !== true) throw new HttpError(403, "沒有此施工規劃的工程圖上傳權限。", "DRAWING_ACCESS_DENIED");
+    const parts = data.folder_parts;
+    if (!validDrawingFolderParts(parts, constructionPlanId) || parts[0] !== safePart(customer.name, "未命名客戶") || parts[1] !== safePart(contractService.name, "未命名承攬內容") || parts[2] !== safePart(project.name, "未命名專案") || parts[3] !== formatTaipeiDate()) throw new HttpError(409, "工程圖資料夾關聯不正確，請重新讀取施工規劃。", "DRAWING_CONTEXT_INVALID");
+    return { folderParts: parts, logDate: parts[3], protectedPaths: Array.isArray(data.protected_paths) ? data.protected_paths : [] };
+  }
 
   return {
     contractServiceName: safePart(contractService.name, "未命名承攬內容"),
@@ -228,10 +259,10 @@ export async function davRequest(config, method, pathname, body, extraHeaders = 
   }
 }
 
-function statusError(status, action) {
+function statusError(status, action, root = "/GUC-ERP") {
   if (status === 401) return new HttpError(502, "NAS 專用帳號或密碼不正確。", "NAS_AUTH_FAILED");
-  if (status === 403) return new HttpError(502, "NAS 專用帳號沒有 /GUC-ERP 寫入權限。", "NAS_PERMISSION_DENIED");
-  if (status === 404) return new HttpError(502, "NAS 上找不到 /GUC-ERP 共用資料夾。", "NAS_ROOT_MISSING");
+  if (status === 403) return new HttpError(502, `NAS 專用帳號沒有 ${root} 存取權限。`, "NAS_PERMISSION_DENIED");
+  if (status === 404) return new HttpError(502, `NAS 上找不到 ${root} 共用資料夾。`, "NAS_ROOT_MISSING");
   if (status === 423) return new HttpError(503, "NAS 目標目前被鎖定，請稍後再試。", "NAS_LOCKED");
   if (status >= 500) return new HttpError(502, `NAS ${action}暫時失敗（${status}）。`, "NAS_UPSTREAM_ERROR");
   return new HttpError(502, `NAS ${action}失敗（${status}）。`, "NAS_UNEXPECTED_STATUS");
@@ -239,14 +270,14 @@ function statusError(status, action) {
 
 async function requireRoot(config, request = davRequest) {
   const response = await request(config, "PROPFIND", config.root, undefined, { Depth: "0" });
-  if (![200, 207].includes(response.status)) throw statusError(response.status, "根目錄檢查");
+  if (![200, 207].includes(response.status)) throw statusError(response.status, "根目錄檢查", config.root);
 }
 
 async function pathExists(config, pathname, request = davRequest) {
   const response = await request(config, "PROPFIND", pathname, undefined, { Depth: "0" });
   if ([200, 207].includes(response.status)) return true;
   if (response.status === 404) return false;
-  throw statusError(response.status, "路徑檢查");
+  throw statusError(response.status, "路徑檢查", config.root);
 }
 
 export async function ensureNestedFolder(config, parts, request = davRequest, knownExistingDepth = 0) {
@@ -257,7 +288,7 @@ export async function ensureNestedFolder(config, parts, request = davRequest, kn
     if (index < knownExistingDepth) continue;
     if (await pathExists(config, pathname, request)) continue;
     const created = await request(config, "MKCOL", pathname);
-    if (![201, 204, 405].includes(created.status)) throw statusError(created.status, "資料夾建立");
+    if (![201, 204, 405].includes(created.status)) throw statusError(created.status, "資料夾建立", config.root);
     if (created.status === 405 && !(await pathExists(config, pathname, request))) throw new HttpError(409, "NAS 資料夾建立發生競態衝突，請重試。", "NAS_FOLDER_RACE");
   }
   return pathname;
@@ -285,20 +316,20 @@ export function renamedFileName(fileName, attempt) {
   return safePart(`${stem} (${attempt})${extension}`, "附件");
 }
 
-export async function allocateRenamedFile(config, targetFolder, fileName, request = davRequest) {
+export async function allocateRenamedFile(config, targetFolder, fileName, request = davRequest, drawing = false) {
   for (let attempt = 2; attempt <= 101; attempt += 1) {
-    const storedName = renamedFileName(fileName, attempt);
+    const storedName = drawing ? drawingFileName(fileName, attempt) : renamedFileName(fileName, attempt);
     const nasPath = `${targetFolder}/${storedName}`;
     if (!(await pathExists(config, nasPath, request))) return { storedName, nasPath };
   }
   throw new HttpError(409, "同名檔案過多，無法取得可用的新檔名。", "NAS_RENAME_LIMIT");
 }
 
-async function preflightFiles(config, targetFolder, fileNames, request = davRequest, maxFiles = MAX_FILES) {
-  return mapWithConcurrency(validateFileNames(fileNames,maxFiles), NAS_CONCURRENCY, async (storedName) => {
+async function preflightFiles(config, targetFolder, fileNames, request = davRequest, maxFiles = MAX_FILES, drawing = false) {
+  return mapWithConcurrency(validateFileNames(fileNames,maxFiles,drawing), NAS_CONCURRENCY, async (storedName) => {
     const nasPath = `${targetFolder}/${storedName}`;
     const exists = await pathExists(config, nasPath, request);
-    const suggestion = exists ? await allocateRenamedFile(config, targetFolder, storedName, request) : null;
+    const suggestion = exists ? await allocateRenamedFile(config, targetFolder, storedName, request, drawing) : null;
     return { name: storedName, nas_path: nasPath, exists, suggested_name: suggestion?.storedName || "" };
   });
 }
@@ -335,37 +366,37 @@ export async function allocateUploadFolder(config, baseName, now = new Date(), r
     const created = await request(config, "MKCOL", pathname);
     if ([201, 204].includes(created.status)) return { pathname, collisionResolved: attempt > 0, attempt };
     if ([405, 409, 412].includes(created.status)) continue;
-    throw statusError(created.status, "資料夾建立");
+    throw statusError(created.status, "資料夾建立", config.root);
   }
   throw new HttpError(409, "NAS 無法取得唯一資料夾名稱，請稍後再試。", "NAS_FOLDER_COLLISION_LIMIT");
 }
 
-function supportedFile(file) {
+function supportedFile(file, drawing = false) {
   const extension = String(file.name || "").split(".").pop()?.toLowerCase() || "";
-  return ALLOWED_EXTENSIONS.has(extension);
+  return (drawing ? DRAWING_EXTENSIONS : ALLOWED_EXTENSIONS).has(extension);
 }
 
-export function validateUploadFiles(files, maxFiles = MAX_FILES, maxTotal = MAX_TOTAL_BYTES) {
+export function validateUploadFiles(files, maxFiles = MAX_FILES, maxTotal = MAX_TOTAL_BYTES, drawing = false) {
   if (!files.length || files.length > maxFiles) throw new HttpError(400, `請選擇 1～${maxFiles} 個附件。`, "FILE_COUNT_INVALID");
   if (files.reduce((sum, file) => sum + Number(file.size || 0), 0) > maxTotal) throw new HttpError(413, `單次附件合計不可超過 ${maxTotal/1024/1024} MB。`, "TOTAL_SIZE_EXCEEDED");
   for (const file of files) {
     if (!Number(file.size)) throw new HttpError(400, `${safePart(file.name, "附件")} 是空白檔案，請重新選擇。`, "EMPTY_FILE");
     if (file.size > MAX_FILE_BYTES) throw new HttpError(413, `${safePart(file.name, "附件")} 超過 20 MB。`, "FILE_SIZE_EXCEEDED");
     if (!String(file.name || "").trim() || String(file.name).length > 160) throw new HttpError(400, "附件檔名不可空白或超過 160 個字元。", "FILE_NAME_INVALID");
-    if (!supportedFile(file)) throw new HttpError(415, `${safePart(file.name, "附件")} 的檔案格式不支援。`, "FILE_TYPE_UNSUPPORTED");
+    if (!supportedFile(file, drawing)) throw new HttpError(415, `${safePart(file.name, "附件")} 的檔案格式不支援。`, "FILE_TYPE_UNSUPPORTED");
   }
-  const names = files.map((file) => safePart(file.name, "附件").toLocaleLowerCase("zh-Hant"));
+  const names = files.map((file) => (drawing ? drawingFileName(file.name) : safePart(file.name, "附件")).toLocaleLowerCase("zh-Hant"));
   if (new Set(names).size !== names.length) throw new HttpError(400, "同一批附件不可包含重複檔名。", "DUPLICATE_FILE_NAME");
 }
 
-export function validateFileNames(names, maxFiles = MAX_FILES) {
+export function validateFileNames(names, maxFiles = MAX_FILES, drawing = false) {
   if (!Array.isArray(names) || names.length < 1 || names.length > maxFiles) throw new HttpError(400, `請提供 1～${maxFiles} 個附件檔名。`, "FILE_COUNT_INVALID");
   const sanitized = names.map((name) => {
     const original = firstText(name);
     if (!original || original.length > 160) throw new HttpError(400, "附件檔名不可空白或超過 160 個字元。", "FILE_NAME_INVALID");
     const extension = original.split(".").pop()?.toLowerCase() || "";
-    if (!ALLOWED_EXTENSIONS.has(extension)) throw new HttpError(415, `${safePart(original, "附件")} 的檔案格式不支援。`, "FILE_TYPE_UNSUPPORTED");
-    return safePart(original, "附件");
+    if (!(drawing ? DRAWING_EXTENSIONS : ALLOWED_EXTENSIONS).has(extension)) throw new HttpError(415, `${safePart(original, "附件")} 的檔案格式不支援。`, "FILE_TYPE_UNSUPPORTED");
+    return drawing ? drawingFileName(original) : safePart(original, "附件");
   });
   if (new Set(sanitized.map((name) => name.toLocaleLowerCase("zh-Hant"))).size !== sanitized.length) throw new HttpError(400, "同一批附件不可包含重複檔名。", "DUPLICATE_FILE_NAME");
   return sanitized;
@@ -384,36 +415,54 @@ export async function verifyUploadedFile(config, nasPath, expectedBytes, request
     return true;
   }
   if (head.status === 404) throw new HttpError(502, "NAS 寫入後找不到檔案。", "NAS_VERIFY_MISSING");
-  if (![405, 501].includes(head.status)) throw statusError(head.status, "檔案驗證");
+  if (![405, 501].includes(head.status)) throw statusError(head.status, "檔案驗證", config.root);
 
   const propfind = await request(config, "PROPFIND", nasPath, undefined, { Depth: "0" });
-  if (![200, 207].includes(propfind.status)) throw statusError(propfind.status, "檔案驗證");
+  if (![200, 207].includes(propfind.status)) throw statusError(propfind.status, "檔案驗證", config.root);
   const recordedBytes = contentLengthFromPropfind(await propfind.text());
   if (recordedBytes !== null && recordedBytes !== expectedBytes) throw new HttpError(502, "NAS 檔案大小驗證失敗。", "NAS_SIZE_MISMATCH");
   return true;
 }
 
-async function uploadFile(config, targetFolder, file, conflictAction = "new", request = davRequest) {
+export function drawingMimeType(name) {
+  const extension = String(name || "").split(".").pop().toLowerCase();
+  return ({ pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", heic: "image/heic", heif: "image/heif" })[extension] || "application/octet-stream";
+}
+
+export function validateDrawingBytes(name, bytes) {
+  const ext = String(name || "").split(".").pop().toLowerCase(), header = bytes.subarray(0, 4096), ascii = header.toString("latin1");
+  const valid = ext === "pdf" ? ascii.startsWith("%PDF-")
+    : ext === "png" ? header.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+    : ["jpg", "jpeg"].includes(ext) ? header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff
+    : ext === "webp" ? ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP"
+    : ["heic", "heif"].includes(ext) ? ascii.slice(4, 8) === "ftyp" && /heic|heix|hevc|hevx|mif1|msf1/.test(ascii.slice(8, 40))
+    : ext === "dwg" ? /^AC10\d{2}/.test(ascii)
+    : ext === "dxf" ? ascii.startsWith("AutoCAD Binary DXF\r\n\x1a\0") || /^\s*0\s*\r?\n\s*SECTION\s*\r?\n/i.test(ascii.replace(/^\xef\xbb\xbf/, "")) : false;
+  if (!valid) throw new HttpError(415, "工程圖內容與副檔名不符，請確認原始檔案格式。", "DRAWING_CONTENT_INVALID");
+}
+
+async function uploadFile(config, targetFolder, file, conflictAction = "new", request = davRequest, drawing = false) {
   const totalStartedAt = Date.now(), readStartedAt = Date.now();
   const buffer = Buffer.from(await file.arrayBuffer());
+  if (drawing) validateDrawingBytes(file.name, buffer);
   const readMs = elapsedMs(readStartedAt), conflictStartedAt = Date.now();
-  const id = randomUUID(), originalName = String(file.name || "attachment"), safeName = safePart(originalName, "attachment");
+  const id = randomUUID(), originalName = String(file.name || "attachment"), safeName = drawing ? drawingFileName(originalName) : safePart(originalName, "attachment");
   let storedName = safeName, nasPath = `${targetFolder}/${storedName}`, resolution = "new";
   const exists = await pathExists(config, nasPath, request);
   if (exists) {
     if (conflictAction === "cancel") return { skipped: true, originalName, reason: "使用者取消同名檔案" };
-    if (conflictAction === "rename") { const allocated = await allocateRenamedFile(config, targetFolder, safeName, request); storedName = allocated.storedName; nasPath = allocated.nasPath; resolution = "rename"; }
+    if (conflictAction === "rename") { const allocated = await allocateRenamedFile(config, targetFolder, safeName, request, drawing); storedName = allocated.storedName; nasPath = allocated.nasPath; resolution = "rename"; }
     else if (conflictAction === "overwrite") resolution = "overwrite";
     else throw new HttpError(409, `${safeName} 已存在，請選擇覆蓋、另存新檔或取消。`, "NAS_FILE_CONFLICT");
   }
   const conflictMs = elapsedMs(conflictStartedAt), putStartedAt = Date.now();
   const response = await request(config, "PUT", nasPath, buffer, {
-    "Content-Type": file.type || "application/octet-stream",
+    "Content-Type": drawing ? drawingMimeType(file.name) : file.type || "application/octet-stream",
     "Content-Length": String(buffer.length),
     [resolution === "overwrite" ? "If-Match" : "If-None-Match"]: "*"
   });
   if (response.status === 412) throw new HttpError(409, `${storedName} 的狀態已改變，請重新檢查後再上傳。`, "NAS_FILE_RACE");
-  if (![200, 201, 204].includes(response.status)) throw statusError(response.status, "檔案寫入");
+  if (![200, 201, 204].includes(response.status)) throw statusError(response.status, "檔案寫入", config.root);
   const putMs = elapsedMs(putStartedAt), verifyStartedAt = Date.now();
   await verifyUploadedFile(config, nasPath, buffer.length, request);
   const verifyMs = elapsedMs(verifyStartedAt), hashStartedAt = Date.now();
@@ -434,21 +483,21 @@ export function verifyChunkTicket(config, value, expected, authorization, now = 
   if (ticket.authorization_hash !== authorizationHash(authorization) || ticket.actor !== expected.actor) throw ticketError();
   for (const key of ["customer_id", "contract_service_type_id", "project_id"]) if (ticket[key] !== expected[key]) throw ticketError();
   if((ticket.work_log_id||"")!==(expected.work_log_id||""))throw ticketError();
+  if ((ticket.construction_plan_id || "") !== (expected.construction_plan_id || "")) throw ticketError();
   if (!/^[a-f0-9-]{36}$/.test(ticket.nonce) || !/^[a-f0-9]{64}$/.test(ticket.sha256) || !Number.isInteger(ticket.size) || ticket.size < 1 || ticket.size > MAX_FILE_BYTES) throw ticketError();
   if (ticket.tail_bytes !== undefined && (!Number.isInteger(ticket.tail_bytes) || ticket.tail_bytes < 0 || ticket.tail_bytes > Math.min(ticket.size, INLINE_TAIL_BYTES))) throw ticketError();
-  if (ticket.existing_folder_depth !== undefined && (!Number.isInteger(ticket.existing_folder_depth) || ticket.existing_folder_depth < 0 || ticket.existing_folder_depth > 4)) throw ticketError();
-  validateFileNames([ticket.name]);
-  if (!Array.isArray(ticket.folder_parts) || ticket.folder_parts.length !== 4 || ticket.folder_parts.some(part => part !== safePart(part))) throw ticketError();
-  if (ticket.target_folder !== `${config.root}/${ticket.folder_parts.join("/")}`) throw ticketError();
+  if (ticket.existing_folder_depth !== undefined && (!Number.isInteger(ticket.existing_folder_depth) || ticket.existing_folder_depth < 0 || ticket.existing_folder_depth > (expected.construction_plan_id ? 5 : 4))) throw ticketError();
+  validateFileNames([ticket.name], MAX_FILES, Boolean(expected.construction_plan_id));
+  if (!validTicketFolder({ ...ticket, existing_folder_depth: ticket.existing_folder_depth || 0 }, config)) throw ticketError();
   return ticket;
 }
 
-async function handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, requestId, authMs, formMs }) {
+async function handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, constructionPlanId, requestId, authMs, formMs }) {
   const startedAt = Date.now();
-  const expected = { actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}) };
+  const expected = { actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}), ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}) };
   if (mode === "begin_file") {
     const name = firstText(form.get("file_name")), size = Number(form.get("file_size")), sha256 = firstText(form.get("sha256"));
-    validateUploadFiles([{ name, size }]);
+    validateUploadFiles([{ name, size }], MAX_FILES, MAX_TOTAL_BYTES, Boolean(constructionPlanId));
     if (!Number.isInteger(size) || !/^[a-f0-9]{64}$/.test(sha256)) throw new HttpError(400, "附件大小或校驗資料不正確。", "FILE_METADATA_INVALID");
     const preflight = verifyPreflightTicket(config, firstText(form.get("preflight_ticket")), { ...expected, file_names: [name] }, authorization);
     if (preflight.expected_size !== undefined && preflight.expected_size !== size) throw ticketError();
@@ -465,7 +514,7 @@ async function handleChunkUpload({ config, form, mode, user, authorization, cust
     };
     const stage = `${config.root}/.erp-upload-${ticket.nonce}`;
     const created = await davRequest(config, "MKCOL", stage);
-    if (created.status !== 201) throw statusError(created.status, "上傳暫存建立");
+    if (created.status !== 201) throw statusError(created.status, "上傳暫存建立", config.root);
     const encoded = Buffer.from(JSON.stringify(ticket)).toString("base64url");
     return json({ ok: true, upload_ticket: `${encoded}.${signTicketPayload(config, encoded)}`, chunk_bytes: CHUNK_BYTES, tail_bytes: tailBytes, chunk_count: Math.ceil((size - tailBytes) / CHUNK_BYTES) });
   }
@@ -474,14 +523,14 @@ async function handleChunkUpload({ config, form, mode, user, authorization, cust
   const stage = `${config.root}/.erp-upload-${ticket.nonce}`, count = Math.ceil(prefixBytes / CHUNK_BYTES);
   if (mode === "cancel_file") {
     const removed = await davRequest(config, "DELETE", stage);
-    if (![200, 204, 404].includes(removed.status)) throw statusError(removed.status, "上傳暫存清除");
+    if (![200, 204, 404].includes(removed.status)) throw statusError(removed.status, "上傳暫存清除", config.root);
     return json({ ok: true });
   }
   if (mode === "upload_chunk") {
     const index = Number(form.get("chunk_index")), chunk = form.get("chunk");
     if (!form.has("chunk_index") || !Number.isInteger(index) || index < 0 || index >= count || !chunk || typeof chunk.arrayBuffer !== "function" || chunk.size !== Math.min(CHUNK_BYTES, prefixBytes - index * CHUNK_BYTES)) throw new HttpError(400, "照片分段大小或順序不正確。", "CHUNK_INVALID");
     const response = await davRequest(config, "PUT", `${stage}/${index}.part`, Buffer.from(await chunk.arrayBuffer()), { "Content-Type": "application/octet-stream", "Content-Length": String(chunk.size) });
-    if (![200, 201, 204].includes(response.status)) throw statusError(response.status, "照片分段傳送");
+    if (![200, 201, 204].includes(response.status)) throw statusError(response.status, "照片分段傳送", config.root);
     return json({ ok: true, chunk_index: index });
   }
   // Recheck current customer/service/project access before creating a final attachment.
@@ -489,13 +538,13 @@ async function handleChunkUpload({ config, form, mode, user, authorization, cust
   if (tailBytes && (!tail || typeof tail.arrayBuffer !== "function" || tail.size !== tailBytes)) throw new HttpError(409, "照片最後一段不完整，請重新上傳。", "CHUNK_TAIL_INVALID");
   if (!tailBytes && tail) throw new HttpError(400, "照片分段格式不正確。", "CHUNK_TAIL_INVALID");
   const contextStartedAt = Date.now();
-  const finalContext=await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId);
-  if(ticket.conflict==="overwrite"&&finalContext.protectedPaths.includes(`${ticket.target_folder}/${safePart(ticket.name)}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
+  const finalContext=await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
+  if(ticket.conflict==="overwrite"&&finalContext.protectedPaths.includes(`${ticket.target_folder}/${constructionPlanId ? drawingFileName(ticket.name) : safePart(ticket.name)}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
   const contextMs = elapsedMs(contextStartedAt), readStartedAt = Date.now();
   const parts = await mapWithConcurrency(Array.from({ length: count }, (_, i) => i), NAS_CONCURRENCY, async index => {
     const response = await davRequest(config, "GET", `${stage}/${index}.part`);
     if (response.status === 404) throw new HttpError(409, "照片尚未傳送完整，請重新上傳。", "CHUNK_MISSING");
-    if (!response.ok) throw statusError(response.status, "照片分段讀取");
+    if (!response.ok) throw statusError(response.status, "照片分段讀取", config.root);
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.length !== Math.min(CHUNK_BYTES, prefixBytes - index * CHUNK_BYTES)) throw new HttpError(409, "照片分段不完整，請重新上傳。", "CHUNK_SIZE_MISMATCH");
     return bytes;
@@ -504,16 +553,62 @@ async function handleChunkUpload({ config, form, mode, user, authorization, cust
   const readMs = elapsedMs(readStartedAt), bytes = Buffer.concat(parts);
   if (createHash("sha256").update(bytes).digest("hex") !== ticket.sha256) throw new HttpError(409, "照片內容校驗失敗，請重新上傳。", "FILE_HASH_MISMATCH");
   await ensureNestedFolder(config, ticket.folder_parts, davRequest, ticket.existing_folder_depth || 0);
-  const result = await uploadFile(config, ticket.target_folder, new File([bytes], ticket.name, { type: ticket.mime_type }), ticket.conflict);
+  const result = await uploadFile(config, ticket.target_folder, new File([bytes], ticket.name, { type: ticket.mime_type }), ticket.conflict, davRequest, Boolean(constructionPlanId));
   const uploaded = { id: result.id, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId,
+    ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}),
     log_date: ticket.folder_parts[3], title: result.originalName, description: ticket.description, asset_type: ticket.asset_type,
-    original_name: result.originalName, mime_type: ticket.mime_type, file_size: result.size, nas_path: result.nasPath,
+    original_name: result.originalName, mime_type: constructionPlanId ? drawingMimeType(result.originalName) : ticket.mime_type, file_size: result.size, nas_path: result.nasPath,
     stored_name: result.storedName, conflict_resolution: result.conflictResolution, upload_status: "uploaded", uploaded_by: user.username,
     uploaded_at: new Date().toISOString(), sha256: result.sha256 };
   try { const removed = await davRequest(config, "DELETE", stage); if (![200, 204, 404].includes(removed.status)) logEvent("warn", "chunk_cleanup_failed"); }
   catch { logEvent("warn", "chunk_cleanup_failed"); }
   logEvent("info", "chunk_upload_completed", { request_id: requestId, bytes: result.size, chunks: count, inline_tail_bytes: tailBytes, nas_payload_bytes: prefixBytes * 2 + result.size, timing: { auth_ms: authMs, form_ms: formMs, context_ms: contextMs, chunk_read_ms: readMs, final_write_ms: result.timing.total_ms, total_ms: authMs + formMs + elapsedMs(startedAt) } });
   return json({ ok: true, upload_folder: ticket.target_folder, uploaded: [uploaded], failed: [] }, 201);
+}
+
+async function readDrawing(request, config, authorization) {
+  const url = new URL(request.url), assetId = firstText(url.searchParams.get("asset_id"));
+  if (!UUID_PATTERN.test(assetId)) throw new HttpError(400, "請選擇已保存的工程圖。", "DRAWING_ASSET_REQUIRED");
+  const response = await gatewayRequest(`?${new URLSearchParams({ scope: "construction_drawing_file", asset_id: assetId })}`, authorization, "ERP 工程圖服務");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new HttpError([400,401,403,404,409].includes(response.status) ? response.status : 502, data.error || "無法讀取工程圖。", "DRAWING_ACCESS_DENIED");
+  const asset = data.asset;
+  if (!asset || asset.id !== assetId || !asset.construction_plan_id || asset.storage_provider !== "nas") throw new HttpError(404, "找不到工程圖。", "DRAWING_NOT_FOUND");
+  const pathname = String(asset.nas_path || ""), legacyPrefix = `/GUC-ERP/施工規劃/${asset.project_id}/${asset.construction_plan_id}/`;
+  const segments = pathname.startsWith(`${DRAWING_ROOT}/`) ? pathname.slice(DRAWING_ROOT.length + 1).split("/") : [];
+  const validNewPath = segments.length === 6 && validDrawingFolderParts(segments.slice(0, 5), asset.construction_plan_id);
+  const legacyName = pathname.startsWith(legacyPrefix) ? pathname.slice(legacyPrefix.length) : "";
+  const name = validNewPath ? segments[5] : legacyName;
+  if (!UUID_PATTERN.test(asset.project_id) || !UUID_PATTERN.test(asset.construction_plan_id) || !name || name !== safePart(name) || name === "." || name === ".." || !supportedFile({ name }, true)) throw new HttpError(409, "工程圖儲存路徑不正確，請聯絡管理員。", "DRAWING_PATH_INVALID");
+  const remote = await davRequest(config, "GET", pathname);
+  if (remote.status === 404) throw new HttpError(404, "NAS 上找不到這份工程圖。", "DRAWING_FILE_MISSING");
+  if (!remote.ok) throw statusError(remote.status, "工程圖讀取", validNewPath ? DRAWING_ROOT : "/GUC-ERP");
+  const reader = remote.body?.getReader(), parts = [];
+  let size = 0;
+  if (Number(remote.headers.get("content-length")) > MAX_FILE_BYTES) { await remote.body?.cancel(); throw new HttpError(413, "工程圖超過可下載的大小。", "FILE_SIZE_EXCEEDED"); }
+  if (reader) {
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; reader.cancel().catch(() => {}); }, REQUEST_TIMEOUT_MS);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (timedOut) throw new HttpError(504, "NAS 工程圖讀取逾時，請稍後再試。", "NAS_TIMEOUT");
+        if (done) break;
+        size += value.length;
+        if (size > MAX_FILE_BYTES) { await reader.cancel(); throw new HttpError(413, "工程圖超過可下載的大小。", "FILE_SIZE_EXCEEDED"); }
+        parts.push(Buffer.from(value));
+      }
+    } finally { clearTimeout(timer); reader.releaseLock(); }
+  }
+  const bytes = Buffer.concat(parts);
+  if (!size || (Number.isFinite(Number(asset.file_size)) && size !== Number(asset.file_size)) || (asset.sha256 && createHash("sha256").update(bytes).digest("hex") !== asset.sha256)) throw new HttpError(409, "NAS 原檔與工程圖紀錄不符，請聯絡管理員確認。", "DRAWING_INTEGRITY_MISMATCH");
+  validateDrawingBytes(name, bytes);
+  const mime = drawingMimeType(name), inline = url.searchParams.get("download") !== "1" && ["application/pdf", "image/png", "image/jpeg", "image/webp"].includes(mime);
+  const filename = encodeURIComponent(drawingFileName(asset.original_name || name)).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return new Response(bytes, { headers: {
+    "Content-Type": mime, "Content-Length": String(size), "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="drawing"; filename*=UTF-8''${filename}`,
+    "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'", "Referrer-Policy": "no-referrer"
+  } });
 }
 
 export default {
@@ -523,12 +618,21 @@ export default {
       if (!["preview", "production"].includes(process.env.VERCEL_ENV || "")) throw new HttpError(403, "NAS 上傳僅限已部署的 ERP 環境。", "DEPLOYMENT_ONLY");
       if (!["GET", "POST"].includes(request.method)) throw new HttpError(405, "僅支援 GET 與 POST。", "METHOD_NOT_ALLOWED");
       if (process.env.VERCEL_ENV === "preview" && request.method === "POST") throw new HttpError(403, "Preview 環境禁止寫入 NAS；請使用介面安全模擬。", "PREVIEW_NAS_WRITE_BLOCKED");
+      // Validate the session before allocating/parsing multipart file contents.
       const authStartedAt = Date.now();
       const { user, authorization } = await currentUser(request);
       const authMs = elapsedMs(authStartedAt);
-      const config = nasConfig();
+      const formStartedAt = Date.now();
+      const form = request.method === "POST" ? await request.formData() : null;
+      const formMs = elapsedMs(formStartedAt);
+      const constructionPlanId = firstText(form?.get("construction_plan_id"));
+      const drawingRead = request.method === "GET" && new URL(request.url).searchParams.get("mode") === "drawing";
+      // Drawings use the persisted plan ACL below; ordinary attachments retain their existing gate.
+      if (!constructionPlanId && !drawingRead) requireLegacyAttachmentPermission(user);
+      const config = nasConfig(Boolean(constructionPlanId) || drawingRead);
 
       if (request.method === "GET") {
+        if (drawingRead) return await readDrawing(request, config, authorization);
         const rootStartedAt = Date.now();
         await requireRoot(config);
         const timing = { auth_ms: authMs, root_ms: elapsedMs(rootStartedAt), total_ms: elapsedMs(requestStartedAt) };
@@ -536,25 +640,23 @@ export default {
         return json({ ok: true, available: true, root: config.root, message: "NAS WebDAV 已連線", timing });
       }
 
-      const formStartedAt = Date.now();
-      const form = await request.formData();
-      const formMs = elapsedMs(formStartedAt);
       const mode = firstText(form.get("mode")) || "upload";
       const customerId = firstText(form.get("customer_id"));
       const contractServiceTypeId = firstText(form.get("contract_service_type_id"));
       const projectId = firstText(form.get("project_id"));
       const workLogId=firstText(form.get("work_log_id"));
-      const maxFiles=workLogId?30:MAX_FILES;
+      if (constructionPlanId && workLogId) throw new HttpError(400, "工程圖不可同時指定工作日誌。", "DRAWING_CONTEXT_INVALID");
+      const maxFiles=workLogId||constructionPlanId?DRAWING_MAX_FILES:MAX_FILES;
       const description = firstText(form.get("description")).slice(0, 1000);
       const assetType = firstText(form.get("attachment_type")) === "document" ? "document" : "photo";
       if (!customerId || !contractServiceTypeId || !projectId) throw new HttpError(400, "缺少客戶、承攬內容或專案資料；附件未上傳。", "UPLOAD_CONTEXT_REQUIRED");
       // Signed upload tickets accelerate file transfer, but never preserve a revoked ACL.
       // Check before any NAS write, including intermediate chunks and ticket reuse.
-      if(user.private_access?.configured&&!user.private_access.direct)
-        await resolveUploadContext(customerId,contractServiceTypeId,projectId,authorization,workLogId);
+      if(constructionPlanId || (user.private_access?.configured&&!user.private_access.direct))
+        await resolveUploadContext(customerId,contractServiceTypeId,projectId,authorization,workLogId,constructionPlanId);
 
       if (["begin_file", "upload_chunk", "complete_file", "cancel_file"].includes(mode)) {
-        return await handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, requestId, authMs, formMs });
+        return await handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, constructionPlanId, requestId, authMs, formMs });
       }
 
       if (mode === "preflight" || mode === "prepare_batch") {
@@ -563,20 +665,20 @@ export default {
         if (mode === "prepare_batch") {
           try { metadata = JSON.parse(firstText(form.get("file_metadata")) || "[]"); } catch { throw new HttpError(400, "附件檔案清單格式不正確。", "FILE_NAMES_INVALID"); }
           if (!Array.isArray(metadata) || metadata.some(file => !file || typeof file.name !== "string" || !Number.isInteger(file.size) || file.size < 1)) throw new HttpError(400, "附件檔案清單格式不正確。", "FILE_NAMES_INVALID");
-          validateUploadFiles(metadata,maxFiles,workLogId?30*MAX_FILE_BYTES:MAX_TOTAL_BYTES);fileNames = metadata.map(file => file.name);
+          validateUploadFiles(metadata,maxFiles,workLogId||constructionPlanId?DRAWING_MAX_FILES*MAX_FILE_BYTES:MAX_TOTAL_BYTES,Boolean(constructionPlanId));fileNames = metadata.map(file => file.name);
         } else {
           try { fileNames = JSON.parse(firstText(form.get("file_names")) || "[]"); } catch { throw new HttpError(400, "附件檔名清單格式不正確。", "FILE_NAMES_INVALID"); }
         }
-        validateFileNames(fileNames,maxFiles);
+        validateFileNames(fileNames,maxFiles,Boolean(constructionPlanId));
         const rootStartedAt = Date.now();
         await requireRoot(config);
         const rootMs = elapsedMs(rootStartedAt), contextStartedAt = Date.now();
-        const { customerName, contractServiceName, projectName, logDate } = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId);
-        const contextMs = elapsedMs(contextStartedAt), folderParts = [customerName, contractServiceName, projectName, logDate];
-        const targetFolder = `${config.root}/${customerName}/${contractServiceName}/${projectName}/${logDate}`, nasPreflightStartedAt = Date.now();
+        const context = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
+        const contextMs = elapsedMs(contextStartedAt), folderParts = context.folderParts || [context.customerName, context.contractServiceName, context.projectName, context.logDate];
+        const targetFolder = `${config.root}/${folderParts.join("/")}`, nasPreflightStartedAt = Date.now();
         const [folders, files] = await Promise.all([
           inspectNestedFolders(config, folderParts),
-          preflightFiles(config, targetFolder, fileNames, davRequest, maxFiles)
+          preflightFiles(config, targetFolder, fileNames, davRequest, maxFiles,Boolean(constructionPlanId))
         ]);
         const existingFolderDepth = folders.findIndex((folder) => !folder.exists);
         if (mode === "prepare_batch") {
@@ -584,6 +686,7 @@ export default {
           const now = Date.now();
           const fileTickets = files.map((file, index) => createPreflightTicket(config, {
             actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}),
+            ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}),
             file_names: [file.name], expected_size: metadata[index].size, batch_prepared: true,
             folder_parts: folderParts, target_folder: targetFolder, existing_folder_depth: folderParts.length
           }, authorization, now));
@@ -597,6 +700,7 @@ export default {
           contract_service_type_id: contractServiceTypeId,
           project_id: projectId,
           ...(workLogId?{work_log_id:workLogId}:{}),
+          ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}),
           file_names: files.map((file) => file.name),
           folder_parts: folderParts,
           target_folder: targetFolder,
@@ -609,7 +713,7 @@ export default {
       if (mode !== "upload") throw new HttpError(400, "附件操作模式不正確。", "UPLOAD_MODE_INVALID");
 
       const files = form.getAll("files").filter((file) => file && typeof file.arrayBuffer === "function");
-      validateUploadFiles(files);
+      validateUploadFiles(files, constructionPlanId ? DRAWING_MAX_FILES : MAX_FILES, constructionPlanId ? DRAWING_MAX_FILES*MAX_FILE_BYTES : MAX_TOTAL_BYTES, Boolean(constructionPlanId));
       let conflictActions = {};
       try { conflictActions = JSON.parse(firstText(form.get("conflict_actions")) || "{}"); } catch { throw new HttpError(400, "同名檔案處理選項格式不正確。", "CONFLICT_ACTION_INVALID"); }
       if (!conflictActions || typeof conflictActions !== "object" || Array.isArray(conflictActions)) throw new HttpError(400, "同名檔案處理選項格式不正確。", "CONFLICT_ACTION_INVALID");
@@ -622,11 +726,12 @@ export default {
           contract_service_type_id: contractServiceTypeId,
           project_id: projectId,
           ...(workLogId?{work_log_id:workLogId}:{}),
+          ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}),
           file_names: files.map((file) => file.name)
         }, authorization);
         if (ticket.expected_size !== undefined && (files.length !== 1 || ticket.expected_size !== files[0].size)) throw ticketError();
         // Tickets share folder preparation, while final writes still check current business access.
-        if (ticket.batch_prepared||workLogId) protectedPaths=(await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId)).protectedPaths;
+        if (ticket.batch_prepared||workLogId||constructionPlanId) protectedPaths=(await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId)).protectedPaths;
         folderParts = ticket.folder_parts;
         targetFolder = ticket.target_folder;
         existingFolderDepth = ticket.existing_folder_depth;
@@ -634,8 +739,8 @@ export default {
       } else {
         const fallbackStartedAt = Date.now();
         await requireRoot(config);
-        const context = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId);protectedPaths=context.protectedPaths;
-        folderParts = [context.customerName, context.contractServiceName, context.projectName, context.logDate];
+        const context = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);protectedPaths=context.protectedPaths;
+        folderParts = context.folderParts || [context.customerName, context.contractServiceName, context.projectName, context.logDate];
         targetFolder = `${config.root}/${folderParts.join("/")}`;
         fallbackValidationMs = elapsedMs(fallbackStartedAt);
       }
@@ -647,20 +752,22 @@ export default {
       const uploadStartedAt = Date.now();
       const outcomes = await mapWithConcurrency(files, NAS_CONCURRENCY, async (file, index) => {
         try {
-          if((conflictActions[safePart(file.name)]||conflictActions[file.name])==="overwrite"&&protectedPaths.includes(`${targetFolder}/${safePart(file.name)}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
-          const result = await uploadFile(config, targetFolder, file, firstText(conflictActions[safePart(file.name, "附件")]) || firstText(conflictActions[file.name]) || "new");
+          const storedName = constructionPlanId ? drawingFileName(file.name) : safePart(file.name, "附件");
+          if((conflictActions[storedName]||conflictActions[file.name])==="overwrite"&&protectedPaths.includes(`${targetFolder}/${storedName}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
+          const result = await uploadFile(config, targetFolder, file, firstText(conflictActions[storedName]) || firstText(conflictActions[file.name]) || "new", davRequest, Boolean(constructionPlanId));
           if (result.skipped) return { failed: { name: safePart(file.name, `附件 ${index + 1}`), error: result.reason, skipped: true } };
           const uploaded = {
             id: result.id,
             customer_id: customerId,
             contract_service_type_id: contractServiceTypeId,
             project_id: projectId,
+            ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}),
             log_date: folderParts[3],
             title: result.originalName,
             description,
             asset_type: assetType,
             original_name: result.originalName,
-            mime_type: file.type || "application/octet-stream",
+            mime_type: constructionPlanId ? drawingMimeType(result.originalName) : file.type || "application/octet-stream",
             file_size: result.size,
             nas_path: result.nasPath,
             stored_name: result.storedName,
@@ -675,7 +782,7 @@ export default {
         } catch (error) {
           const message = error instanceof HttpError ? error.message : "NAS 寫入失敗，請稍後重試。";
           logEvent("warn", "file_failed", { request_id: requestId, folder: targetFolder, file_index: index + 1, code: error?.code || "NAS_FILE_FAILED" });
-          return { failed: { name: safePart(file.name, `附件 ${index + 1}`), error: message } };
+          return { failed: { name: safePart(file.name, `附件 ${index + 1}`), error: message, ...(constructionPlanId ? { status: Number(error?.status) || 502 } : {}) } };
         }
       });
       const uploaded = outcomes.flatMap((outcome) => outcome.uploaded ? [outcome.uploaded] : []);
@@ -683,6 +790,7 @@ export default {
       const timing = { auth_ms: authMs, form_ms: formMs, ticket_ms: ticketMs, fallback_validation_ms: fallbackValidationMs, folder_ms: folderMs, files_ms: elapsedMs(uploadStartedAt), total_ms: elapsedMs(requestStartedAt), file_timings: outcomes.flatMap((outcome) => outcome.timing ? [outcome.timing] : []) };
 
       if (!uploaded.length && failed.every((row) => row.skipped)) return json({ ok: false, upload_folder: targetFolder, uploaded, failed, timing }, 200);
+      if (!uploaded.length && constructionPlanId) return json({ ok: false, error: failed[0]?.error || "工程圖未能寫入 NAS。", upload_folder: targetFolder, uploaded, failed, timing }, failed[0]?.status || 502);
       if (!uploaded.length) throw new HttpError(502, `附件未能完成寫入與驗證；NAS 資料夾已保留：${targetFolder}`, "ALL_FILES_FAILED");
       logEvent("info", "upload_completed", { request_id: requestId, folder: targetFolder, uploaded: uploaded.length, failed: failed.length, preflight_ticket_reused: ticketReused, timing });
       return json({

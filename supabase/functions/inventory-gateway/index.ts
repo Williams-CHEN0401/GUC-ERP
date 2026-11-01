@@ -373,7 +373,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   return;
  }
  if(siteRequest)requirePermission(user,"site");
- if(scope==="construction_plans"&&!entity){if(!hasPermission(user,"projects")&&!hasPermission(user,"worklogs"))throw new Error("沒有施工規劃查看權限。");return;}
+ if((["construction_plans","construction_drawings","construction_drawing_file"].includes(scope)||scope==="nas_upload_context"&&params.has("construction_plan_id"))&&!entity){if(!hasPermission(user,"projects")&&!hasPermission(user,"worklogs"))throw new Error("沒有施工規劃查看權限。");return;}
  if(entity){
   const module=entity.startsWith("monitoring_")?"monitoring":entity.startsWith("phone_")?"phone":entity.startsWith("equipment_history")||entity==="maintenance_workers"?"history":({shared_work_log:"worklogs",audit_logs:"audit",customer_service_management:"customers",inventory:"inventory",customers:"customers",projects:"projects",suppliers:"suppliers",repairs:"repairs",pickups:"pickups",receipts:"purchases"} as Record<string,string>)[entity];
   if(!module)throw new Error("您的帳號沒有執行此操作的權限。");
@@ -555,6 +555,9 @@ function referenceSnapshot(snapshot: Row): Row {
   return Object.fromEntries(Object.entries(snapshot).filter(([name])=>FORM_REFERENCE_DATASETS.has(name)||["scope","current_user","refreshed_at","errors","work_content_types"].includes(name)));
 }
 async function withMaintenanceRepairState(snapshot: Row) {
+  // Plan drawings are available only through their plan-authorized endpoints;
+  // keep legacy attachment screens and project-scoped snapshot RPCs isolated.
+  if(Array.isArray(snapshot.site_assets))snapshot.site_assets=(snapshot.site_assets as Row[]).filter(asset=>!asset.construction_plan_id);
   const events=Array.isArray(snapshot.maintenance_events)?snapshot.maintenance_events as Row[]:[];
   const ids=events.map(event=>uuid(event.id)).filter((id):id is string=>!!id);
   if(!ids.length)return snapshot;
@@ -1094,6 +1097,13 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     requirePermission(user!,"projects","UPDATE");
     if(!uuid(payload.id))throw new Error("施工規劃編號不正確。");
     return rpc("save_construction_plan_v1",{p_actor_user_id:user!.id,p_payload:payload,p_delete:operation==="delete_construction_plan"});
+  }
+  if(operation==="create_construction_drawing_batch"){
+    const planId=uuid(payload.construction_plan_id),projectId=uuid(payload.project_id),customerId=uuid(payload.customer_id),serviceId=uuid(payload.contract_service_type_id);
+    if(!planId||!projectId||!customerId||!serviceId||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>30||payload.work_log_id)throw new Error("工程圖缺少施工規劃、承攬內容或工作內容資料。");
+    const context=await rpc("construction_drawing_upload_context_v1",{p_actor_user_id:user!.id,p_plan_id:planId,p_service_type_id:serviceId}) as Row;
+    if(context.project_id!==projectId||context.customer_id!==customerId)throw new Error("工程圖與施工規劃、客戶或工作內容不相符。");
+    return rpc("register_construction_drawings_v1",{p_actor_user_id:user!.id,p_plan_id:planId,p_service_type_id:serviceId,p_rows:payload.rows});
   }
   if(operation==="upsert_customer_project_work_log"){
     if(payload.construction_plan_id&&!uuid(payload.construction_plan_id))throw new Error("施工規劃編號不正確。");
@@ -2036,6 +2046,13 @@ async function monitoringIpConflicts(payload: Row) {
 }
 
 async function nasUploadContext(params:URLSearchParams,user:AppUser) {
+  if(params.has("construction_plan_id")){
+    const planId=uuid(params.get("construction_plan_id")),projectId=uuid(params.get("project_id")),customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("contract_service_type_id"));
+    if(!planId||!projectId||!customerId||!serviceId||params.get("work_log_id"))throw new Error("工程圖缺少有效的施工規劃、承攬內容、客戶或工作內容編號。");
+    const context=await rpc("construction_drawing_upload_context_v1",{p_actor_user_id:user.id,p_plan_id:planId,p_service_type_id:serviceId}) as Row;
+    if(context.project_id!==projectId||context.customer_id!==customerId)throw new Error("施工規劃與客戶或工作內容不相符。");
+    return {...context,scope:"nas_upload_context",current_user:publicUser(user),protected_paths:[],errors:[]};
+  }
   const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("contract_service_type_id")),projectId=uuid(params.get("project_id"));
   if(!customerId||!serviceId||!projectId)throw new Error("缺少有效的客戶、承攬內容或專案編號。");
   const access=privateContext.getStore();
@@ -2140,6 +2157,14 @@ async function handleRequest(request: Request) {
       if(scopeName==="construction_plans"){
         const projectId=params.get("project_id");if(projectId&&!uuid(projectId))throw new Error("工作內容編號不正確。");
         return json(await constructionSnapshot(user,projectId?uuid(projectId):null));
+      }
+      if(scopeName==="construction_drawings"){
+        const planId=uuid(params.get("plan_id"));if(!planId)throw new Error("施工規劃編號不正確。");
+        return json({...await rpc("construction_drawings_v1",{p_actor_user_id:user.id,p_plan_id:planId,p_upload:false}) as Row,scope:scopeName,current_user:publicUser(user),errors:[]});
+      }
+      if(scopeName==="construction_drawing_file"){
+        const assetId=uuid(params.get("asset_id"));if(!assetId)throw new Error("工程圖編號不正確。");
+        return json({asset:await rpc("construction_drawing_file_v1",{p_actor_user_id:user.id,p_asset_id:assetId}),scope:scopeName,current_user:publicUser(user),errors:[]});
       }
       if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
       if(scopeName==="site_spreadsheet") {
