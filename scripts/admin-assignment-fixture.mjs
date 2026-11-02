@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 // Isolated PostgreSQL, existing RPCs and the real Gateway. No production secrets.
 import {constructionPlanServer,planUsers} from './construction-plan-fixture.mjs';
 import {ids,sql} from './worklog-save-fixture.mjs';
@@ -17,7 +18,7 @@ export async function adminAssignmentFixture(){
  await db.query("insert into app_users(id,username,display_name,role,is_active) values($1,'second-admin','第二位管理員（隔離）','admin',true)",[users.admin2]);
  await db.query("update app_users set username='williams',display_name='一般唯讀人員（隔離）' where id=$1",[users.viewer]);
  await db.exec("insert into role_permissions(role_code,module,can_view,can_create,can_update,can_delete) values('plan_worker','data_export',true,false,false,false),('plan_worker','appointments',true,false,false,false),('plan_worker','pickups',true,false,false,false),('viewer','data_export',true,false,false,false) on conflict(role_code,module) do update set can_view=true");
- context.currentUser=async request=>{
+ context.currentUser=withWebsiteAccess(async request=>{
   const key=(request.headers.get('authorization')||'').replace('Bearer isolated-admin-assignment-',''),id=users[key];
   if(!id)return null;
   const user=(await db.query('select * from app_users where id=$1',[id])).rows[0];
@@ -25,7 +26,7 @@ export async function adminAssignmentFixture(){
   user.project_scoped=(await db.query('select project_scoped from app_roles where code=$1',[user.role])).rows[0]?.project_scoped||false;
   user.permissions=(await db.query('select * from role_permissions where role_code=$1',[user.role])).rows;
   await context.initializePrivateAccess(user);return user;
- };
+ });
  // Resolve only the dynamic module import for this VM. All export validation,
  // query, privacy filtering and spreadsheet projection remain application code.
  const exporterSource=readFileSync(new URL('../supabase/functions/inventory-gateway/export-lists.ts',import.meta.url),'utf8').replace(/^export /gm,'');

@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from "node:async_hooks";
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -12,7 +13,7 @@ function harness(role='operator'){
   let handler;const calls=[],reads=[];
   const context=vm.createContext({AsyncLocalStorage,performance,URL,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto,Deno:{env:{get:()=>''},serve:fn=>{handler=fn;}}});
   vm.runInContext(code,context);
-  context.currentUser=async()=>role?{id:randomUUID(),username:'fixture',display_name:'測試員',role,is_active:true}:null;
+  context.currentUser=withWebsiteAccess(async()=>role?{id:randomUUID(),username:'fixture',display_name:'測試員',role,is_active:true}:null);
   context.get=async path=>{
     reads.push(path);
     // Model the final PostgREST page when a scope uses getAll for completeness.

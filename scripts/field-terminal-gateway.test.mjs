@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -12,7 +13,7 @@ function harness(role='operator') {
   let handler;const calls=[];
   const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:fn=>handler=fn},URL,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});
   vm.runInContext(compiled,context);
-  context.currentUser=async()=>role?{id:id(1),role,username:'test',is_active:true}:null;
+  context.currentUser=withWebsiteAccess(async()=>role?{id:id(1),role,username:'test',is_active:true}:null);
   context.ensurePhoneContract=async()=>{};
   context.rpc=async(name,args)=>{calls.push({name,args});return {total:args.p_rows.length,inserted:args.p_rows.length,failed:0,flagged:1,empty_slots:1};};
   return {calls,request:async(payload,path='inventory-gateway')=>{

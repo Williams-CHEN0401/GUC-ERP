@@ -120,7 +120,7 @@ function openEditableRow(row){
   if(!canModule(MODAL_PERMISSIONS[modal],"UPDATE"))return;
   if(modal==="projectModal")void openProjectModal(id);else if(modal==="receiptModal"||modal==="supplierReturnModal")void openReceiptModal(id,modal==="receiptModal"?"receipt":"supplierReturn");else openModal(modal,id);
 }
-function canAccessQuotations(){return state.quotationAccess===true;}
+function canAccessQuotations(){return state.quotationAccess===true&&canWebsite("accounting");}
 function legacyProjectOwnerIds(owner=""){const names=String(owner||"").split(/[、,，;；]/).map((name)=>name.trim()).filter(Boolean);return names.flatMap((name)=>{const matches=state.siteWorkers.filter((worker)=>worker.displayName===name);return matches.length===1?[matches[0].id]:[];});}
 function projectOwnerNames(ownerIds=[]){const ids=new Set(ownerIds);return state.siteWorkers.filter((worker)=>ids.has(worker.id)).map((worker)=>worker.displayName);}
 function applyProjectWorkerLinks(){state.projects.forEach((project)=>{const linked=state.projectWorkers.filter((row)=>row.projectId===project.id).map((row)=>row.userId),ownerIds=linked.length?linked:legacyProjectOwnerIds(project.owner);project.ownerIds=[...new Set(ownerIds)];const names=projectOwnerNames(project.ownerIds);if(names.length)project.owner=names.join("、");});}
@@ -1045,8 +1045,8 @@ function openExternalSystem({url,origin,readyMessage,sessionMessage,label,extern
   timer=setTimeout(()=>window.removeEventListener("message",receiveReady),15000);
   return true;
 }
-function openSiteSystem(){if(!canModule("site")){showToast("此帳號沒有案場系統權限。");return false;}return openExternalSystem({url:SITE_SYSTEM_TARGET_URL,origin:SITE_SYSTEM_TARGET_ORIGIN,readyMessage:SITE_SSO_READY_MESSAGE,sessionMessage:SITE_SSO_SESSION_MESSAGE,label:"案場資料系統"});}
-function openQuotationSystem(externalWindow=null,performanceOnly=false){if(!canAccessQuotations()&&!canOpenPerformance()){showToast("此帳號未列入會計管理系統白名單。","沒有報價權限");return false;}return openExternalSystem({url:performanceOnly||!canAccessQuotations()?new URL("/performance-reviews",QUOTATION_SYSTEM_TARGET_URL).toString():QUOTATION_SYSTEM_TARGET_URL,origin:QUOTATION_SYSTEM_TARGET_ORIGIN,readyMessage:QUOTATION_SSO_READY_MESSAGE,sessionMessage:QUOTATION_SSO_SESSION_MESSAGE,label:"會計管理系統",externalWindow});}
+function openSiteSystem(){if(!canWebsite("site")){showToast("此帳號沒有案場系統權限。");return false;}return openExternalSystem({url:SITE_SYSTEM_TARGET_URL,origin:SITE_SYSTEM_TARGET_ORIGIN,readyMessage:SITE_SSO_READY_MESSAGE,sessionMessage:SITE_SSO_SESSION_MESSAGE,label:"案場資料系統"});}
+function openQuotationSystem(externalWindow=null,performanceOnly=false){if(!canWebsite("accounting")||!canAccessQuotations()&&!canOpenPerformance()){showToast("此帳號沒有會計管理系統登入權限。","沒有報價權限");return false;}return openExternalSystem({url:performanceOnly||!canAccessQuotations()?new URL("/performance-reviews",QUOTATION_SYSTEM_TARGET_URL).toString():QUOTATION_SYSTEM_TARGET_URL,origin:QUOTATION_SYSTEM_TARGET_ORIGIN,readyMessage:QUOTATION_SSO_READY_MESSAGE,sessionMessage:QUOTATION_SSO_SESSION_MESSAGE,label:"會計管理系統",externalWindow});}
 async function chooseSystem(target,button){
   const status=document.querySelector("#systemChooserStatus");
   if(target==="sites"){
@@ -1071,6 +1071,7 @@ async function chooseSystem(target,button){
     return;
   }
   if(target!=="erp")return;
+  if(!canWebsite("erp")){showToast("此帳號沒有 ERP 登入權限。");return;}
   button.disabled=true;button.querySelector("small").textContent="正在載入 Dashboard…";
   try{hideSystemChooser();await switchPage("dashboard");}
   catch(error){showSystemChooser();showToast(error.message,"ERP 首頁載入失敗");}

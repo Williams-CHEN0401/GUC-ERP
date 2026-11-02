@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 type Row = Record<string, unknown>;
 type Role = string;
-type AppUser = { id: string; auth_user_id: string; username: string; display_name: string; role: Role; is_active: boolean; row_version: number; role_name?:string; project_scoped?:boolean; permissions?:Permission[] };
+type AppUser = { id: string; auth_user_id: string; username: string; display_name: string; role: Role; is_active: boolean; row_version: number; role_name?:string; project_scoped?:boolean; permissions?:Permission[]; website_access?:Record<string,{visible:boolean;login:boolean}> };
 const url = Deno.env.get("SUPABASE_URL") ?? "";
 const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(receiptPriceResponse(privateResponse(body))), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
@@ -304,13 +304,13 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["accounting_tax","accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["website_erp","website_accounting","website_site","quotation_dashboard","quotations","quotation_billing","quotation_warranty","accounting_tax","accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
  const roles=await get(`app_roles?code=eq.${encodeURIComponent(user.role)}&select=name,project_scoped,role_permissions(module,can_view,can_create,can_update,can_delete)`) as Row[];
  if(roles.length!==1)throw new Error("您的帳號沒有執行此操作的權限。");
- return {...user,role_name:text(roles[0].name),project_scoped:roles[0].project_scoped===true,permissions:Array.isArray(roles[0].role_permissions)?roles[0].role_permissions as Permission[]:[]};
+ return {...user,website_access:await rpc('website_access_summary_v1',{p_user_id:user.id}) as AppUser['website_access'],role_name:text(roles[0].name),project_scoped:roles[0].project_scoped===true,permissions:Array.isArray(roles[0].role_permissions)?roles[0].role_permissions as Permission[]:[]};
 }
 function hasPermission(user:AppUser,module:string,action:PermissionAction="VIEW"):boolean {
  if(user.role==="admin")return true;
@@ -359,6 +359,28 @@ function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyA
  if(!user.permissions&&["admin","operator","viewer"].includes(user.role)&&!legacyAllowed.includes(user.role))throw new Error("您的帳號沒有執行此操作的權限。");
  if(user.permissions||!["admin","operator","viewer"].includes(user.role))requirePermission(user,needed.module,needed.action);
  if(["phone","monitoring","monitoring_import","equipment","history","credentials"].includes(needed.module))requirePermission(user,"site");
+}
+function requireWebsite(user:AppUser,website:string){
+ if(!user.website_access?.[website]?.login)throw new Error('您沒有登入此網站的權限。');
+}
+function requestWebsite(request:Request,params:URLSearchParams,operation='',payload:Row={}):string{
+ const scope=params.get('scope')||'',entity=params.get('entity')||'',system=request.headers.get('x-guc-system');
+ if(['finance','performance'].includes(scope)||/^(finance|ledger|analysis|performance)\./.test(operation))return 'accounting';
+ if(system==='quotation'){
+  if(scope==='session'||operation==='login'||operation==='logout')return 'accounting';
+  throw new Error('此網站沒有執行此操作的權限。');
+ }
+ const siteModules=['phone','monitoring','monitoring_import','equipment','history','credentials'];
+ if(system==='site'){
+  const siteScopes=['session','sites','site_customer','site_navigation','crm','construction_plans','nas_upload_context','site_spreadsheet','access_device_import'];
+  const siteEntity=/^(phone_|monitoring_|equipment_history)/.test(entity)||['maintenance_workers','customer_service_management','customers','projects','shared_work_log'].includes(entity);
+  if(!operation&&!siteScopes.includes(scope)&&!siteEntity)throw new Error('案場網站沒有執行此操作的權限。');
+  if(operation&&!['login','logout','export_data','manage_customer_service'].includes(operation)&&!siteModules.includes(operationPermission(operation,payload)?.module||''))throw new Error('案場網站沒有執行此操作的權限。');
+  return 'site';
+ }
+ if(!operation&&(/^(phone_|monitoring_|equipment_history)/.test(entity)||['sites','site_customer','site_navigation','site_spreadsheet','access_device_import'].includes(scope)))return 'site';
+ if(siteModules.includes(operationPermission(operation,payload)?.module||''))return 'site';
+ return 'erp';
 }
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
@@ -427,7 +449,7 @@ async function restrictedSnapshot(user:AppUser,scopeName:string,optionsOnly=fals
  return null;
 }
 
-const publicUser = (user: AppUser | null) => user ? { id:user.id, username: user.username, display_name: user.display_name, role: user.role, role_name:user.role_name, project_scoped:user.project_scoped===true, permissions:user.permissions, private_access:privatePublicState() } : null;
+const publicUser = (user: AppUser | null) => user ? { id:user.id, username: user.username, display_name: user.display_name, role: user.role, role_name:user.role_name, project_scoped:user.project_scoped===true, permissions:user.permissions, website_access:user.website_access, private_access:privatePublicState() } : null;
 async function currentUser(request: Request): Promise<AppUser | null> {
   const token = request.headers.get("authorization") ?? "";
   if (!token.startsWith("Bearer ")) return null;
@@ -2086,6 +2108,7 @@ async function handleRequest(request: Request) {
       const user = await currentUser(request);
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
+      requireWebsite(user,requestWebsite(request,params));
       if(params.get("scope")==="finance"){
         const module=params.get("module")||"";
         if(module==="accounting_ledger"||module==="accounting_analysis"||module==="accounting_labor"){
@@ -2199,9 +2222,9 @@ async function handleRequest(request: Request) {
     const operation = text(body.operation), payload = body.payload&&typeof body.payload==="object"&&!Array.isArray(body.payload)?body.payload as Row:{};
     const context=auditContext.getStore();
     if(context){const meta=auditOperation(operation,payload);Object.assign(context,{operation,...meta});}
-    if (operation === "login") { const logged = await login(payload); if(request.headers.get("x-guc-system")==="site")requirePermission(logged.user,"site"); if(!isPreviewGateway){Object.assign(auditContext.getStore()!,auditHeaders(request,logged.user));await insert("audit_logs",{entity_type:"session",entity_id:logged.user.id,action:"LOGIN",actor:logged.user.username,source:"web"});} return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
-    if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);requirePermission(user,"site");requirePermission(user,"monitoring");assertPrivatePayload(payload);return json(await monitoringIpConflicts(payload));}
-    if(operation==="export_data"){const exportUser=await currentUser(request);if(!exportUser)return json({error:"請先登入。"},401);Object.assign(auditContext.getStore()!,auditHeaders(request,exportUser));if(request.headers.get("x-guc-system")==="site")requirePermission(exportUser,"site");return json(await exportErpData(payload,exportUser));}
+    if (operation === "login") { const logged = await login(payload);try{requireWebsite(logged.user,requestWebsite(request,requestUrl.searchParams,'login',payload));}catch(error){await timedFetch(`${url}/auth/v1/logout?scope=local`,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+logged.session.access_token}},'結束未授權工作階段');throw error;} if(request.headers.get("x-guc-system")==="site")requirePermission(logged.user,"site"); if(!isPreviewGateway){Object.assign(auditContext.getStore()!,auditHeaders(request,logged.user));await insert("audit_logs",{entity_type:"session",entity_id:logged.user.id,action:"LOGIN",actor:logged.user.username,source:"web"});} return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
+    if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);requireWebsite(user,requestWebsite(request,requestUrl.searchParams,operation,payload));requirePermission(user,"site");requirePermission(user,"monitoring");assertPrivatePayload(payload);return json(await monitoringIpConflicts(payload));}
+    if(operation==="export_data"){const exportUser=await currentUser(request);if(!exportUser)return json({error:"請先登入。"},401);requireWebsite(exportUser,requestWebsite(request,requestUrl.searchParams,operation,payload));Object.assign(auditContext.getStore()!,auditHeaders(request,exportUser));if(request.headers.get("x-guc-system")==="site")requirePermission(exportUser,"site");return json(await exportErpData(payload,exportUser));}
     if (isPreviewGateway) return json({error:"Preview 環境僅允許登入與讀取；所有寫入均已封鎖。",code:"PREVIEW_READ_ONLY"},403);
     if (operation === "bootstrap_admin") {
       const existing = await get("app_users?select=id&limit=1") as Row[];
@@ -2212,6 +2235,7 @@ async function handleRequest(request: Request) {
     const user = await currentUser(request);
     if (!user) return json({error:"請先以有效帳號登入。"},401);
     Object.assign(auditContext.getStore()!,auditHeaders(request,user));
+    if(operation !== "logout")requireWebsite(user,requestWebsite(request,requestUrl.searchParams,operation,payload));
     if(operation === "logout"){await insert("audit_logs",{entity_type:"session",entity_id:user.id,action:"LOGOUT",actor:user.username,source:"web"});return json({ok:true});}
     if(request.headers.get("x-guc-system")==="site")requirePermission(user,"site");
     if(operation.startsWith("ledger.")||operation.startsWith("analysis.")){

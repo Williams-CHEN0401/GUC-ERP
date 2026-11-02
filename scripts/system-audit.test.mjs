@@ -1,7 +1,8 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import {stripTypeScriptTypes} from 'node:module';import {AsyncLocalStorage} from 'node:async_hooks';
 const source=fs.readFileSync(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8'),compiled=stripTypeScriptTypes(source.replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'});
 const id='10000000-0000-4000-8000-000000000001',user={id,username:'admin',display_name:'測試管理員',role:'admin',is_active:true,permissions:[]};
-function harness(){let handler;const context=vm.createContext({Error,AsyncLocalStorage,performance,crypto,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console:{error:()=>{}},Deno:{env:{get:()=>''},serve:fn=>handler=fn}});vm.runInContext(compiled,context);context.currentUser=async()=>user;context.get=async()=>[];return {context,handler};}
+function harness(){let handler;const context=vm.createContext({Error,AsyncLocalStorage,performance,crypto,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console:{error:()=>{}},Deno:{env:{get:()=>''},serve:fn=>handler=fn}});vm.runInContext(compiled,context);context.currentUser=withWebsiteAccess(async()=>user);context.get=async()=>[];return {context,handler};}
 test('form outcome metadata keeps only identifiers, never submitted credentials or financial values',()=>{
  const {context:c}=harness(),result=c.auditOperation('update_account',{id,password:'private-pw',notes:'user-private-text',salary:98765,rows:[{customer_id:id,token:'bad'}]});
  assert.equal(result.entityType,'app_users');assert.equal(result.action,'update');assert.equal(result.target.id,id);assert(!/private-pw|user-private-text|98765|bad/.test(JSON.stringify(result)));

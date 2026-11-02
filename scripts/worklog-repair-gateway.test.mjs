@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from "node:async_hooks";
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -16,7 +17,7 @@ function harness(role='operator'){
   let handler;const calls=[];
   const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:callback=>{handler=callback;}},URL,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});
   vm.runInContext(compiled,context);
-  context.currentUser=async()=>role?{...user,role}:null;
+  context.currentUser=withWebsiteAccess(async()=>role?{...user,role}:null);
   context.rpc=async(name,parameters)=>{calls.push({name,parameters});return{work_log:{id:customer},maintenance_event_ids:[item],created_repair_item_ids:[category]};};
   const request=async(data=payload(),path='inventory-gateway')=>{
     const response=await handler(new Request('https://example.test/functions/v1/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'upsert_customer_project_work_log',payload:data})}));
