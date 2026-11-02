@@ -365,21 +365,24 @@ function requireWebsite(user:AppUser,website:string){
 }
 function requestWebsite(request:Request,params:URLSearchParams,operation='',payload:Row={}):string{
  const scope=params.get('scope')||'',entity=params.get('entity')||'',system=request.headers.get('x-guc-system');
- if(['finance','performance'].includes(scope)||/^(finance|ledger|analysis|performance)\./.test(operation))return 'accounting';
+ if(!operation&&['finance','performance'].includes(scope)||/^(finance|ledger|analysis|performance)\./.test(operation))return 'accounting';
  if(system==='quotation'){
   if(scope==='session'||operation==='login'||operation==='logout')return 'accounting';
   throw new Error('此網站沒有執行此操作的權限。');
  }
  const siteModules=['phone','monitoring','monitoring_import','equipment','history','credentials'];
+ // These commands check the service/kind-specific RBAC inside their handlers.
+ // Website routing must include them without assigning a generic module grant.
+ const siteOperation=siteModules.includes(operationPermission(operation,payload)?.module||'')||['import_site_spreadsheet','save_site_spreadsheet_template'].includes(operation);
  if(system==='site'){
   const siteScopes=['session','sites','site_customer','site_navigation','crm','construction_plans','nas_upload_context','site_spreadsheet','access_device_import'];
-  const siteEntity=/^(phone_|monitoring_|equipment_history)/.test(entity)||['maintenance_workers','customer_service_management','customers','projects','shared_work_log'].includes(entity);
+  const siteEntity=/^(phone_|monitoring_|equipment_history)/.test(entity)||['audit_logs','maintenance_workers','customer_service_management','customers','projects','shared_work_log'].includes(entity);
   if(!operation&&!siteScopes.includes(scope)&&!siteEntity)throw new Error('案場網站沒有執行此操作的權限。');
-  if(operation&&!['login','logout','export_data','manage_customer_service'].includes(operation)&&!siteModules.includes(operationPermission(operation,payload)?.module||''))throw new Error('案場網站沒有執行此操作的權限。');
+  if(operation&&!['login','logout','export_data','manage_customer_service'].includes(operation)&&!siteOperation)throw new Error('案場網站沒有執行此操作的權限。');
   return 'site';
  }
  if(!operation&&(/^(phone_|monitoring_|equipment_history)/.test(entity)||['sites','site_customer','site_navigation','site_spreadsheet','access_device_import'].includes(scope)))return 'site';
- if(siteModules.includes(operationPermission(operation,payload)?.module||''))return 'site';
+ if(siteOperation)return 'site';
  return 'erp';
 }
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
@@ -2191,8 +2194,8 @@ async function handleRequest(request: Request) {
       }
       if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
       if(scopeName==="site_spreadsheet") {
-        const scope=await siteSpreadsheetScope(params,user);
         const templateOnly=params.get("template_only")==="1";
+        const scope=await siteSpreadsheetScope(params,user,false,templateOnly);
         const snapshot:Row=templateOnly?{}:scope.kind==="devices"?await siteCustomerSnapshot(params,user,isPreviewGateway):await siteSpreadsheetHistory(scope.source_id!,user);
         const templates=await get(`site_spreadsheet_templates?service_id=eq.${scope.service_id}&kind=eq.${scope.kind}&device_type=eq.${scope.device_type}&select=id,service_id,kind,device_type,name,columns,row_version,updated_at`);
         return json({...scope,template:templates[0]||null,...templateOnly?{}:{records:scope.kind==="devices"?snapshot.site_devices:snapshot.events,equipment:snapshot.equipment},current_user:publicUser(user),preview_readonly:isPreviewGateway});
