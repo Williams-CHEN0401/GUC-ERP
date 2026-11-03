@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 // Loopback-only synthetic users + actual Gateway/RPC; never loads production secrets.
 import {accessAppointmentsServer} from './erp-access-fixture.mjs';
 import {ids,sql} from './worklog-save-fixture.mjs';
@@ -21,7 +22,7 @@ export async function constructionPlanServer(){
   await db.query("insert into projects(id,project_code,customer_id,department_id,name,project_type,construction_category,status,assigned_to,project_date) values($1,$2,$3,$4,$5,$6,$7,'in_progress','施工負責人（隔離）','2026-10-06')",[id,'PLAN-'+kind,ids.customer,ids.department,kind==='small'?'一號大樓監控工程（小額採購）':kind==='tender'?'二號大樓網路工程（標案）':'一般維修（不啟用規劃）',kind==='repair'?'repair':'construction',kind==='small'?'small_purchase':kind==='tender'?'tender':null]);
   await db.query('insert into project_workers(project_id,user_id,is_assignee) values($1,$2,true)',[id,planUsers.owner]);
  }
- f.gatewayContext.currentUser=async request=>{
+ f.gatewayContext.currentUser=withWebsiteAccess(async request=>{
   const key=(request.headers.get('authorization')||'').replace('Bearer isolated-plan-','');
   const id=planUsers[key]||planUsers.owner;
   const user=(await db.query('select * from app_users where id=$1',[id])).rows[0];
@@ -29,7 +30,7 @@ export async function constructionPlanServer(){
   user.project_scoped=(await db.query('select project_scoped from app_roles where code=$1',[user.role])).rows[0]?.project_scoped||false;
   user.permissions=(await db.query('select * from role_permissions where role_code=$1',[user.role])).rows;
   await f.gatewayContext.initializePrivateAccess(user);return user;
- };
+ });
  const fallback=f.server.listeners('request')[0];f.server.removeAllListeners('request');
  f.server.on('request',(req,res)=>{
   if(req.url.split('?')[0]==='/api/public-config'){

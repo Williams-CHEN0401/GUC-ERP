@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -10,7 +11,7 @@ function harness(actions=['view','create','update','delete'],module='customers',
  let handler;const calls=[];
  const context=vm.createContext({AsyncLocalStorage,performance,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,crypto,console,Deno:{env:{get:()=>''},serve:fn=>handler=fn}});
  vm.runInContext(source,context);
- context.currentUser=async()=>({id,username:'fixture',role:'custom',is_active:true,project_scoped:scoped,permissions:[{module,can_view:actions.includes('view'),can_create:actions.includes('create'),can_update:actions.includes('update'),can_delete:actions.includes('delete')}]});
+ context.currentUser=withWebsiteAccess(async()=>({id,username:'fixture',role:'custom',is_active:true,project_scoped:scoped,permissions:[{module,can_view:actions.includes('view'),can_create:actions.includes('create'),can_update:actions.includes('update'),can_delete:actions.includes('delete')}]}));
  context.get=context.getAll=async path=>{calls.push(path);return path.startsWith('customers?')?[{id}]:[];};
  context.rpc=async(name,args)=>{calls.push({name,args});return name==='private_work_log_scope_v1'?{customers:[{id}],projects:[{id,customer_id:id,department_id:department}]}:{};};
  return {calls,context,read:scope=>handler(new Request('https://example.test/inventory-gateway?scope='+scope)),write:(operation,payload)=>handler(new Request('https://example.test/inventory-gateway',{method:'POST',body:JSON.stringify({operation,payload})}))};
@@ -28,7 +29,7 @@ test('department input/anonymous errors never reach a write and names cannot shi
  for(const payload of [{customer_id:'bad',name:'科室'},{customer_id:id,name:'x'.repeat(121)},{customer_id:id,name:' '},{customer_id:id,name:'科室',is_active:'yes'},{customer_id:id,name:'科室',row_version:4}]){
   const h=harness();assert.equal((await h.write('create_customer_department',payload)).status,400);assert.equal(h.calls.length,0);
  }
- const h=harness();h.context.currentUser=async()=>null;assert.equal((await h.write('create_customer_department',{customer_id:id,name:'科室'})).status,401);
+ const h=harness();h.context.currentUser=withWebsiteAccess(async()=>null);assert.equal((await h.write('create_customer_department',{customer_id:id,name:'科室'})).status,401);
 });
 test('project and repair writes use one atomic department RPC while omitted field retains legacy RPC',async()=>{
  const project={customer_id:id,name:'工程',project_type:'construction',status:'in_progress',project_date:'2026-09-14',estimated_cost:0,worker_user_ids:[],construction_category:'tender'};

@@ -21,6 +21,30 @@
 .construction-monitor-settings { padding:16px; border:1px solid var(--border,#d9ddcf); border-radius:10px; min-width:0; }
 .construction-monitor-settings h3 { margin-top:0; }
 .construction-monitor-settings input { min-width:0; width:100%; }
+.construction-drawing-heading h3 { margin:0 0 8px; }
+.construction-drawing-heading p { overflow-wrap:anywhere; }
+.construction-drawing-toolbar { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+.construction-drawing-toolbar h3 { margin:12px 0; }
+.construction-drawing-list { list-style:none; padding:0; margin:12px 0; }
+.construction-drawing-list li { display:flex; gap:16px; align-items:center; justify-content:space-between; padding:16px; margin:10px 0; border:1px solid var(--border,#d9ddcf); border-radius:10px; }
+.construction-drawing-list li>div { min-width:0; }
+.construction-drawing-list strong,.construction-drawing-list small { display:block; overflow-wrap:anywhere; }
+.construction-drawing-list small { color:var(--muted,#65705f); margin-top:6px; }
+.construction-drawing-list p { white-space:pre-wrap; overflow-wrap:anywhere; margin:8px 0 0; }
+.construction-drawing-list .construction-plan-actions { flex-shrink:0; }
+.construction-drawing-upload { border-top:1px solid var(--border,#d9ddcf); padding-top:16px; display:grid; gap:16px; min-width:0; }
+.construction-drawing-upload[hidden] { display:none; }
+.construction-drawing-upload :is(input,textarea) { max-width:100%; min-width:0; }
+.construction-drawing-upload .attachment-dropzone { min-width:0; }
+.construction-drawing-upload output { overflow-wrap:anywhere; }
+.construction-drawing-context-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; min-width:0; }
+.construction-drawing-upload .attachment-upload-summary output { display:block; margin-top:8px; color:var(--muted,#65705f); }
+@media(max-width:600px){
+ .construction-drawing-list li { flex-direction:column; align-items:stretch; padding:12px; }
+ .construction-drawing-list .construction-plan-actions { justify-content:flex-start; }
+ .construction-drawing-context-grid { grid-template-columns:1fr; }
+ .construction-drawing-context-grid .span-2 { grid-column:auto; }
+}
 /* Match the 240 + 700 + 12 viewBox: keep text at its reading size and scroll
    within the chart on small screens instead of shrinking the SVG. */
 .construction-gantt svg { width:952px; min-width:952px; max-width:none; height:auto; }

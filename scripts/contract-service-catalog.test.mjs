@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -11,7 +12,7 @@ function harness(actions=[],module='customers',preview=false){
  let handler;const calls=[];
  const context=vm.createContext({AsyncLocalStorage,performance,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,crypto,console,Deno:{env:{get:key=>key==='PREVIEW_MODE'&&preview?'true':''},serve:fn=>handler=fn}});
  vm.runInContext(source,context);
- context.currentUser=async()=>({id,username:'fixture',role:'custom',is_active:true,permissions:[{module,can_view:actions.includes('view'),can_create:actions.includes('create'),can_update:actions.includes('update'),can_delete:actions.includes('delete')}]});
+ context.currentUser=withWebsiteAccess(async()=>({id,username:'fixture',role:'custom',is_active:true,permissions:[{module,can_view:actions.includes('view'),can_create:actions.includes('create'),can_update:actions.includes('update'),can_delete:actions.includes('delete')}]}));
  context.get=context.getAll=async path=>{calls.push(path);return [];};context.rpc=async(name,args)=>{calls.push({name,args});return {};};
  return {calls,context,read:scope=>handler(new Request('https://example.test/inventory-gateway?scope='+scope)),write:(op,payload)=>handler(new Request('https://example.test/inventory-gateway'+(preview?'-preview':''),{method:'POST',body:JSON.stringify({operation:op,payload})}))};
 }
@@ -26,7 +27,7 @@ test('preview gateway rejects all catalog writes even with permissions',async()=
 });
 test('invalid and anonymous catalog changes never call SQL',async()=>{
  for(const [op,p] of [['create',{name:' ',sort_order:0}],['create',{name:'x'.repeat(81),sort_order:1}],['create',{name:'新',sort_order:0.5}],['create',{name:'新',sort_order:'1'}],['update',{id,row_version:0,name:'新',sort_order:1}],['delete',{id:'bad',row_version:1}]]){const h=harness(['create','update','delete']);assert.equal((await h.write(op+'_contract_service_type',p)).status,400);assert.equal(h.calls.length,0);}
- const h=harness();h.context.currentUser=async()=>null;assert.equal((await h.write('create_contract_service_type',{name:'新',sort_order:1})).status,401);assert.equal(h.calls.length,0);
+ const h=harness();h.context.currentUser=withWebsiteAccess(async()=>null);assert.equal((await h.write('create_contract_service_type',{name:'新',sort_order:1})).status,401);assert.equal(h.calls.length,0);
 });
 test('shared catalog comes from the same paged dataset across CRM/worklogs/site navigation',async()=>{
  for(const [scope,module]of [['crm','customers'],['worklogs','worklogs'],['site_navigation','site']]){const h=harness(['view'],module);assert.equal((await h.read(scope)).status,200);assert.ok(h.calls.some(p=>typeof p==='string'&&p.startsWith('contract_service_types?')&&p.includes('row_version')));}

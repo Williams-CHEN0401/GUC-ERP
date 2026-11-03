@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -12,7 +13,7 @@ const payload=(rows=[row()])=>({customer_id:id(2),file_name:'cameras.xlsx',sheet
 function harness({role='admin',linked=true}={}){
  let handler;const calls=[],reads=[];
  const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:name=>name==='GUC_DEVICE_CREDENTIAL_KEY_V1'?Buffer.alloc(32,7).toString('base64'):''},serve:fn=>handler=fn},URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto,TextEncoder,btoa,atob});
- vm.runInContext(compiled,context);context.currentUser=async()=>role?{id:id(1),username:'tester',role,is_active:true}:null;
+ vm.runInContext(compiled,context);context.currentUser=withWebsiteAccess(async()=>role?{id:id(1),username:'tester',role,is_active:true}:null);
  context.get=async path=>{reads.push(path);if(path.startsWith('contract_service_types?'))return[{id:id(3)}];if(path.startsWith('customer_contract_services?'))return linked?[{customer_id:id(2)}]:[];return[];};
  context.rpc=async(name,args)=>{calls.push({name,args});return{updated:args.p_rows?.length||1};};
  const send=(p,preview=false,operation='batch_update_monitoring_devices')=>handler(new Request('https://example.test/inventory-gateway'+(preview?'-preview-test':''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation,payload:p})}));

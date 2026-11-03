@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 type Row = Record<string, unknown>;
 type Role = string;
-type AppUser = { id: string; auth_user_id: string; username: string; display_name: string; role: Role; is_active: boolean; row_version: number; role_name?:string; project_scoped?:boolean; permissions?:Permission[] };
+type AppUser = { id: string; auth_user_id: string; username: string; display_name: string; role: Role; is_active: boolean; row_version: number; role_name?:string; project_scoped?:boolean; permissions?:Permission[]; website_access?:Record<string,{visible:boolean;login:boolean}> };
 const url = Deno.env.get("SUPABASE_URL") ?? "";
 const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(receiptPriceResponse(privateResponse(body))), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
@@ -304,13 +304,13 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["accounting_tax","accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["website_erp","website_accounting","website_site","quotation_dashboard","quotations","quotation_billing","quotation_warranty","accounting_tax","accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
  const roles=await get(`app_roles?code=eq.${encodeURIComponent(user.role)}&select=name,project_scoped,role_permissions(module,can_view,can_create,can_update,can_delete)`) as Row[];
  if(roles.length!==1)throw new Error("您的帳號沒有執行此操作的權限。");
- return {...user,role_name:text(roles[0].name),project_scoped:roles[0].project_scoped===true,permissions:Array.isArray(roles[0].role_permissions)?roles[0].role_permissions as Permission[]:[]};
+ return {...user,website_access:await rpc('website_access_summary_v1',{p_user_id:user.id}) as AppUser['website_access'],role_name:text(roles[0].name),project_scoped:roles[0].project_scoped===true,permissions:Array.isArray(roles[0].role_permissions)?roles[0].role_permissions as Permission[]:[]};
 }
 function hasPermission(user:AppUser,module:string,action:PermissionAction="VIEW"):boolean {
  if(user.role==="admin")return true;
@@ -360,6 +360,31 @@ function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyA
  if(user.permissions||!["admin","operator","viewer"].includes(user.role))requirePermission(user,needed.module,needed.action);
  if(["phone","monitoring","monitoring_import","equipment","history","credentials"].includes(needed.module))requirePermission(user,"site");
 }
+function requireWebsite(user:AppUser,website:string){
+ if(!user.website_access?.[website]?.login)throw new Error('您沒有登入此網站的權限。');
+}
+function requestWebsite(request:Request,params:URLSearchParams,operation='',payload:Row={}):string{
+ const scope=params.get('scope')||'',entity=params.get('entity')||'',system=request.headers.get('x-guc-system');
+ if(!operation&&['finance','performance'].includes(scope)||/^(finance|ledger|analysis|performance)\./.test(operation))return 'accounting';
+ if(system==='quotation'){
+  if(scope==='session'||operation==='login'||operation==='logout')return 'accounting';
+  throw new Error('此網站沒有執行此操作的權限。');
+ }
+ const siteModules=['phone','monitoring','monitoring_import','equipment','history','credentials'];
+ // These commands check the service/kind-specific RBAC inside their handlers.
+ // Website routing must include them without assigning a generic module grant.
+ const siteOperation=siteModules.includes(operationPermission(operation,payload)?.module||'')||['import_site_spreadsheet','save_site_spreadsheet_template'].includes(operation);
+ if(system==='site'){
+  const siteScopes=['session','sites','site_customer','site_navigation','crm','construction_plans','nas_upload_context','site_spreadsheet','access_device_import'];
+  const siteEntity=/^(phone_|monitoring_|equipment_history)/.test(entity)||['audit_logs','maintenance_workers','customer_service_management','customers','projects','shared_work_log'].includes(entity);
+  if(!operation&&!siteScopes.includes(scope)&&!siteEntity)throw new Error('案場網站沒有執行此操作的權限。');
+  if(operation&&!['login','logout','export_data','manage_customer_service'].includes(operation)&&!siteOperation)throw new Error('案場網站沒有執行此操作的權限。');
+  return 'site';
+ }
+ if(!operation&&(/^(phone_|monitoring_|equipment_history)/.test(entity)||['sites','site_customer','site_navigation','site_spreadsheet','access_device_import'].includes(scope)))return 'site';
+ if(siteOperation)return 'site';
+ return 'erp';
+}
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
  if(scope==="assignment_management"){if(entity)throw new Error("不支援其他資料查詢。");requirePermission(user,"appointments");requirePermission(user,"projects");return;}
@@ -373,7 +398,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   return;
  }
  if(siteRequest)requirePermission(user,"site");
- if(scope==="construction_plans"&&!entity){if(!hasPermission(user,"projects")&&!hasPermission(user,"worklogs"))throw new Error("沒有施工規劃查看權限。");return;}
+ if((["construction_plans","construction_drawings","construction_drawing_file"].includes(scope)||scope==="nas_upload_context"&&params.has("construction_plan_id"))&&!entity){if(!hasPermission(user,"projects")&&!hasPermission(user,"worklogs"))throw new Error("沒有施工規劃查看權限。");return;}
  if(entity){
   const module=entity.startsWith("monitoring_")?"monitoring":entity.startsWith("phone_")?"phone":entity.startsWith("equipment_history")||entity==="maintenance_workers"?"history":({shared_work_log:"worklogs",audit_logs:"audit",customer_service_management:"customers",inventory:"inventory",customers:"customers",projects:"projects",suppliers:"suppliers",repairs:"repairs",pickups:"pickups",receipts:"purchases"} as Record<string,string>)[entity];
   if(!module)throw new Error("您的帳號沒有執行此操作的權限。");
@@ -427,7 +452,7 @@ async function restrictedSnapshot(user:AppUser,scopeName:string,optionsOnly=fals
  return null;
 }
 
-const publicUser = (user: AppUser | null) => user ? { id:user.id, username: user.username, display_name: user.display_name, role: user.role, role_name:user.role_name, project_scoped:user.project_scoped===true, permissions:user.permissions, private_access:privatePublicState() } : null;
+const publicUser = (user: AppUser | null) => user ? { id:user.id, username: user.username, display_name: user.display_name, role: user.role, role_name:user.role_name, project_scoped:user.project_scoped===true, permissions:user.permissions, website_access:user.website_access, private_access:privatePublicState() } : null;
 async function currentUser(request: Request): Promise<AppUser | null> {
   const token = request.headers.get("authorization") ?? "";
   if (!token.startsWith("Bearer ")) return null;
@@ -555,6 +580,9 @@ function referenceSnapshot(snapshot: Row): Row {
   return Object.fromEntries(Object.entries(snapshot).filter(([name])=>FORM_REFERENCE_DATASETS.has(name)||["scope","current_user","refreshed_at","errors","work_content_types"].includes(name)));
 }
 async function withMaintenanceRepairState(snapshot: Row) {
+  // Plan drawings are available only through their plan-authorized endpoints;
+  // keep legacy attachment screens and project-scoped snapshot RPCs isolated.
+  if(Array.isArray(snapshot.site_assets))snapshot.site_assets=(snapshot.site_assets as Row[]).filter(asset=>!asset.construction_plan_id);
   const events=Array.isArray(snapshot.maintenance_events)?snapshot.maintenance_events as Row[]:[];
   const ids=events.map(event=>uuid(event.id)).filter((id):id is string=>!!id);
   if(!ids.length)return snapshot;
@@ -1095,6 +1123,13 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!uuid(payload.id))throw new Error("施工規劃編號不正確。");
     return rpc("save_construction_plan_v1",{p_actor_user_id:user!.id,p_payload:payload,p_delete:operation==="delete_construction_plan"});
   }
+  if(operation==="create_construction_drawing_batch"){
+    const planId=uuid(payload.construction_plan_id),projectId=uuid(payload.project_id),customerId=uuid(payload.customer_id),serviceId=uuid(payload.contract_service_type_id);
+    if(!planId||!projectId||!customerId||!serviceId||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>30||payload.work_log_id)throw new Error("工程圖缺少施工規劃、承攬內容或工作內容資料。");
+    const context=await rpc("construction_drawing_upload_context_v1",{p_actor_user_id:user!.id,p_plan_id:planId,p_service_type_id:serviceId}) as Row;
+    if(context.project_id!==projectId||context.customer_id!==customerId)throw new Error("工程圖與施工規劃、客戶或工作內容不相符。");
+    return rpc("register_construction_drawings_v1",{p_actor_user_id:user!.id,p_plan_id:planId,p_service_type_id:serviceId,p_rows:payload.rows});
+  }
   if(operation==="upsert_customer_project_work_log"){
     if(payload.construction_plan_id&&!uuid(payload.construction_plan_id))throw new Error("施工規劃編號不正確。");
     if(uuid(payload.id)){
@@ -1320,6 +1355,25 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   const cableMeters=(value:unknown)=>{const meters=value==null||value===''?null:Number(value);if(meters!==null&&(!Number.isFinite(meters)||meters<=0||meters>=1e12||Math.abs(meters*100-Math.round(meters*100))>0.000001))throw Error('預設長度須為正數，最多兩位小數。');return meters;};
   if (operation === "create_inventory_item") { requireOperation(user,operation,payload,["admin"]); const category_id=uuid(payload.category_id),brand=limited(payload.brand,120),item_name=limited(payload.item_name,200),unit=limited(payload.unit,30),model=nullable(payload.model,120),opening_quantity=nonNegative(payload.opening_quantity); if (!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null) throw new Error("請完整填寫品項資料，期初庫存不可小於 0。"); const result=await rpc("create_inventory_items_batch_v1",{p_rows:[{category_id,model:model||null,brand,item_name,unit,opening_quantity,meters_per_unit:cableMeters(payload.meters_per_unit)}],p_actor:actor}) as Row[];return result[0]; }
   if (operation === "create_inventory_item_batch") { requireOperation(user,operation,payload,["admin"]); if(!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20) throw new Error("每次必須建立 1 至 20 筆品項。"); const rows=payload.rows.map((value,index)=>{ if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆品項格式不正確。`); const row=value as Row,category_id=uuid(row.category_id),brand=limited(row.brand,120),item_name=limited(row.item_name,200),unit=limited(row.unit,30),model=nullable(row.model,120),opening_quantity=nonNegative(row.opening_quantity); if(!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null||!Number.isInteger(opening_quantity)) throw new Error(`第 ${index+1} 筆品項資料不完整，期初庫存須為 0 以上整數。`); return {category_id,brand,item_name,unit,model:model||null,opening_quantity,meters_per_unit:cableMeters(row.meters_per_unit)}; }); const keys=rows.map(row=>[row.category_id,row.item_name,row.brand,row.model||""].map(value=>String(value).trim().toLocaleLowerCase("zh-Hant")).join("|")); if(new Set(keys).size!==keys.length) throw new Error("同一批次中有重複品項，請檢查種類、名稱、品牌與型號。"); return rpc("create_inventory_items_batch_v1",{p_rows:rows,p_actor:actor}); }
+  if (operation === "update_inventory_item" && payload.units_only === true) {
+    requireOperation(user,operation,payload,["admin"]);
+    const id=uuid(payload.id),rowVersion=Number(payload.row_version),unit=limited(payload.unit,30);
+    const meters=payload.meters_per_unit==null||payload.meters_per_unit===''?null:Number(payload.meters_per_unit);
+    if(!id||!Number.isInteger(rowVersion)||rowVersion<1||!unit)throw Error("請選擇有效品項並填寫貨品單位。");
+    if(meters!==null&&(!Number.isFinite(meters)||meters<=0||meters>=1e12||Math.abs(meters*100-Math.round(meters*100))>0.000001))throw Error("每單位米數須為正數，最多兩位小數。");
+    // The same inventory permission, version check, audit and database guards
+    // apply. This mode changes only units; an old form snapshot or concurrent
+    // master-data refresh must not cause unrelated field writes.
+    const response=await db(`inventory_items?id=eq.${id}&row_version=eq.${rowVersion}`,{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify({unit,...(Object.hasOwn(payload,"meters_per_unit")?{meters_per_unit:meters}:{}),...meta})});
+    if(!response.ok){
+      const failure=await response.json().catch(()=>({})) as {code?:string;message?:string};
+      if(["P0001","23514"].includes(failure.code||""))throw Error(failure.message||"米數或單位不正確。");
+      throw Error("貨品單位更新失敗。");
+    }
+    const rows=await response.json();
+    if(!Array.isArray(rows)||rows.length!==1)throw Error("此品項已被其他管理者更新，請重新載入後再編輯。");
+    return;
+  }
   if (operation === "update_inventory_item") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),category_id=uuid(payload.category_id),item_name=limited(payload.item_name,200),brand=limited(payload.brand,120),model=nullable(payload.model,120),unit=limited(payload.unit,30),opening_quantity=nonNegative(payload.opening_quantity),row_version=Number(payload.row_version); if (!id||!category_id||!item_name||!brand||model===null||!unit||opening_quantity===null||!Number.isInteger(opening_quantity)||!Number.isInteger(row_version)||row_version<1) throw new Error("請完整填寫品項資料，期初庫存須為 0 以上整數。"); const meters=payload.meters_per_unit==null||payload.meters_per_unit===''?null:Number(payload.meters_per_unit);if(meters!==null&&(!Number.isFinite(meters)||meters<=0||meters>=1e12||Math.abs(meters*100-Math.round(meters*100))>0.000001))throw Error('每箱／捲米數須為正數，最多兩位小數。'); const categories=await get(`product_categories?id=eq.${category_id}&is_active=eq.true&select=id,name`) as {id:string;name:string}[]; if(categories.length!==1) throw new Error("請選擇有效的貨品種類。"); const response=await db(`inventory_items?id=eq.${id}&row_version=eq.${row_version}`,{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify({item_name,category_id,item_type:categories[0].name,brand,model:model||null,unit,opening_quantity,...(Object.hasOwn(payload,"meters_per_unit")?{meters_per_unit:meters}:{}),...meta})}); if (!response.ok) { const failure=await response.json().catch(()=>({})) as {code?:string;message?:string};if(["P0001","23514"].includes(failure.code||""))throw Error(failure.message||"米數或單位不正確。"); if(failure.code==="23505") throw new Error("相同種類、名稱、品牌與型號的品項已存在。"); throw new Error("品項更新失敗。"); } const rows=await response.json(); if (!Array.isArray(rows)||rows.length!==1) throw new Error("此品項已被其他管理者更新，請重新載入後再編輯。"); return; }
   if (operation === "delete_inventory_item") { requireOperation(user,operation,payload,["admin"]); const id=uuid(payload.id),row_version=Number(payload.row_version); if(!id||!Number.isInteger(row_version)||row_version<1) throw new Error("品項資料或版本不正確。"); return rpc("delete_inventory_item",{p_id:id,p_row_version:row_version,p_actor:actor}); }
   if (["create_site_return","update_site_return","cancel_site_return","delete_site_return"].includes(operation)) {
@@ -2036,6 +2090,13 @@ async function monitoringIpConflicts(payload: Row) {
 }
 
 async function nasUploadContext(params:URLSearchParams,user:AppUser) {
+  if(params.has("construction_plan_id")){
+    const planId=uuid(params.get("construction_plan_id")),projectId=uuid(params.get("project_id")),customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("contract_service_type_id"));
+    if(!planId||!projectId||!customerId||!serviceId||params.get("work_log_id"))throw new Error("工程圖缺少有效的施工規劃、承攬內容、客戶或工作內容編號。");
+    const context=await rpc("construction_drawing_upload_context_v1",{p_actor_user_id:user.id,p_plan_id:planId,p_service_type_id:serviceId}) as Row;
+    if(context.project_id!==projectId||context.customer_id!==customerId)throw new Error("施工規劃與客戶或工作內容不相符。");
+    return {...context,scope:"nas_upload_context",current_user:publicUser(user),protected_paths:[],errors:[]};
+  }
   const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("contract_service_type_id")),projectId=uuid(params.get("project_id"));
   if(!customerId||!serviceId||!projectId)throw new Error("缺少有效的客戶、承攬內容或專案編號。");
   const access=privateContext.getStore();
@@ -2069,6 +2130,7 @@ async function handleRequest(request: Request) {
       const user = await currentUser(request);
       if (!user) return json({error:"請先以有效帳號登入。"},401);
       const params = requestUrl.searchParams;
+      requireWebsite(user,requestWebsite(request,params));
       if(params.get("scope")==="finance"){
         const module=params.get("module")||"";
         if(module==="accounting_ledger"||module==="accounting_analysis"||module==="accounting_labor"){
@@ -2141,10 +2203,18 @@ async function handleRequest(request: Request) {
         const projectId=params.get("project_id");if(projectId&&!uuid(projectId))throw new Error("工作內容編號不正確。");
         return json(await constructionSnapshot(user,projectId?uuid(projectId):null));
       }
+      if(scopeName==="construction_drawings"){
+        const planId=uuid(params.get("plan_id"));if(!planId)throw new Error("施工規劃編號不正確。");
+        return json({...await rpc("construction_drawings_v1",{p_actor_user_id:user.id,p_plan_id:planId,p_upload:false}) as Row,scope:scopeName,current_user:publicUser(user),errors:[]});
+      }
+      if(scopeName==="construction_drawing_file"){
+        const assetId=uuid(params.get("asset_id"));if(!assetId)throw new Error("工程圖編號不正確。");
+        return json({asset:await rpc("construction_drawing_file_v1",{p_actor_user_id:user.id,p_asset_id:assetId}),scope:scopeName,current_user:publicUser(user),errors:[]});
+      }
       if (scopeName === "nas_upload_context") return json(await nasUploadContext(params,user));
       if(scopeName==="site_spreadsheet") {
-        const scope=await siteSpreadsheetScope(params,user);
         const templateOnly=params.get("template_only")==="1";
+        const scope=await siteSpreadsheetScope(params,user,false,templateOnly);
         const snapshot:Row=templateOnly?{}:scope.kind==="devices"?await siteCustomerSnapshot(params,user,isPreviewGateway):await siteSpreadsheetHistory(scope.source_id!,user);
         const templates=await get(`site_spreadsheet_templates?service_id=eq.${scope.service_id}&kind=eq.${scope.kind}&device_type=eq.${scope.device_type}&select=id,service_id,kind,device_type,name,columns,row_version,updated_at`);
         return json({...scope,template:templates[0]||null,...templateOnly?{}:{records:scope.kind==="devices"?snapshot.site_devices:snapshot.events,equipment:snapshot.equipment},current_user:publicUser(user),preview_readonly:isPreviewGateway});
@@ -2174,9 +2244,9 @@ async function handleRequest(request: Request) {
     const operation = text(body.operation), payload = body.payload&&typeof body.payload==="object"&&!Array.isArray(body.payload)?body.payload as Row:{};
     const context=auditContext.getStore();
     if(context){const meta=auditOperation(operation,payload);Object.assign(context,{operation,...meta});}
-    if (operation === "login") { const logged = await login(payload); if(request.headers.get("x-guc-system")==="site")requirePermission(logged.user,"site"); if(!isPreviewGateway){Object.assign(auditContext.getStore()!,auditHeaders(request,logged.user));await insert("audit_logs",{entity_type:"session",entity_id:logged.user.id,action:"LOGIN",actor:logged.user.username,source:"web"});} return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
-    if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);requirePermission(user,"site");requirePermission(user,"monitoring");assertPrivatePayload(payload);return json(await monitoringIpConflicts(payload));}
-    if(operation==="export_data"){const exportUser=await currentUser(request);if(!exportUser)return json({error:"請先登入。"},401);Object.assign(auditContext.getStore()!,auditHeaders(request,exportUser));if(request.headers.get("x-guc-system")==="site")requirePermission(exportUser,"site");return json(await exportErpData(payload,exportUser));}
+    if (operation === "login") { const logged = await login(payload);try{requireWebsite(logged.user,requestWebsite(request,requestUrl.searchParams,'login',payload));}catch(error){await timedFetch(`${url}/auth/v1/logout?scope=local`,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+logged.session.access_token}},'結束未授權工作階段');throw error;} if(request.headers.get("x-guc-system")==="site")requirePermission(logged.user,"site"); if(!isPreviewGateway){Object.assign(auditContext.getStore()!,auditHeaders(request,logged.user));await insert("audit_logs",{entity_type:"session",entity_id:logged.user.id,action:"LOGIN",actor:logged.user.username,source:"web"});} return json({ session: logged.session, current_user: publicUser(logged.user), errors: [], refreshed_at: new Date().toISOString() }, 200); }
+    if(operation === "check_monitoring_ip_conflicts"){const user=await currentUser(request);if(!user)return json({error:"請先登入。"},401);requireWebsite(user,requestWebsite(request,requestUrl.searchParams,operation,payload));requirePermission(user,"site");requirePermission(user,"monitoring");assertPrivatePayload(payload);return json(await monitoringIpConflicts(payload));}
+    if(operation==="export_data"){const exportUser=await currentUser(request);if(!exportUser)return json({error:"請先登入。"},401);requireWebsite(exportUser,requestWebsite(request,requestUrl.searchParams,operation,payload));Object.assign(auditContext.getStore()!,auditHeaders(request,exportUser));if(request.headers.get("x-guc-system")==="site")requirePermission(exportUser,"site");return json(await exportErpData(payload,exportUser));}
     if (isPreviewGateway) return json({error:"Preview 環境僅允許登入與讀取；所有寫入均已封鎖。",code:"PREVIEW_READ_ONLY"},403);
     if (operation === "bootstrap_admin") {
       const existing = await get("app_users?select=id&limit=1") as Row[];
@@ -2187,6 +2257,7 @@ async function handleRequest(request: Request) {
     const user = await currentUser(request);
     if (!user) return json({error:"請先以有效帳號登入。"},401);
     Object.assign(auditContext.getStore()!,auditHeaders(request,user));
+    if(operation !== "logout")requireWebsite(user,requestWebsite(request,requestUrl.searchParams,operation,payload));
     if(operation === "logout"){await insert("audit_logs",{entity_type:"session",entity_id:user.id,action:"LOGOUT",actor:user.username,source:"web"});return json({ok:true});}
     if(request.headers.get("x-guc-system")==="site")requirePermission(user,"site");
     if(operation.startsWith("ledger.")||operation.startsWith("analysis.")){

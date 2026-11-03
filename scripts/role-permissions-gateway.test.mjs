@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -10,7 +11,7 @@ const permission=(module,...actions)=>({module,...Object.fromEntries(['view','cr
 function harness(permissions,scoped=false){let handler;const calls=[];
  const user={id:id(1),username:'test_worker',role:'custom_test',is_active:true,permissions,project_scoped:scoped};
  const context=vm.createContext({AsyncLocalStorage,performance,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,crypto,console,Deno:{env:{get:()=>''},serve:fn=>handler=fn}});
- vm.runInContext(source,context);context.currentUser=async()=>user;
+ vm.runInContext(source,context);context.currentUser=withWebsiteAccess(async()=>user);
  context.get=async path=>{calls.push(path);return[];};context.rpc=async(name,args)=>{calls.push({name,args});return{};};
  return {context,calls,user,read:query=>handler(new Request('https://example.test/inventory-gateway?'+query)),write:(operation,payload)=>handler(new Request('https://example.test/inventory-gateway',{method:'POST',body:JSON.stringify({operation,payload})}))};
 }

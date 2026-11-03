@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 // Synthetic identities, actual Gateway and SQL; never loads production secrets.
 import {receiptNumberServer} from './receipt-number-fixture.mjs';
 import {sql,ids,definition} from './worklog-save-fixture.mjs';
@@ -59,7 +60,7 @@ export async function accessAppointmentsServer(){
  additionalRpcs.push('private_work_log_scope_v1');
  const context=fixture.gatewayContext;
  const originalUser=context.currentUser;
- context.currentUser=async request=>{const identity=await originalUser(request),user=(await db.query('select * from app_users where id=$1',[identity.id])).rows[0];if(!user?.is_active)return null;user.project_scoped=(await db.query('select project_scoped from app_roles where code=$1',[user.role])).rows[0]?.project_scoped||false;user.permissions=(await db.query('select * from role_permissions where role_code=$1',[user.role])).rows;await context.initializePrivateAccess(user);return user;};
+ context.currentUser=withWebsiteAccess(async request=>{const identity=await originalUser(request),user=(await db.query('select * from app_users where id=$1',[identity.id])).rows[0];if(!user?.is_active)return null;user.project_scoped=(await db.query('select project_scoped from app_roles where code=$1',[user.role])).rows[0]?.project_scoped||false;user.permissions=(await db.query('select * from role_permissions where role_code=$1',[user.role])).rows;await context.initializePrivateAccess(user);return user;});
  const originalRpc=context.rpc;
  context.rpc=(name,args)=>originalRpc(name,Object.fromEntries(Object.entries(args).map(([key,value])=>[key,key==='p_payload'||['p_permissions','p_grants'].includes(key)&&Array.isArray(value)?JSON.stringify(value):value])));
  context.db=async(path,init={})=>{

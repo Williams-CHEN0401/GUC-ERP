@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 // Isolated PostgreSQL + the actual Gateway. Table columns mirror production;
 // unrelated business constraints are omitted, not claimed as tested here.
 import fs from 'node:fs';import vm from 'node:vm';import {AsyncLocalStorage} from 'node:async_hooks';import {stripTypeScriptTypes} from 'node:module';import {randomUUID} from 'node:crypto';
@@ -25,7 +26,7 @@ export async function auditFixture({history=[]}={}){
  let handler;const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:f=>handler=f},URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});
  vm.runInContext(stripTypeScriptTypes(text('../supabase/functions/inventory-gateway/index.ts').replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'}),context);
  const users={admin:{id:id(1),username:'audit-admin',display_name:'隔離管理員',role:'admin',is_active:true,permissions:[]},worker:{id:id(2),username:'audit-worker',display_name:'隔離操作員',role:'worker',is_active:true,permissions:[{module:'suppliers',can_view:true,can_create:true,can_update:true,can_delete:true}]},auditor:{id:id(3),username:'audit-reader',display_name:'隔離日誌檢視者',role:'auditor',is_active:true,permissions:[{module:'audit',can_view:true}]}};
- context.currentUser=async request=>users[(request.headers.get('authorization')||'').replace('Bearer audit-test-','')]||null;
+ context.currentUser=withWebsiteAccess(async request=>users[(request.headers.get('authorization')||'').replace('Bearer audit-test-','')]||null);
  const ident=s=>{if(!/^[a-z_][a-z_0-9]*$/.test(s))throw Error('Unsafe identifier');return '"'+s+'"';};
  let chain=Promise.resolve();
  context.db=(path,init={})=>{const audit=vm.runInContext('auditContext.getStore()',context),job=chain.then(async()=>{

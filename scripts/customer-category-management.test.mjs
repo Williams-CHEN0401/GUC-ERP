@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -10,7 +11,7 @@ function harness(actions=[],module='customers'){
  let handler;const calls=[];
  const context=vm.createContext({AsyncLocalStorage,performance,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,crypto,console,Deno:{env:{get:()=>''},serve:fn=>handler=fn}});
  vm.runInContext(source,context);
- context.currentUser=async()=>({id,username:'fixture',role:'custom',is_active:true,permissions:[{module,can_view:actions.includes('view'),can_create:actions.includes('create'),can_update:actions.includes('update'),can_delete:actions.includes('delete')}]});
+ context.currentUser=withWebsiteAccess(async()=>({id,username:'fixture',role:'custom',is_active:true,permissions:[{module,can_view:actions.includes('view'),can_create:actions.includes('create'),can_update:actions.includes('update'),can_delete:actions.includes('delete')}]}));
  context.get=context.getAll=async path=>{calls.push(path);return [];};
  context.rpc=async(name,args)=>{calls.push({name,args});return {};};
  return {calls,context,read:scope=>handler(new Request('https://example.test/inventory-gateway?scope='+scope)),write:(operation,payload)=>handler(new Request('https://example.test/inventory-gateway',{method:'POST',body:JSON.stringify({operation,payload})}))};
@@ -30,7 +31,7 @@ test('classification malformed input and anonymous writes never reach the databa
  for(const [action,payload]of [['create',{name:' '}],['create',{name:'x'.repeat(81)}],['update',{id,row_version:0,name:'分類'}],['delete',{id:'invalid',row_version:1}]]){
   const h=harness(['view','create','update','delete']);assert.equal((await h.write(action+'_customer_category',payload)).status,400);assert.equal(h.calls.length,0);
  }
- const h=harness();h.context.currentUser=async()=>null;assert.equal((await h.write('create_customer_category',{name:'分類'})).status,401);assert.equal(h.calls.length,0);
+ const h=harness();h.context.currentUser=withWebsiteAccess(async()=>null);assert.equal((await h.write('create_customer_category',{name:'分類'})).status,401);assert.equal(h.calls.length,0);
 });
 test('CRM classification lookup follows view permissions, including delegated users',async()=>{
  const denied=harness();assert.equal((await denied.read('crm')).status,403);assert.equal(denied.calls.length,0);

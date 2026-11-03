@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -9,7 +10,7 @@ export function deviceCredentialFixture(){
  Deno:{env:{get:name=>name==='SUPABASE_URL'?'https://fixture.supabase.co':''},serve:fn=>handler=fn}});
  const source=readFileSync(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8').replace(/^import .*node:async_hooks.*;\r?\n/m,'');
  vm.runInContext(stripTypeScriptTypes(source,{mode:'strip'}),context);
- context.currentUser=async()=>state.signedIn?{id:deviceIds.user,auth_user_id:deviceIds.auth,username:'synthetic-admin',display_name:'隔離驗證員',role:state.role,permissions:state.permissions,is_active:true}:null;
+ context.currentUser=withWebsiteAccess(async()=>state.signedIn?{id:deviceIds.user,auth_user_id:deviceIds.auth,username:'synthetic-admin',display_name:'隔離驗證員',role:state.role,permissions:state.permissions,is_active:true}:null);
  context.timedFetch=async(url,init)=>{
   calls.push({kind:'auth',path:new URL(url).pathname+new URL(url).search});
   if(url.includes('grant_type=password')){const body=JSON.parse(init.body);if(body.email!=='synthetic-admin@inventory.local'||body.password!=='Synthetic-only-0915')return Response.json({error:'invalid'},{status:400});

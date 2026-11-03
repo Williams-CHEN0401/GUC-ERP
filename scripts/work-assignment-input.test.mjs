@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -12,7 +13,7 @@ function harness({role='admin',preview=false,anonymous=false}={}){
  let handler;const calls=[];
  const context=vm.createContext({AsyncLocalStorage,performance,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,crypto,console,Deno:{env:{get:key=>key==='PREVIEW_MODE'&&preview?'true':''},serve:fn=>handler=fn}});
  vm.runInContext(gateway,context);
- context.currentUser=async()=>anonymous?null:{id,username:'fixture-admin',role,is_active:true};
+ context.currentUser=withWebsiteAccess(async()=>anonymous?null:{id,username:'fixture-admin',role,is_active:true});
  context.rpc=async(name,args)=>{calls.push({name,args});return{id};};
  return{calls,write:p=>handler(new Request('https://example.test/inventory-gateway'+(preview?'-preview':''),{method:'POST',body:JSON.stringify({operation:'create_work_assignment',payload:p})}))};
 }

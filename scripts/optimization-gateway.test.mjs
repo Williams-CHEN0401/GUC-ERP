@@ -1,3 +1,4 @@
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -8,7 +9,7 @@ const source=readFileSync(new URL('../supabase/functions/inventory-gateway/index
 const compiled=stripTypeScriptTypes(source.replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'});
 const id=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const user={id:id(1),username:'tester',display_name:'測試員',role:'admin',is_active:true};
-function harness(){let handler;const calls=[];const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:fn=>handler=fn},URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});vm.runInContext(compiled,context);context.currentUser=async()=>user;context.get=async path=>{calls.push(path);return[];};return{context,calls,handler};}
+function harness(){let handler;const calls=[];const context=vm.createContext({AsyncLocalStorage,performance,Deno:{env:{get:()=>''},serve:fn=>handler=fn},URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto});vm.runInContext(compiled,context);context.currentUser=withWebsiteAccess(async()=>user);context.get=async path=>{calls.push(path);return[];};return{context,calls,handler};}
 test('dashboard limits summary cards but returns every previous-day log and current-user assignments',async()=>{
  // Additional projection is verified separately; this fixture contains no plans.
  const h=harness();h.context.get=async path=>{h.calls.push(path);if(path.startsWith('site_work_logs?'))return[{id:id(2),project_id:id(3),log_date:'2026-09-06'}];if(path.startsWith('projects?select=id,project_code,name'))return[{id:id(3),customer_id:id(4),name:'工作內容'}];if(path.startsWith('customers?'))return[{id:id(4),name:'測試客戶'}];if(path.startsWith('site_work_log_workers?'))return[{work_log_id:id(2),user_id:id(1)}];if(path.startsWith('app_users?'))return[{id:id(1),display_name:'施工人員'}];return[];};
@@ -54,7 +55,7 @@ test('audit header ordering is allowlisted, stable and applied before server pag
  assert.equal(calls,1);
 });
 test('each concurrent write forwards only its verified actor context',async()=>{
- const h=harness(),contexts=[];h.context.currentUser=async r=>({...user,username:r.headers.get('x-test-user'),display_name:r.headers.get('x-test-user')});
+ const h=harness(),contexts=[];h.context.currentUser=withWebsiteAccess(async r=>({...user,username:r.headers.get('x-test-user'),display_name:r.headers.get('x-test-user')}));
  h.context.change=async()=>{await new Promise(resolve=>setTimeout(resolve,5));contexts.push(vm.runInContext('auditContext.getStore()',h.context));return{};};
  const req=name=>new Request('https://example.test/functions/v1/inventory-gateway',{method:'POST',headers:{'Content-Type':'application/json','x-test-user':name,'x-guc-audit-context':'forged'},body:JSON.stringify({operation:'test'})});
  const responses=await Promise.all([h.handler(req('Alice')),h.handler(req('Bob'))]);assert.ok(responses.every(r=>r.ok));assert.deepEqual(contexts.map(c=>c.actor).sort(),['Alice','Bob']);assert.notEqual(contexts[0].requestId,contexts[1].requestId);
@@ -64,7 +65,7 @@ test('preview allows authenticated conflict lookups but blocks all mutations bef
  const req=operation=>new Request('https://example.test/functions/v1/inventory-gateway-preview-optimization',{method:'POST',body:JSON.stringify({operation,payload:{}})});
  assert.equal((await h.handler(req('check_monitoring_ip_conflicts'))).status,200);
  for(const operation of ['upsert_monitoring_device','update_account','logout','request_excel_sync','restore_database_backup'])assert.equal((await h.handler(req(operation))).status,403);
- assert.equal(writes,0);h.context.currentUser=async()=>null;assert.equal((await h.handler(req('check_monitoring_ip_conflicts'))).status,401);
+ assert.equal(writes,0);h.context.currentUser=withWebsiteAccess(async()=>null);assert.equal((await h.handler(req('check_monitoring_ip_conflicts'))).status,401);
 });
 test('new XLSX and encrypted backup entries preserve imports without restoring old unsafe export routes',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');

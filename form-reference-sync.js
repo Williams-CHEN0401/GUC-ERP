@@ -5,7 +5,7 @@ let formReferenceGeneration = 0;
 function invalidateFormReferences(){formReferenceGeneration++;formReferenceTimes.clear();formReferenceFingerprints.clear();}
 function formReferenceScopes(){
   const modal=document.querySelector('#simpleModal.open');
-  const scopes={customerModal:['crm'],customerCategoryModal:['crm'],customerDepartmentModal:['crm'],contractServiceModal:['crm'],projectModal:['crm'],supplierModal:['crm'],categoryModal:['inventory'],itemModal:['inventory'],pickupModal:['transactions'],receiptModal:['transactions'],supplierReturnModal:['transactions'],repairModal:['repairs'],workLogModal:['worklogs'],workLogPickupModal:['transactions'],workAssignmentModal:['crm','inventory'],accountModal:['settings'],attachmentModal:['worklogs']};
+  const scopes={customerModal:['crm'],customerCategoryModal:['crm'],customerDepartmentModal:['crm'],contractServiceModal:['crm'],projectModal:['crm'],supplierModal:['crm'],categoryModal:['inventory'],itemModal:['inventory'],itemUnitModal:['inventory'],pickupModal:['transactions'],receiptModal:['transactions'],supplierReturnModal:['transactions'],repairModal:['repairs'],workLogModal:['worklogs'],workLogPickupModal:['transactions'],workAssignmentModal:['crm','inventory'],accountModal:['settings'],attachmentModal:['worklogs']};
   if(modal)return scopes[modal.dataset.type]||[];
   const page=currentPage();return ['inventory','transactions','repairs','crm','projects','worklogs','materials','settings'].includes(page)?[PAGE_SCOPES[page]]:[];
 }
@@ -43,7 +43,7 @@ async function refreshVisibleFormReferences({force=false}={}){
 }
 function beginFormReferenceSync(){
   const modal=document.querySelector('#simpleModal'),id=modal.dataset.id;
-  const collections={customerModal:state.customers,supplierModal:state.suppliers,projectModal:state.projects,receiptModal:state.receipts,pickupModal:state.pickups,itemModal:state.inventory,categoryModal:state.categories,repairModal:state.repairItems,accountModal:state.accounts,customerCategoryModal:state.customerCategories,customerDepartmentModal:state.customerDepartments,contractServiceModal:state.contractServiceTypes,workLogModal:state.siteData.logs};
+  const collections={customerModal:state.customers,supplierModal:state.suppliers,projectModal:state.projects,receiptModal:state.receipts,pickupModal:state.pickups,itemModal:state.inventory,itemUnitModal:state.inventory,categoryModal:state.categories,repairModal:state.repairItems,accountModal:state.accounts,customerCategoryModal:state.customerCategories,customerDepartmentModal:state.customerDepartments,contractServiceModal:state.contractServiceTypes,workLogModal:state.siteData.logs};
   const row=byId(collections[modal.dataset.type]||[],id);
   modal.dataset.editVersion=String(row?.rowVersion??row?.row_version??'');
   void refreshVisibleFormReferences({force:true});
