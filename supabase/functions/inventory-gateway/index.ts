@@ -304,7 +304,7 @@ async function customerDepartmentRows(customers:unknown):Promise<Row[]> {
  return result;
 }
 function receiptCustomerIds(value:unknown){if(!Array.isArray(value)||value.length>2000)throw new Error("訂貨客戶格式不正確。");const ids=value.map(uuid);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw new Error("訂貨客戶不可重複或空白。");return ids;}
-const PERMISSION_MODULES = ["website_erp","website_accounting","website_site","quotation_dashboard","quotations","quotation_billing","quotation_warranty","accounting_tax","accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
+const PERMISSION_MODULES = ["construction_plans","construction_items","construction_logs","construction_logs_all","website_erp","website_accounting","website_site","quotation_dashboard","quotations","quotation_billing","quotation_warranty","accounting_tax","accounting_payables","accounting_payroll","performance","data_export","quotation_invoices","system_backups","purchase_prices","accounting_reports","accounting_prices","appointments","dashboard","worklogs","purchases","pickups","inventory","customers","projects","suppliers","repairs","reports","backup","settings","site","phone","monitoring","equipment","history","credentials","monitoring_import","users","audit"];
 type Permission = { module:string; can_view:boolean; can_create:boolean; can_update:boolean; can_delete:boolean };
 type PermissionAction = "VIEW"|"CREATE"|"UPDATE"|"DELETE";
 async function hydratePermissions(user:AppUser):Promise<AppUser> {
@@ -317,6 +317,11 @@ function hasPermission(user:AppUser,module:string,action:PermissionAction="VIEW"
  if(!user.permissions&&["accounting_tax","accounting_payables","accounting_payroll","performance","purchase_prices","accounting_reports","accounting_prices","data_export","quotation_invoices","system_backups"].includes(module))return false;
  if(!user.permissions)return ["operator","viewer"].includes(user.role) && (action==="VIEW"||user.role==="operator"&&!["settings","backup","customers","suppliers","inventory","credentials"].includes(module)&&action!=="DELETE");
  return user.permissions.some(p=>p.module===module&&p[`can_${action.toLowerCase()}` as keyof Permission]===true);
+}
+function hasConstructionPermission(user:AppUser,module:string,action:PermissionAction='VIEW'):boolean {
+ if(user.role==='admin'||user.permissions?.some(p=>p.module===module))return hasPermission(user,module,action);
+ if(module==='construction_plans')return action==='VIEW'?hasPermission(user,'projects')||hasPermission(user,'worklogs'):hasPermission(user,'projects')&&hasPermission(user,'projects','UPDATE');
+ return module==='construction_logs'&&hasPermission(user,'worklogs',action);
 }
 function requirePermission(user:AppUser,module:string,action:PermissionAction="VIEW") {
  if(!hasPermission(user,module,action))throw new Error("您的帳號沒有執行此操作的權限。");
@@ -357,7 +362,10 @@ function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyA
  const needed=operationPermission(operation,payload);
  if(!needed)throw new Error("您的帳號沒有執行此操作的權限。");
  if(!user.permissions&&["admin","operator","viewer"].includes(user.role)&&!legacyAllowed.includes(user.role))throw new Error("您的帳號沒有執行此操作的權限。");
- if(user.permissions||!["admin","operator","viewer"].includes(user.role))requirePermission(user,needed.module,needed.action);
+ if(['upsert_customer_project_work_log','delete_standalone_work_log'].includes(operation)&&(payload.construction_plan_id||payload.id)&&hasConstructionPermission(user,'construction_logs',needed.action)){
+  // The existing SQL entrypoint resolves the actual log identity and checks
+  // plan ownership/other-author grants. Regular logs still use regular RBAC.
+ }else if(user.permissions||!["admin","operator","viewer"].includes(user.role))requirePermission(user,needed.module,needed.action);
  if(["phone","monitoring","monitoring_import","equipment","history","credentials"].includes(needed.module))requirePermission(user,"site");
 }
 function requireWebsite(user:AppUser,website:string){
@@ -387,6 +395,7 @@ function requestWebsite(request:Request,params:URLSearchParams,operation='',payl
 }
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
+ if(!siteRequest&&scope==='worklogs'&&!entity&&!hasPermission(user,'worklogs')&&hasConstructionPermission(user,'construction_plans')&&hasConstructionPermission(user,'construction_logs'))return;
  if(scope==="assignment_management"){if(entity)throw new Error("不支援其他資料查詢。");requirePermission(user,"appointments");requirePermission(user,"projects");return;}
  if(["receipt_supplier_items","receipt_delivery_options"].includes(scope)){if(entity)throw Error("不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
  if(scope==="site_returns"){if(params.has("entity"))throw Error("案場餘料入庫不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
@@ -398,7 +407,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   return;
  }
  if(siteRequest)requirePermission(user,"site");
- if((["construction_plans","construction_drawings","construction_drawing_file"].includes(scope)||scope==="nas_upload_context"&&params.has("construction_plan_id"))&&!entity){if(!hasPermission(user,"projects")&&!hasPermission(user,"worklogs"))throw new Error("沒有施工規劃查看權限。");return;}
+ if((["construction_plans","construction_drawings","construction_drawing_file"].includes(scope)||scope==="nas_upload_context"&&params.has("construction_plan_id"))&&!entity){if(!hasConstructionPermission(user,'construction_plans'))throw new Error("沒有施工規劃查看權限。");return;}
  if(entity){
   const module=entity.startsWith("monitoring_")?"monitoring":entity.startsWith("phone_")?"phone":entity.startsWith("equipment_history")||entity==="maintenance_workers"?"history":({shared_work_log:"worklogs",audit_logs:"audit",customer_service_management:"customers",inventory:"inventory",customers:"customers",projects:"projects",suppliers:"suppliers",repairs:"repairs",pickups:"pickups",receipts:"purchases"} as Record<string,string>)[entity];
   if(!module)throw new Error("您的帳號沒有執行此操作的權限。");
@@ -420,7 +429,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
 async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
  const needed=operationPermission(operation,payload);
  if(operation==="upsert_customer_project_work_log"&&payload.construction_plan_id){
-  requirePermission(user,"worklogs",needed!.action);
+  if(!hasConstructionPermission(user,'construction_logs',needed!.action))throw new Error('沒有施工日誌操作權限。');
   await rpc("assert_construction_log_access_v1",{p_user_id:user.id,p_plan_id:uuid(payload.construction_plan_id),p_log_id:uuid(payload.id),p_action:needed!.action});return;
  }
  if(needed?.module!=="worklogs"||!user.project_scoped)return;
@@ -437,6 +446,7 @@ async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
  }
 }
 async function restrictedSnapshot(user:AppUser,scopeName:string,optionsOnly=false):Promise<Row|null> {
+ if(scopeName==='worklogs'&&!hasPermission(user,'worklogs'))return {...await constructionSnapshot(user),scope:scopeName};
  if(scopeName==="worklogs"&&user.project_scoped){const data=await privateReadRpc("work_log_scope_v1",{p_user_id:user.id},user) as Row;return {scope:scopeName,...data,customer_departments:await customerDepartmentRows(data.customers),customer_categories:await getAll(datasets.customer_categories.path),current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString()};}
  if(!user.permissions||user.role==="admin")return null;
  if(scopeName==="transactions"&&!hasPermission(user,"purchases")){
@@ -1119,7 +1129,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     return rpc("set_construction_item_completed_v1",{p_actor_user_id:user!.id,p_item_id:uuid(payload.id),p_row_version:payload.row_version,p_completed:payload.is_completed});
   }
   if(operation==="save_construction_plan"||operation==="delete_construction_plan"){
-    requirePermission(user!,"projects","UPDATE");
+    if(!hasConstructionPermission(user!,'construction_plans',operation==='delete_construction_plan'?'DELETE':payload.row_version?'UPDATE':'CREATE'))throw new Error('沒有施工規劃操作權限。');
     if(!uuid(payload.id))throw new Error("施工規劃編號不正確。");
     return rpc("save_construction_plan_v1",{p_actor_user_id:user!.id,p_payload:payload,p_delete:operation==="delete_construction_plan"});
   }
@@ -2061,7 +2071,7 @@ async function dashboardSnapshot(user: AppUser, allLists=false) {
   ]) as Row[][];
   const lookup=(rows:Row[],id:unknown,field:string)=>rows.find(row=>row.id===id)?.[field]||"—";
   const assignmentProjection=(row:Row)=>{const project=relatedProjects.find(project=>project.id===row.project_id);return {...row,project_code:project?.project_code||"—",project:row.assignment_type==="appointment"?({repair:"客戶報修",site_visit:"預約場刊",quotation:"索取報價",construction:"預約施工"}[String(row.appointment_type)]||"客戶預約事項"):project?.name||"已刪除工作內容",customer:lookup(customers,row.customer_id||project?.customer_id,"name"),assignee:lookup(assignmentUsers,row.assignee_user_id,"display_name"),creator:lookup(assignmentUsers,row.created_by_user_id,"display_name"),item:lookup(items,row.inventory_item_id,"item_name")};};
-  const construction=hasPermission(user,"worklogs")||hasPermission(user,"projects")?await rpc("construction_scope_v1",{p_actor_user_id:user.id,p_project_id:null}) as Row:{};
+  const construction=hasConstructionPermission(user,'construction_plans')?await rpc("construction_scope_v1",{p_actor_user_id:user.id,p_project_id:null}) as Row:{};
   const constructionOwnedProjects=new Set(((construction.project_workers||[]) as Row[]).filter(w=>w.user_id===user.id&&w.is_assignee===true).map(w=>w.project_id));
   const pendingConstruction=((construction.construction_plans||[]) as Row[]).filter(p=>["pending","in_progress"].includes(String(p.status))&&Array.isArray(p.assignee_user_ids)&&p.assignee_user_ids.length);
   const visibleConstruction=pendingConstruction.filter(p=>(p.assignee_user_ids as string[]).includes(user.id));
@@ -2236,7 +2246,10 @@ async function handleRequest(request: Request) {
         snapshot.money_settings=context.money_settings;
         if(scopeName==="transactions"&&params.get("options_only")!=="1")Object.assign(snapshot,await rpc("supplier_return_list_v1",{p_actor_user_id:user.id}));
       }
-      if(scopeName==="worklogs")mergeConstructionSnapshot(snapshot,await constructionSnapshot(user),params.get("options_only")==="1");
+      if(scopeName==="worklogs"){
+       const construction=hasConstructionPermission(user,'construction_plans')?await constructionSnapshot(user):{site_work_logs:[],construction_plans:[]};
+       mergeConstructionSnapshot(snapshot,construction,params.get("options_only")==="1");
+      }
       if(Array.isArray(snapshot.items))snapshot.stock_totals=await rpc("erp_stock_totals_v1",{p_actor_user_id:user.id});
       return json(snapshot);
     }

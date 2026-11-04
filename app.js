@@ -243,7 +243,7 @@ function hydrateSnapshot(snapshot,{referencesOnly=false}={}) {
   applyContractServiceCatalogSnapshot(snapshot);
   if(has("customer_contract_services"))state.customerContractServices=(snapshot.customer_contract_services||[]).map((r)=>({customerId:r.customer_id,serviceTypeId:r.service_type_id}));
   if(has("customers")||has("contract_service_types")||has("customer_contract_services"))state.customers.forEach((customer)=>{customer.contractServiceCodes=state.customerContractServices.filter((link)=>link.customerId===customer.id).map((link)=>state.contractServiceTypes.find((service)=>service.id===link.serviceTypeId)?.code).filter(Boolean);});
-  if(has("projects"))state.projects=(snapshot.projects||[]).map((r)=>({id:r.id,code:r.project_code,projectDate:r.project_date||"",completedOn:r.completed_on||"",contractStartDate:r.contract_start_date||"",contractEndDate:r.contract_end_date||"",customerId:r.customer_id,departmentId:r.department_id||"",name:r.name,type:projectTypeLabel(r.project_type),rawType:r.project_type,constructionCategory:r.construction_category||"",status:r.status,owner:r.assigned_to||"",description:r.description||"",estimatedCost:r.estimated_cost??"",note:r.note||"",createdAt:r.created_at||"",updatedRaw:r.updated_at||"",rowVersion:r.row_version}));
+  if(has("projects"))state.projects=(snapshot.projects||[]).map((r)=>({canCreateConstructionPlan:r.can_create_construction_plan,id:r.id,code:r.project_code,projectDate:r.project_date||"",completedOn:r.completed_on||"",contractStartDate:r.contract_start_date||"",contractEndDate:r.contract_end_date||"",customerId:r.customer_id,departmentId:r.department_id||"",name:r.name,type:projectTypeLabel(r.project_type),rawType:r.project_type,constructionCategory:r.construction_category||"",status:r.status,owner:r.assigned_to||"",description:r.description||"",estimatedCost:r.estimated_cost??"",note:r.note||"",createdAt:r.created_at||"",updatedRaw:r.updated_at||"",rowVersion:r.row_version}));
   if(has("suppliers"))state.suppliers=(snapshot.suppliers||[]).map((r)=>({id:r.id,name:r.name,contact:r.contact_name||"",phone:r.phone||"",email:r.email||"",address:r.address||"",note:r.note||"",createdAt:r.created_at||"",updatedRaw:r.updated_at||"",rowVersion:r.row_version}));
   if(has("repair_items"))state.repairItems=(snapshot.repair_items||[]).map((r)=>({id:r.id,code:r.repair_no,receivedOn:r.received_on,customerId:r.customer_id,departmentId:r.department_id||"",itemId:r.inventory_item_id,quantity:r.quantity==null?null:Number(r.quantity),sourceMaintenanceEventId:r.source_maintenance_event_id||"",serialNumber:r.serial_number||"",issueDescription:r.issue_description||"",supplierId:r.supplier_id||"",sentToSupplierOn:r.sent_to_supplier_on||"",returnedFromSupplierOn:r.returned_from_supplier_on||"",returnedToCustomerOn:r.returned_to_customer_on||"",status:r.status||"",supplierReference:r.supplier_reference||"",notes:r.notes||"",updatedAt:r.updated_at||"",createdAt:r.created_at||"",updatedRaw:r.updated_at||"",rowVersion:r.row_version}));
   if(has("categories"))state.categories=(snapshot.categories||[]).map((r)=>({id:r.id,name:r.name,prefix:r.code_prefix||"",active:r.is_active!==false,rowVersion:r.row_version}));
@@ -347,7 +347,7 @@ async function loadScope(scope,{force=false,silent=false}={}){
   })();
   scopeRequests.set(scope,request);return request;
 }
-async function loadPageData(page,{force=false,silent=false}={}){const backupOnly=page==="settings"&&!["settings","users","audit"].some(m=>canModule(m))&&!state.currentUser?.private_access?.can_configure;return loadScope(backupOnly?"session":PAGE_SCOPES[page]||"dashboard",{force,silent});}
+async function loadPageData(page,{force=false,silent=false}={}){if(page==='projects'&&!canModule('projects')&&canConstructionPermission('construction_plans')){const data=await apiRequest({method:'GET',scope:'construction_plans'});mergeConstructionContext(data);document.querySelector('[data-project-tab="planning"]')?.click();return;} const backupOnly=page==="settings"&&!["settings","users","audit"].some(m=>canModule(m))&&!state.currentUser?.private_access?.can_configure;return loadScope(backupOnly?"session":PAGE_SCOPES[page]||"dashboard",{force,silent});}
 async function checkNasConnection(){
   if(!accessToken)return false;
   if(PREVIEW_MODE){nasConnectionState={checked:true,checking:false,available:false,message:"Preview 不使用正式 NAS 環境變數；附件只做瀏覽器安全模擬。"};renderSiteModules();return true;}
@@ -677,8 +677,8 @@ async function ensureWorkLogWorkers(){
 }
 async function openWorkLogModal(id="",planId="",itemId=""){
   try{
+    if(!PREVIEW_MODE&&canConstructionPermission('construction_plans'))mergeConstructionContext(await apiRequest({method:"GET",scope:"construction_plans"}));
     await ensureWorkLogWorkers();
-    if(!PREVIEW_MODE)mergeConstructionContext(await apiRequest({method:"GET",scope:"construction_plans"}));
     if(typeof activeConstructionLogPlanId!=="undefined")activeConstructionLogPlanId=planId||byId(state.siteData.logs,id)?.construction_plan_id||"";
     if(typeof activeConstructionItemId!=="undefined")activeConstructionItemId=itemId||byId(state.siteData.logs,id)?.construction_item_id||"";
     openModal("workLogModal",id);
