@@ -46,7 +46,7 @@
     };
     const materialRows = pickups
       .filter((row) => row.projectId === projectId && inDateRange(row.date, dateFrom, dateTo))
-      .map((row) => ({ ...row, item: itemById.get(row.itemId) || null }))
+      .map((row) => { const item = itemById.get(row.itemId) || null; return { ...row, item, unit: row.quantityUnit === "meter" ? "米" : text(row.packageUnitSnapshot) || text(item?.legacyUnit) || text(item?.unit) || "未標示單位" }; })
       .sort((left, right) => compareDate(right.date, left.date));
     const filteredLogs = logs
       .filter((row) => row.projectId === projectId && inDateRange(row.log_date, dateFrom, dateTo))
@@ -54,15 +54,15 @@
 
     const materials = new Map(), unitTotals = new Map();
     materialRows.forEach((row) => {
-      const item = row.item || {}, unit = text(item.unit) || "未標示單位", amount = quantity(row.quantity);
-      const current = materials.get(row.itemId) || {
+      const item = row.item || {}, unit = row.unit, amount = quantity(row.quantity), key = JSON.stringify([row.itemId, unit]);
+      const current = materials.get(key) || {
         id: row.itemId, name: text(item.name) || "未知品項", brand: text(item.brand), model: text(item.model),
         unit, quantity: 0, recordCount: 0, dates: [],
       };
       current.quantity += amount;
       current.recordCount += 1;
       current.dates.push(row.date);
-      materials.set(row.itemId, current);
+      materials.set(key, current);
       unitTotals.set(unit, (unitTotals.get(unit) || 0) + amount);
     });
     const materialStats = [...materials.values()]
@@ -109,7 +109,7 @@
       error: "", materialRows, materialStats, workerStats, dailyRows,
       totalsByUnit: [...unitTotals.entries()].map(([unit, total]) => ({ unit, total })).sort((left, right) => left.unit.localeCompare(right.unit, "zh-Hant")),
       kpis: {
-        materialTypeCount: materialStats.length,
+        materialTypeCount: new Set(materialStats.map((row) => row.id)).size,
         materialRecordCount: materialRows.length,
         primaryMaterial,
         constructionDays: constructionDates.length,

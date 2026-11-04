@@ -2,7 +2,7 @@
 function receiptDeliveryBadge(id){const d=receiptHeader(id,'receipt');return d?.delivery_state==='pending'?'待確認送達（未入庫）':d?.delivery_state==='site'?`直送案場｜取貨 ${d.delivery_pickup_no||''}`:'公司入庫';}
 function receiptDeliveryAction(id){const d=receiptHeader(id,'receipt');return d?.delivery_state==='pending'&&d.can_confirm_delivery?`<button type="button" class="outline" data-receipt-delivery="${esc(id)}">確認送達位置</button>`:'';}
 function receiptEditorKind(){return document.querySelector('#simpleModal')?.dataset.type==='supplierReturnModal'?'supplierReturn':'receipt';}
-function receiptSourceRows(kind='receipt'){return kind==='supplierReturn'?(state.supplierReturnDocuments||[]).flatMap(d=>(d.lines||[]).map(l=>({id:l.id,documentId:d.id,documentNo:d.document_no,date:d.return_date,supplierId:d.supplier_id,itemId:l.inventory_item_id,quantity:Number(l.quantity),unitPrice:l.unit_price??'',lineNo:l.line_no,note:l.note,customerIds:d.customer_departments.map(c=>c.customer_id),customerDepartments:d.customer_departments,rowVersion:d.row_version}))):state.receipts;}
+function receiptSourceRows(kind='receipt'){return kind==='supplierReturn'?(state.supplierReturnDocuments||[]).flatMap(d=>(d.lines||[]).map(l=>({id:l.id,documentId:d.id,documentNo:d.document_no,date:d.return_date,supplierId:d.supplier_id,itemId:l.inventory_item_id,quantity:Number(l.quantity),quantityUnit:l.quantity_unit||'package',packageUnitSnapshot:l.package_unit_snapshot||'',unitPrice:l.unit_price??'',lineNo:l.line_no,note:l.note,customerIds:d.customer_departments.map(c=>c.customer_id),customerDepartments:d.customer_departments,rowVersion:d.row_version}))):state.receipts;}
 function receiptDocumentRows(id,kind='receipt'){return receiptSourceRows(kind).filter(row=>(row.documentId||row.id)===id).sort((a,b)=>(a.lineNo||0)-(b.lineNo||0)||String(a.id).localeCompare(String(b.id)));}
 function receiptDocument(id,kind='receipt'){return receiptDocumentRows(id,kind)[0];}
 function validReceiptLine(row){return !!row.id&&!!row.itemId&&!row.deleted_at&&!row.deletedAt&&Number.isFinite(Number(row.quantity))&&Number(row.quantity)>0;}
@@ -43,7 +43,7 @@ async function saveReceiptDocument(form,id,data){
   const payload={
     document_id:snapshot.id,existing:snapshot.existing,document_no:data.documentNo?.trim()||null,receipt_date:data.date,supplier_id:data.supplierId,
     customer_ids:[...new FormData(form).getAll('receiptCustomerId')],customer_departments:collectReceiptCustomerDepartments(),receipt_metadata:receiptMetadataPayload(form,id),
-    rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,...(!isReturn?{quantity_unit:row.quantityUnit}:{}),note:row.note,...receiptPricePayload(elements[index])}))
+    rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,quantity_unit:row.quantityUnit,note:row.note,...receiptPricePayload(elements[index])}))
   };
   if(isReturn){payload.return_date=payload.receipt_date;delete payload.receipt_date;payload.row_version=snapshot.rowVersion;payload.request_id=snapshot.requestId;const signature=JSON.stringify({...payload,request_id:null});if(snapshot.signature&&snapshot.signature!==signature)payload.request_id=snapshot.requestId=uid();snapshot.signature=signature;}
   return await (isReturn?mutate:receiptMutation)(operation,payload,isReturn?(id?'整張退貨單已修改':'退貨單已建立'):(id?'整張進貨單已修改':'進貨單已建立'));

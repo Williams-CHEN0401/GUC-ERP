@@ -69,3 +69,17 @@ test("反向日期不產生假統計", () => {
   const report = buildProjectReport({ ...base, from: "2026-08-03", to: "2026-08-01" });
   assert.equal(report.error, "起始日期不可晚於結束日期。");
 });
+
+test("同一品項依歷史包裝單位與散料分開統計，改單位不重標舊領料", () => {
+  const report = buildProjectReport({ projectId: "p1", inventory: [{ id: "i1", name: "網路線", unit: "捲", legacyUnit: "箱" }], pickups: [
+    { id: "old", projectId: "p1", itemId: "i1", date: "2026-08-01", quantity: 2 },
+    { id: "recorded", projectId: "p1", itemId: "i1", date: "2026-08-01", quantity: 3, packageUnitSnapshot: "包" },
+    { id: "new", projectId: "p1", itemId: "i1", date: "2026-08-02", quantity: 4, packageUnitSnapshot: "捲" },
+    { id: "meter", projectId: "p1", itemId: "i1", date: "2026-08-02", quantity: 12.25, quantityUnit: "meter" },
+  ] });
+  assert.equal(report.materialStats.length, 4);
+  assert.equal(report.kpis.materialTypeCount, 1);
+  assert.deepEqual(Object.fromEntries(Array.from(report.totalsByUnit, row => [row.unit, row.total])), { 包: 3, 捲: 4, 米: 12.25, 箱: 2 });
+  assert.equal(report.materialRows.find(row => row.id === "old").unit, "箱");
+  assert.equal(report.materialRows.find(row => row.id === "new").unit, "捲");
+});
