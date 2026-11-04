@@ -19,14 +19,35 @@ function renderWebsitePermissionGroups(role,permissions){
 function collectRolePermissions(form){
  return [...form.querySelectorAll('[data-permission-module]')].filter(row=>{
   const group=row.closest('[data-website-group]'),override=group?.querySelector('[data-website-override]')?.checked;
+  if(row.hasAttribute('data-construction-permission'))return row.closest('[data-construction-group]').querySelector('[data-construction-override]').checked;
   return !(row.hasAttribute('data-website-permission')&&!override||row.hasAttribute('data-permission-inherited')&&!override);
  }).map(row=>({module:row.dataset.permissionModule,...Object.fromEntries(['view','create','update','delete'].map(action=>['can_'+action,row.querySelector(`[name="${row.dataset.permissionModule}_${action}"]`).type==='checkbox'&&row.querySelector(`[name="${row.dataset.permissionModule}_${action}"]`).checked]))}));
 }
 
-const PERMISSION_LABELS = {quotation_dashboard:'營運總覽',quotations:'報價單管理',quotation_billing:'請款進度',quotation_warranty:'保固售後服務',accounting_tax:'年度稅費及費用分攤',accounting_payables:'貨款管理',accounting_payroll:'薪資管理',performance:'績效管理',data_export:'Excel 資料匯出（三站共用）',quotation_invoices:'發票管理',system_backups:'系統備份專用權限',purchase_prices:'進貨價格',accounting_reports:'會計工作統計',accounting_prices:'會計用料價格',appointments:'客戶預約事項',dashboard:'首頁',worklogs:'工作日誌',purchases:'進貨管理',pickups:'取貨管理',inventory:'商品與庫存',customers:'客戶管理',projects:'工作內容管理',suppliers:'供應商',repairs:'維修品管理',reports:'工作內容統計報表',backup:'資料備份／復原',settings:'系統設定',users:'使用者管理',audit:'系統日誌',site:'承攬總覽與案場管理',phone:'電話設備',monitoring:'監控設備',equipment:'其他案場設備',history:'維修／設定紀錄',credentials:'設備帳密',monitoring_import:'監控 Excel 匯入'};
-const PAGE_PERMISSIONS={performance:['performance'],appointments:['appointments'],dashboard:['dashboard'],transactions:['purchases','pickups'],repairs:['repairs'],inventory:['inventory'],crm:['customers','suppliers'],projects:['projects'],worklogs:['worklogs'],materials:['reports'],backup:['system_backups'],settings:['settings','users','audit','system_backups']};
+const PERMISSION_LABELS = {construction_plans:'施工規劃',construction_items:'子項目完成勾選（修改）',construction_logs:'施工日誌（本人操作）',construction_logs_all:'其他人的施工日誌',quotation_dashboard:'營運總覽',quotations:'報價單管理',quotation_billing:'請款進度',quotation_warranty:'保固售後服務',accounting_tax:'年度稅費及費用分攤',accounting_payables:'貨款管理',accounting_payroll:'薪資管理',performance:'績效管理',data_export:'Excel 資料匯出（三站共用）',quotation_invoices:'發票管理',system_backups:'系統備份專用權限',purchase_prices:'進貨價格',accounting_reports:'會計工作統計',accounting_prices:'會計用料價格',appointments:'客戶預約事項',dashboard:'首頁',worklogs:'工作日誌',purchases:'進貨管理',pickups:'取貨管理',inventory:'商品與庫存',customers:'客戶管理',projects:'工作內容管理',suppliers:'供應商',repairs:'維修品管理',reports:'工作內容統計報表',backup:'資料備份／復原',settings:'系統設定',users:'使用者管理',audit:'系統日誌',site:'承攬總覽與案場管理',phone:'電話設備',monitoring:'監控設備',equipment:'其他案場設備',history:'維修／設定紀錄',credentials:'設備帳密',monitoring_import:'監控 Excel 匯入'};
+const PAGE_PERMISSIONS={performance:['performance'],appointments:['appointments'],dashboard:['dashboard'],transactions:['purchases','pickups'],repairs:['repairs'],inventory:['inventory'],crm:['customers','suppliers'],projects:['projects','construction_plans'],worklogs:['worklogs'],materials:['reports'],backup:['system_backups'],settings:['settings','users','audit','system_backups']};
 const MODAL_PERMISSIONS={workAssignmentModal:'projects',appointmentModal:'appointments',customerModal:'customers',contractServiceModal:'customers',customerCategoryModal:'customers',customerDepartmentModal:'customers',supplierModal:'suppliers',accountModal:'users',categoryModal:'inventory',itemModal:'inventory',itemUnitModal:'inventory',projectModal:'projects',pickupModal:'pickups',receiptModal:'purchases',supplierReturnModal:'purchases',repairModal:'repairs',workLogModal:'worklogs',workLogPickupModal:'pickups',attachmentModal:'equipment'};
+function canConstructionPermission(module,action='VIEW'){
+ const user=state.currentUser;if(!user)return false;if(user.role==='admin')return true;
+ if(user.permissions?.some(p=>p.module===module))return canModule(module,action);
+ if(module==='construction_plans')return action==='VIEW'?canModule('projects')||canModule('worklogs'):canModule('projects')&&canModule('projects','UPDATE');
+ if(module==='construction_logs')return canModule('worklogs',action);
+ return false;
+}
+function renderConstructionPermissionGroup(role,permissions){
+ const fixed=role.code==='admin',configured=permissions.some(p=>p.role_code===role.code&&CONSTRUCTION_PERMISSION_MODULES.includes(p.module));
+ const expanded=!!document.querySelector?.('[data-construction-group][open]');
+ return '<details class="permission-website" data-construction-group '+(expanded?'open':'')+'><summary><span>施工規劃權限</span></summary><div class="permission-website-body"><label class="permission-inline"><input type="checkbox" data-construction-override '+(fixed||configured?'checked':'')+' '+(fixed?'disabled':'')+'>獨立設定施工規劃權限</label><p class="permission-help">未勾選時沿用既有規則。啟用後依下列勾選，仍限已授權的工作內容或指派規劃；私密資料限制持續生效。查看、修改或刪除其他人的日誌，須同時勾選「施工日誌」及「其他人的施工日誌」的對應操作。</p><fieldset data-construction-entry '+(!configured||fixed?'disabled':'')+'><div class="table-wrap"><table class="permission-matrix"><thead><tr><th>功能</th><th>查看</th><th>新增</th><th>修改</th><th>刪除</th></tr></thead><tbody>'+CONSTRUCTION_PERMISSION_MODULES.map(module=>{
+  const p=permissions.find(p=>p.role_code===role.code&&p.module===module)||{};
+  return '<tr data-permission-module="'+module+'" data-construction-permission><th scope="row">'+PERMISSION_LABELS[module]+'</th>'+['view','create','update','delete'].map(action=>{
+   const supported=module==='construction_items'?['view','update'].includes(action):module==='construction_logs_all'?action!=='create':true;
+   return '<td><input type="checkbox" name="'+module+'_'+action+'" aria-label="'+PERMISSION_LABELS[module]+' '+({view:'查看',create:'新增',update:'修改',delete:'刪除'})[action]+'" '+(supported&&(fixed||p['can_'+action])?'checked':'')+' '+(!supported||fixed?'disabled':'')+'></td>';
+  }).join('')+'</tr>';
+ }).join('')+'</tbody></table></div></fieldset></div></details>';
+}
+const CONSTRUCTION_PERMISSION_MODULES=["construction_plans","construction_items","construction_logs","construction_logs_all"];
 function canModule(module,action='VIEW'){
+
  const user=state.currentUser;if(!user)return false;if(user.role==='admin')return true;
  if(Array.isArray(user.permissions))return user.permissions.some(p=>p.module===module&&p[`can_${action.toLowerCase()}`]===true);
  if(['accounting_tax','accounting_payables','accounting_payroll','performance','purchase_prices','accounting_reports','accounting_prices','data_export','quotation_invoices','system_backups'].includes(module))return false; return ['operator','viewer'].includes(user.role)&&(action==='VIEW'||user.role==='operator'&&['worklogs','purchases','pickups','projects','repairs','site','phone','monitoring','equipment','history'].includes(module)&&action!=='DELETE');
@@ -36,18 +57,24 @@ function canPage(page){if(state.currentUser?.website_access&&!canWebsite('erp'))
 function canManagePrivateIdentity(id){const access=state.currentUser?.private_access;if(!access?.configured||access.direct)return true;const config=access.configuration;return !config||![config.owner_user_id,...(config.viewer_user_ids||[])].includes(id);}
 function firstAllowedPage(){return Object.keys(PAGE_PERMISSIONS).find(canPage)||'dashboard';}
 function canWorkLog(action,id){
- if(!canModule('worklogs',action))return false;
- const plannedLog=byId(state.siteData.logs,id);
+ const plannedLog=byId(state.siteData?.logs||[],id);
  if(plannedLog?.construction_plan_id){
-  if(action==='VIEW')return true; // All rows have passed the server-side read boundary.
-  return canAdmin()||plannedLog.access_creator_user_id===state.currentUser?.id;
+  if(!canConstructionPermission('construction_logs',action))return false;
+  if(action==='VIEW')return true; // All rows passed the server-side read boundary.
+  const granted=plannedLog[action==='DELETE'?'can_delete_log':'can_update_log'];
+  return typeof granted==='boolean'?granted:canAdmin()||plannedLog.access_creator_user_id===state.currentUser?.id;
  }
  if(!id&&typeof activeConstructionLogPlanId!=='undefined'&&activeConstructionLogPlanId)return constructionPlanById(activeConstructionLogPlanId)?.can_create_log===true;
+ if(!canModule('worklogs',action))return false;
  if(!state.currentUser?.project_scoped)return true;
  const log=byId(state.siteData.logs,id),grants=state.projectAccess||[];
  return grants.some(g=>(!log||g.project_id===log.projectId)&&g.can_view&&(action==='VIEW'||g[`can_${action.toLowerCase()}_work_log`]));
 }
 function applyPermissionUI(){
+ const planningAllowed=canConstructionPermission('construction_plans');
+ document.querySelectorAll('[data-project-tab="planning"]').forEach(el=>el.hidden=!planningAllowed);
+ document.querySelectorAll('[data-project-tab="list"],[data-project-tab="construction"]').forEach(el=>el.hidden=!canModule('projects'));
+
  document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.hidden=el.hasAttribute('data-work-group')?!WORK_MANAGEMENT_PAGES.some(canPage):!canPage(el.dataset.page));
  preparePageLinks();
  document.querySelectorAll('[data-goto]').forEach(el=>el.hidden=!canPage(el.dataset.goto));
@@ -76,9 +103,10 @@ function renderPermissionSettings(){
  const role=chosen||{code:'',name:'',project_scoped:false};
  permissionRoleEditVersion=chosen?.row_version??null;
  projectAccessEditVersion=byId(state.accounts,selectedAccessUser)?.rowVersion??null;
- host.innerHTML=`<article class="panel"><h2>角色功能權限</h2><div class="permission-toolbar"><label>角色<select id="permissionRoleChoice"><option value="">新增角色</option>${roles.map(r=>`<option value="${esc(r.code)}" ${r.code===selectedRoleCode?'selected':''}>${esc(r.name)} (${esc(r.code)})</option>`).join('')}</select></label><button type="button" class="outline" data-new-role>新增角色</button>${chosen&&!chosen.is_system?'<button type="button" class="outline danger" data-delete-role>刪除角色</button>':''}</div><form id="permissionRoleForm"><div class="permission-toolbar"><label>角色代碼<input name="code" value="${esc(role.code)}" required pattern="[a-z][a-z0-9_]{0,39}" maxlength="40" ${chosen?'readonly':''}></label><label>角色名稱<input name="name" value="${esc(role.name)}" required maxlength="80"></label><label><input type="checkbox" name="projectScoped" ${role.project_scoped?'checked':''} ${role.is_system?'disabled':''}>工作日誌限授權工作內容</label></div>${renderWebsitePermissionGroups(role,perms)}<button class="primary" ${role.code==='admin'?'disabled':''}>儲存角色權限</button></form></article><article class="panel"><h2>使用者可存取工作內容</h2><label>使用者<select id="projectAccessUser"><option value="">請選擇使用者</option>${state.accounts.map(u=>`<option value="${u.id}" ${u.id===selectedAccessUser?'selected':''}>${esc(u.displayName)} (${esc(u.username)})</option>`).join('')}</select></label><form id="projectAccessForm"><label>搜尋工作內容<input id="projectAccessSearch" type="search" placeholder="工作內容編號或名稱"></label><div class="table-wrap permission-project-list"><table><thead><tr><th>工作內容名稱</th><th>查看</th><th>新增日誌</th><th>修改日誌</th><th>刪除日誌</th></tr></thead><tbody>${(state.accessProjects||[]).map(p=>{const g=(state.projectAccess||[]).find(g=>g.user_id===selectedAccessUser&&g.project_id===p.id)||{};return `<tr data-access-project="${p.id}" data-search="${esc((p.project_code+' '+p.name).toLowerCase())}"><th scope="row">${esc(p.project_code)}｜${esc(p.name)}</th>${['view','create_work_log','update_work_log','delete_work_log'].map(action=>`<td><input type="checkbox" name="${action}" aria-label="${esc(p.name)} ${action}" ${g[`can_${action}`]?'checked':''} ${selectedAccessUser?'':'disabled'}></td>`).join('')}</tr>`;}).join('')}</tbody></table></div><button class="primary" ${selectedAccessUser?'':'disabled'}>儲存工作內容授權</button></form></article>`;
+ host.innerHTML=`<article class="panel"><h2>角色功能權限</h2><div class="permission-toolbar"><label>角色<select id="permissionRoleChoice"><option value="">新增角色</option>${roles.map(r=>`<option value="${esc(r.code)}" ${r.code===selectedRoleCode?'selected':''}>${esc(r.name)} (${esc(r.code)})</option>`).join('')}</select></label><button type="button" class="outline" data-new-role>新增角色</button>${chosen&&!chosen.is_system?'<button type="button" class="outline danger" data-delete-role>刪除角色</button>':''}</div><form id="permissionRoleForm"><div class="permission-toolbar"><label>角色代碼<input name="code" value="${esc(role.code)}" required pattern="[a-z][a-z0-9_]{0,39}" maxlength="40" ${chosen?'readonly':''}></label><label>角色名稱<input name="name" value="${esc(role.name)}" required maxlength="80"></label><label><input type="checkbox" name="projectScoped" ${role.project_scoped?'checked':''} ${role.is_system?'disabled':''}>工作日誌限授權工作內容</label></div>${renderWebsitePermissionGroups(role,perms)}${renderConstructionPermissionGroup(role,perms)}<button class="primary" ${role.code==='admin'?'disabled':''}>儲存角色權限</button></form></article><article class="panel"><h2>使用者可存取工作內容</h2><label>使用者<select id="projectAccessUser"><option value="">請選擇使用者</option>${state.accounts.map(u=>`<option value="${u.id}" ${u.id===selectedAccessUser?'selected':''}>${esc(u.displayName)} (${esc(u.username)})</option>`).join('')}</select></label><form id="projectAccessForm"><label>搜尋工作內容<input id="projectAccessSearch" type="search" placeholder="工作內容編號或名稱"></label><div class="table-wrap permission-project-list"><table><thead><tr><th>工作內容名稱</th><th>查看</th><th>新增日誌</th><th>修改日誌</th><th>刪除日誌</th></tr></thead><tbody>${(state.accessProjects||[]).map(p=>{const g=(state.projectAccess||[]).find(g=>g.user_id===selectedAccessUser&&g.project_id===p.id)||{};return `<tr data-access-project="${p.id}" data-search="${esc((p.project_code+' '+p.name).toLowerCase())}"><th scope="row">${esc(p.project_code)}｜${esc(p.name)}</th>${['view','create_work_log','update_work_log','delete_work_log'].map(action=>`<td><input type="checkbox" name="${action}" aria-label="${esc(p.name)} ${action}" ${g[`can_${action}`]?'checked':''} ${selectedAccessUser?'':'disabled'}></td>`).join('')}</tr>`;}).join('')}</tbody></table></div><button class="primary" ${selectedAccessUser?'':'disabled'}>儲存工作內容授權</button></form></article>`;
 }
 document.addEventListener('change',event=>{
+ if(event.target.matches('[data-construction-override]'))event.target.closest('[data-construction-group]').querySelector('[data-construction-entry]').disabled=!event.target.checked;
  const override=event.target.closest('[data-website-override]');
  if(override){const group=override.closest('[data-website-group]');group.querySelector('[data-website-entry]').disabled=!override.checked;group.querySelector('[data-website-inherited]').hidden=override.checked;group.querySelectorAll('[data-permission-inherited] input').forEach(input=>input.disabled=!override.checked);}
  if(event.target.id==='permissionRoleChoice'){selectedRoleCode=event.target.value;renderPermissionSettings();}
