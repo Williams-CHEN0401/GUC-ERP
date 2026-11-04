@@ -43,7 +43,7 @@ async function saveReceiptDocument(form,id,data){
   const payload={
     document_id:snapshot.id,existing:snapshot.existing,document_no:data.documentNo?.trim()||null,receipt_date:data.date,supplier_id:data.supplierId,
     customer_ids:[...new FormData(form).getAll('receiptCustomerId')],customer_departments:collectReceiptCustomerDepartments(),receipt_metadata:receiptMetadataPayload(form,id),
-    rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,note:row.note,...receiptPricePayload(elements[index])}))
+    rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,...(!isReturn?{quantity_unit:row.quantityUnit}:{}),note:row.note,...receiptPricePayload(elements[index])}))
   };
   if(isReturn){payload.return_date=payload.receipt_date;delete payload.receipt_date;payload.row_version=snapshot.rowVersion;payload.request_id=snapshot.requestId;const signature=JSON.stringify({...payload,request_id:null});if(snapshot.signature&&snapshot.signature!==signature)payload.request_id=snapshot.requestId=uid();snapshot.signature=signature;}
   return await (isReturn?mutate:receiptMutation)(operation,payload,isReturn?(id?'整張退貨單已修改':'退貨單已建立'):(id?'整張進貨單已修改':'進貨單已建立'));
@@ -98,7 +98,7 @@ function receiptMetadataPayload(form,id){
    if(!canModule('purchase_prices','VIEW')||!canModule('purchase_prices',before.receipt_financials?.mode?'UPDATE':'CREATE'))throw Error('沒有進貨價格操作權限。');
    metadata.tax_mode=mode;metadata.tax_rate_basis_points=rate;
   }
-  GUCReceiptMoney.calculate([...form.querySelectorAll('[data-batch-row]')].map(row=>({quantity:Number(row.querySelector('[name="batchQuantity"]').value),unit_price:row.querySelector('[name="batchUnitPrice"]')?.value||null})),mode,rate,discount);
+  GUCReceiptMoney.calculate([...form.querySelectorAll('[data-batch-row]')].map(row=>({quantity:Number(row.querySelector('[name="batchQuantity"]').value),quantity_unit:row.querySelector('[name="batchQuantityUnit"]')?.value||'package',unit_price:row.querySelector('[name="batchUnitPrice"]')?.value||null})),mode,rate,discount);
  }
  return metadata;
 }
@@ -106,7 +106,7 @@ function updateReceiptMoneySummary(){
  const form=document.querySelector('#modalForm'),output=form?.querySelector('#receiptMoneySummary');if(!output)return;
  try{
   const mode=form.elements.receiptTaxMode.value||null,rate=mode?GUCReceiptMoney.rateBasisPoints(form.elements.receiptTaxRate.value):null;
-  const lines=[...form.querySelectorAll('[data-batch-row]')].map(row=>({quantity:Number(row.querySelector('[name="batchQuantity"]').value),unit_price:row.querySelector('[name="batchUnitPrice"]')?.value||null}));
+  const lines=[...form.querySelectorAll('[data-batch-row]')].map(row=>({quantity:Number(row.querySelector('[name="batchQuantity"]').value),quantity_unit:row.querySelector('[name="batchQuantityUnit"]')?.value||'package',unit_price:row.querySelector('[name="batchUnitPrice"]')?.value||null}));
   const money=GUCReceiptMoney.calculate(lines,mode,rate,Number(form.elements.receiptDiscount.value)),fmt=v=>v==null?'未設定':Number(v).toLocaleString('zh-TW');
   output.innerHTML=`<dl class="receipt-money-totals"><div><dt>整單折扣（元）</dt><dd data-money-discount>${fmt(money.discount_amount)}</dd></div><div><dt>未稅金額</dt><dd data-money-net>${fmt(money.net_amount)}</dd></div><div><dt>稅額</dt><dd data-money-tax>${fmt(money.tax_amount)}</dd></div><div><dt>含稅金額</dt><dd data-money-total>${fmt(money.total_amount)}</dd></div></dl>${!mode?'<p>歷史計價方式尚未設定，保留原單價，不推算稅額。</p>':money.missing_price_count?`<p>${money.missing_price_count} 筆未設定單價，總額暫不計算。</p>`:''}`;
  }catch(error){output.textContent=error.message;}

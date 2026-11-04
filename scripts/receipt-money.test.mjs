@@ -44,3 +44,5 @@ test('discount validation and missing prices never invent totals',()=>{
  const discounted=c.GUCReceiptMoney.calculate([{quantity:3,unit_price:'0.50'}],'exclusive',500,1);
  assert.equal(discounted.input_amount,2);assert.equal(discounted.net_amount,1);
 });
+
+ test('decimal meter receipts use exact cents arithmetic and preserve package validation',()=>{const r=money([{quantity:1.25,quantity_unit:'meter',unit_price:10}],'exclusive',500);assert.equal(r.net_amount,13);assert.equal(r.tax_amount,1);assert.throws(()=>money([{quantity:1.25,unit_price:10}],'exclusive',500));assert.throws(()=>money([{quantity:1.251,quantity_unit:'meter',unit_price:10}],'exclusive',500));});

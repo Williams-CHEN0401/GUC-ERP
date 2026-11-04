@@ -15,8 +15,8 @@ test('existing package pickup can select meters and retain the entered quantity'
  const f=fixture();f.c.syncCablePickupUnit(f.row);assert.equal(f.unit.disabled,false);assert.equal(f.unit.options[1].disabled,false);
  f.unit.value='meter';f.quantity.value='12';f.c.syncCablePickupUnit(f.row);assert.equal(f.unit.value,'meter');assert.equal(f.quantity.value,'12');assert.equal(f.quantity.step,'0.01');
 });
-test('items without a package length still cannot request an invented meter conversion',()=>{
- const f=fixture(null);f.c.syncCablePickupUnit(f.row);assert.equal(f.unit.options[1].disabled,true);assert.equal(f.unit.options[1].hidden,false);assert.equal(f.unit.value,'package');assert.equal(f.quantity.step,'1');assert.equal(f.stock.textContent,undefined);
+test('cable items without a package length can select meters without changing quantity',()=>{
+ const f=fixture(null);f.c.syncCablePickupUnit(f.row);assert.equal(f.unit.options[1].disabled,false);assert.equal(f.unit.options[1].hidden,false);assert.equal(f.unit.value,'package');assert.equal(f.quantity.step,'1');assert.equal(f.stock.textContent,undefined);
 });
 test('meter option is shown for both cable categories and hidden for equipment even with an unrelated length profile',()=>{
  for(const category of ['弱電線材','電線&電纜類','電線＆電纜類']){const f=fixture(200,'package',category);f.c.syncCablePickupUnit(f.row);assert.equal(f.unit.options[1].hidden,false);assert.equal(f.unit.options[1].disabled,false);}
