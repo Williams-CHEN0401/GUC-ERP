@@ -132,6 +132,7 @@ grant execute on function public.inventory_remnant_balance_v1(uuid),public.inven
 
 
 
+
 -- BEGIN GENERATED EXISTING FUNCTIONS
 CREATE OR REPLACE FUNCTION public.save_site_return_v1(p_actor_user_id uuid, p_document_id uuid, p_request_id uuid, p_row_version integer, p_action text, p_return_date date, p_customer_id uuid, p_project_id uuid, p_rows jsonb, p_note text DEFAULT ''::text)
  RETURNS jsonb
@@ -140,7 +141,7 @@ CREATE OR REPLACE FUNCTION public.save_site_return_v1(p_actor_user_id uuid, p_do
 AS $function$
 declare old_doc public.site_return_documents;new_doc public.site_return_documents;reg public.stock_transaction_documents;
  old_request public.site_return_requests;request_payload jsonb;v_result jsonb;v_actor text;row_data jsonb;line public.site_return_lines;
- v_item uuid;v_line uuid;v_before numeric;v_old numeric;v_new numeric;v_delta numeric;v_old_unit text;v_ledger_unit text;v_old_package_unit text;v_new_package_unit text;v_version integer;v_status text;v_unit text;v_lengths jsonb;v_rows jsonb;v_order integer;v_box boolean;
+ v_item uuid;v_line uuid;v_before numeric;v_old numeric;v_new numeric;v_delta numeric;v_old_unit text;v_ledger_unit text;v_old_package_unit text;v_new_package_unit text;v_version integer;v_status text;v_unit text;v_lengths jsonb;v_rows jsonb;v_order integer;v_next_line integer;v_box boolean;
 begin
  if p_action is null or p_action not in ('create','update','cancel','delete') or p_document_id is null or p_request_id is null then raise exception '入庫單操作資料不完整。';end if;
  if not public.has_app_permission_v1(p_actor_user_id,'purchases','VIEW') or not public.has_app_permission_v1(p_actor_user_id,'purchases',case p_action when 'create' then 'CREATE' when 'update' then 'UPDATE' else 'DELETE' end) then raise exception '沒有案場餘料入庫操作權限。';end if;
@@ -179,6 +180,7 @@ begin
  -- Preserve line IDs; an item/unit/source change starts a new physical line.
  v_rows:='[]';
  if p_action in('create','update') then
+  select coalesce(max(line_no),0) into v_next_line from public.site_return_lines where document_id=p_document_id;
   if (select count(*) from jsonb_array_elements(p_rows) r where nullif(r->>'id','') is not null)<>
      (select count(distinct r->>'id') from jsonb_array_elements(p_rows) r where nullif(r->>'id','') is not null) then raise exception '入庫明細識別碼重複。';end if;
   for row_data in select value from jsonb_array_elements(p_rows) loop
@@ -199,7 +201,9 @@ begin
    if v_box and coalesce(row_data->>'quantity_unit','package')<>'meter' then raise exception '餘料箱請填寫個別米數。';end if;
    if line.id is not null and (line.inventory_item_id<>(row_data->>'inventory_item_id')::uuid or line.quantity_unit<>coalesce(row_data->>'quantity_unit','package') or line.is_remnant_box<>v_box) then v_line:=gen_random_uuid();end if;
    v_line:=coalesce(v_line,gen_random_uuid());
-   v_rows:=v_rows||jsonb_build_array(row_data||jsonb_build_object('id',v_line,'is_remnant_box',v_box));
+   if line.id is not null and v_line=line.id then v_order:=line.line_no;
+   else v_next_line:=v_next_line+1;v_order:=v_next_line;end if;
+   v_rows:=v_rows||jsonb_build_array(row_data||jsonb_build_object('id',v_line,'is_remnant_box',v_box,'line_no',v_order));
   end loop;
  end if;
  -- Same inventory locks as all other stock writes, in a stable order.
@@ -226,7 +230,8 @@ begin
  for v_line in select id from public.site_return_lines where document_id=p_document_id
  union select (r->>'id')::uuid from jsonb_array_elements(v_rows) r loop
   select * into line from public.site_return_lines where id=v_line;
-  select r.value,r.n::integer into row_data,v_order from jsonb_array_elements(v_rows) with ordinality r(value,n) where (r.value->>'id')::uuid=v_line;
+  select r into row_data from jsonb_array_elements(v_rows) r where (r->>'id')::uuid=v_line;
+  v_order:=(row_data->>'line_no')::integer;
   v_item:=coalesce((row_data->>'inventory_item_id')::uuid,line.inventory_item_id);
   v_old:=case when old_doc.status='active' then coalesce(line.quantity,0) else 0 end;
   v_old_unit:=coalesce(line.quantity_unit,'package');
