@@ -20,7 +20,7 @@ function schedulePendingWorkLogItems(){
  pendingLogTimer=setTimeout(async()=>{const current=()=>revision===pendingLogRevision&&host.isConnected&&modal.dataset.type==='workLogModal'&&modal.classList.contains('open');try{
   const data=await apiRequest({method:'GET',scope:'pending_work_log_items',projectId:project.id,from:date,excludeId:modal.dataset.id||''});if(!current())return;
   form._pendingLogItems=data.items||[];const writable=!modal.dataset.id||canWorkLog('UPDATE',modal.dataset.id);
-  host.innerHTML='<legend>先前日誌未完成項目</legend><p>勾選後會填入本日已完成內容；儲存成功後，原日誌的「未完成」會保留事項並標示完成日期，不移入原日誌的「已完成」。原日誌仍有其他待辦時維持未完成。</p>'+form._pendingLogItems.map((row,index)=>`<label><input type="checkbox" data-pending-log-index="${index}" ${row.can_complete&&writable?'':'disabled'}><span>${esc(row.log_date)}｜${esc(row.pending_text)}${row.can_complete?'':'（無修改原日誌權限）'}</span></label>`).join('');host.hidden=!form._pendingLogItems.length;
+  host.innerHTML='<legend>先前日誌未完成項目</legend><p>勾選後會填入本日已完成內容；儲存成功後，原日誌的「未完成」會保留事項並標示完成日期，不移入原日誌的「已完成」。原日誌仍有其他待辦時維持未完成。</p>'+form._pendingLogItems.map((row,index)=>`<label><input type="checkbox" data-pending-log-index="${index}" ${row.can_complete&&writable?'':'disabled'}><span>${esc(row.log_date)}｜${esc(row.pending_text)}${row.can_complete?'':'（無結清此未完成項目權限）'}</span></label>`).join('');host.hidden=!form._pendingLogItems.length;
  }catch(error){if(current())host.textContent='先前日誌待辦讀取失敗：'+error.message;}},200);
 }
 document.addEventListener('change',event=>{const form=event.target.closest('#modalForm');if(!form)return;
