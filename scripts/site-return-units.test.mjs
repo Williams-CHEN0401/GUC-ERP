@@ -13,25 +13,24 @@ function lineFixture({originalMode='package',originalItem='cable',snapshot='',re
  const c=vm.createContext({state:{categories:[]},data:{items},editor:{readonly},item:id=>items.find(i=>i.id===id),options:()=>''});
  for(const name of ['byId','inventoryUnitIsMeter','looseMeterCategory','inventoryAllowsLooseMeters'])vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),c);
  vm.runInContext(returns.slice(returns.indexOf(' function lineChoices('),returns.indexOf(' function addLine(')),c);
- const category={value:''},selected={value:'cable'},mode={value:originalMode,options:[{},{}]},quantity={value:'123.75'},lengths={value:'',setCustomValidity(value){this.validationMessage=value;}},unit={},lengthField={};
- const row={dataset:{originalMode,originalItem,originalPackageUnit:snapshot},querySelector:s=>({'[data-return-item-category]':category,'[data-return-item]':selected,'[data-return-mode]':mode,'[data-return-quantity]':quantity,'[data-return-lengths]':lengths,'[data-return-unit]':unit,'[data-return-length-field]':lengthField})[s]};
+ const category={value:''},selected={value:'cable'},mode={value:originalMode,options:[{},{}]},quantity={value:'123.75',readOnly:false},lengths={value:''},unit={},lengthField={},legacy={};
+ const row={dataset:{originalMode,originalItem,originalPackageUnit:snapshot},querySelector:s=>({'[data-return-item-category]':category,'[data-return-item]':selected,'[data-return-mode]':mode,'[data-return-quantity]':quantity,'[data-return-label]':{closest:()=>lengthField},'[data-return-legacy]':legacy})[s]};
  return {c,row,selected,mode,quantity,lengths,unit,lengthField};
 }
 test('existing site-return package lines can switch to loose meters without a length or quantity reset',()=>{
  const f=lineFixture();f.c.lineChoices(f.row);assert.equal(f.mode.disabled,false);assert.equal(f.mode.options[0].textContent,'箱');
  f.mode.value='meter';f.c.lineChoices(f.row);assert.equal(f.mode.value,'meter');assert.equal(f.quantity.value,'123.75');assert.equal(f.quantity.readOnly,false);assert.equal(f.lengthField.hidden,false);
- f.mode.value='package';f.c.lineChoices(f.row);assert.equal(f.quantity.value,'123.75');assert.equal(f.unit.textContent,'箱');
+ f.mode.value='package';f.c.lineChoices(f.row);assert.equal(f.quantity.value,'123.75');assert.equal(f.mode.options[0].textContent,'箱');
 });
 test('site-return package snapshots stay on the original item and cannot grant another item historical meter access',()=>{
  const f=lineFixture({originalMode:'meter',snapshot:'舊單位'});f.c.lineChoices(f.row);assert.equal(f.mode.options[0].textContent,'捲');
- f.selected.value='camera';f.c.lineChoices(f.row);assert.equal(f.mode.options[1].hidden,true);assert.equal(f.mode.value,'package');assert.equal(f.unit.textContent,'台');assert.equal(f.quantity.value,'123.75');
- const old=lineFixture({snapshot:'包'});old.c.lineChoices(old.row);assert.equal(old.unit.textContent,'包');
- const fresh=lineFixture({originalMode:'',originalItem:''});fresh.c.lineChoices(fresh.row);assert.equal(fresh.unit.textContent,'捲');
+ f.selected.value='camera';f.c.lineChoices(f.row);assert.equal(f.mode.options[1].hidden,true);assert.equal(f.mode.value,'package');assert.equal(f.mode.options[0].textContent,'台');assert.equal(f.quantity.value,'123.75');
+ const old=lineFixture({snapshot:'包'});old.c.lineChoices(old.row);assert.equal(old.mode.options[0].textContent,'包');
+ const fresh=lineFixture({originalMode:'',originalItem:''});fresh.c.lineChoices(fresh.row);assert.equal(fresh.mode.options[0].textContent,'捲');
 });
-test('site-return lengths stay optional and read-only documents keep their unit selector disabled',()=>{
+test('each return row keeps its individual meters and read-only documents keep their unit selector disabled',()=>{
  const f=lineFixture({readonly:true});f.c.lineChoices(f.row);assert.equal(f.mode.disabled,true);
- f.mode.value='meter';f.lengths.value='10.25、5';f.c.lineChoices(f.row);assert.equal(f.quantity.value,'15.25');assert.equal(f.quantity.readOnly,true);
- f.lengths.value='';f.c.updateLengths(f.row);assert.equal(f.quantity.readOnly,false);assert.equal(f.quantity.value,'15.25');
+ f.mode.value='meter';f.lengths.value='10.25、5';f.c.lineChoices(f.row);assert.equal(f.quantity.value,'123.75');assert.equal(f.quantity.readOnly,false);assert.equal(f.quantity.step,'0.01');
 });
 
 const edge=stripTypeScriptTypes(readFileSync(new URL('../supabase/functions/inventory-gateway/index.ts',import.meta.url),'utf8').replace(/^import .*node:async_hooks.*;\r?\n/m,''),{mode:'strip'});
