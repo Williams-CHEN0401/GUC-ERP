@@ -10,7 +10,7 @@ const baseline=readFileSync(new URL('../supabase/migrations/20260923003902_indep
 const source=name=>app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'('));
 function ui(){
  const context=vm.createContext({receiptEditorKind:()=>"receipt",receiptPriceField:()=>"",itemCategoryOptions:()=>'',inventoryItemOptions:()=>'',state:{inventory:[{id:'i',categoryId:'c'},{id:'j',categoryId:'c'}]},MAX_BATCH_ROWS:20});
- for(const name of ['esc','byId','valueText','cablePickupUnitField','transactionBatchRow','collectTransactionBatchRows'])vm.runInContext(source(name),context);
+ for(const name of ['esc','byId','valueText','cablePickupUnitField','remnantPickupField','transactionBatchRow','collectTransactionBatchRows'])vm.runInContext(source(name),context);
  return context;
 }
 test('both batch types show a safely escaped optional last note, before delete',()=>{
@@ -25,7 +25,7 @@ test('both batch types show a safely escaped optional last note, before delete',
 });
 test('row collector preserves each note, trims blank, rejects overlong and duplicate pickups',()=>{
  const c=ui(),data=[{item:'i',note:' A '},{item:'j',note:' B '}];
- c.document={querySelector:()=>({_transactionLimit:20}),querySelectorAll:()=>data.map(row=>({querySelector:key=>({value:key==='[data-batch-category]'?'c':key==='[data-batch-item]'?row.item:key==='[name="batchQuantity"]'?'2':row.note})}))};
+ c.document={querySelector:()=>({_transactionLimit:20}),querySelectorAll:()=>data.map(row=>({querySelector:key=>({value:key==='[data-batch-category]'?'c':key==='[data-batch-item]'?row.item:key==='[name="batchQuantity"]'?'2':key==='[name="batchQuantityUnit"]'?'package':key==='[name="batchRemnantLine"]'?'':row.note})}))};
  assert.deepEqual(Array.from(c.collectTransactionBatchRows('pickup'),x=>x.note),['A','B']);
  data[1].note='  ';assert.equal(c.collectTransactionBatchRows('pickup')[1].note,'');
  data[1].note='長'.repeat(501);assert.throws(()=>c.collectTransactionBatchRows('pickup'),/500/);
