@@ -407,6 +407,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   return;
  }
  if(siteRequest)requirePermission(user,"site");
+ if(scope==='pending_work_log_items'&&!entity&&params.get('work_type')!=='維修紀錄'&&hasConstructionPermission(user,'construction_plans')&&hasConstructionPermission(user,'construction_logs'))return;
  if((["construction_plans","construction_drawings","construction_drawing_file"].includes(scope)||scope==="nas_upload_context"&&params.has("construction_plan_id"))&&!entity){if(!hasConstructionPermission(user,'construction_plans'))throw new Error("沒有施工規劃查看權限。");return;}
  if(entity){
   const module=entity.startsWith("monitoring_")?"monitoring":entity.startsWith("phone_")?"phone":entity.startsWith("equipment_history")||entity==="maintenance_workers"?"history":({shared_work_log:"worklogs",audit_logs:"audit",customer_service_management:"customers",inventory:"inventory",customers:"customers",projects:"projects",suppliers:"suppliers",repairs:"repairs",pickups:"pickups",receipts:"purchases"} as Record<string,string>)[entity];
