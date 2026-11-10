@@ -6,7 +6,7 @@ import vm from 'node:vm';
 function setup() {
   const form={elements:{supplierId:{value:'supplier-a'}},draft:[{item:'existing',quantity:7,price:12.5}]};
   const modal={dataset:{type:'receiptModal'}},scope={value:'supplier'},requests=[];
-  const context=vm.createContext({document:{addEventListener(){},querySelector(selector){return selector==='#modalForm'?form:selector==='#simpleModal'?modal:selector==='#receiptItemSearchScope'?scope:null;}},state:{inventory:[],categories:[]},receiptEditorKind:()=> 'receipt',renderTransactionItemSearch(){},apiRequest:()=>new Promise(resolve=>requests.push(resolve)),matches:(parts,q)=>parts.some(p=>String(p||'').includes(q))});
+  const context=vm.createContext({itemAliasTerms:()=>[],itemAliasSummary:()=>"",refreshTransactionAliasLabels(){},document:{addEventListener(){},querySelector(selector){return selector==='#modalForm'?form:selector==='#simpleModal'?modal:selector==='#receiptItemSearchScope'?scope:null;}},state:{inventory:[],categories:[]},receiptEditorKind:()=> 'receipt',renderTransactionItemSearch(){},apiRequest:()=>new Promise(resolve=>requests.push(resolve)),matches:(parts,q)=>parts.some(p=>String(p||'').includes(q))});
   vm.runInContext(fs.readFileSync(new URL('../receipt-delivery.js',import.meta.url),'utf8'),context);
   return {context,form,scope,requests};
 }

@@ -333,7 +333,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  suppliers:["create_supplier","update_supplier","delete_supplier"],
  appointments:["upsert_customer_appointment"],
  projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","update_work_assignment","cancel_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
- inventory:["bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
+ inventory:["save_item_alias","import_item_aliases","bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups","update_pickup_document","delete_pickup_document"],
  purchases:["create_supplier_return","update_supplier_return","delete_supplier_return","create_site_return","update_site_return","delete_site_return","cancel_site_return","delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
  repairs:["upsert_repair_item","delete_repair_item"],
@@ -355,6 +355,7 @@ function operationPermission(operation:string,payload:Row):{module:string;action
   if(["complete_work_assignment","acknowledge_work_assignment","close_work_content"].includes(operation))action="UPDATE";
  if(operation==="save_equipment_history")action=(payload.event as Row)?.id?"UPDATE":"CREATE";
  if(operation==="manage_customer_service")action=({create:"CREATE",update:"UPDATE",delete:"DELETE"} as Record<string,PermissionAction>)[text(payload.action)]||"UPDATE";
+  if(operation==="save_item_alias"&&payload.action==="deactivate")action="DELETE";
  return {module,action};
 }
 function requireOperation(user:AppUser|null,operation:string,payload:Row,legacyAllowed:Role[]): asserts user is AppUser {
@@ -396,7 +397,8 @@ function requestWebsite(request:Request,params:URLSearchParams,operation='',payl
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
  if(!siteRequest&&scope==='worklogs'&&!entity&&!hasPermission(user,'worklogs')&&hasConstructionPermission(user,'construction_plans')&&hasConstructionPermission(user,'construction_logs'))return;
- if(scope==="assignment_management"){if(entity)throw new Error("不支援其他資料查詢。");requirePermission(user,"appointments");requirePermission(user,"projects");return;}
+ if(scope==="item_aliases"){if(entity||siteRequest)throw Error("不支援此品項對照查詢。");if(!["inventory","purchases","pickups"].some(module=>hasPermission(user,module)))throw Error("沒有品項對照查詢權限。");return;}
+  if(scope==="assignment_management"){if(entity)throw new Error("不支援其他資料查詢。");requirePermission(user,"appointments");requirePermission(user,"projects");return;}
  if(["receipt_supplier_items","receipt_delivery_options"].includes(scope)){if(entity)throw Error("不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
  if(scope==="site_returns"){if(params.has("entity"))throw Error("案場餘料入庫不支援其他資料查詢。");if(siteRequest)requirePermission(user,"site");requirePermission(user,"purchases");return;}
  if(scope==="system_backup_authorization"){
@@ -586,7 +588,7 @@ async function phoneSecurityAudit(params: URLSearchParams, user: AppUser) {
 }
 
 // Option refresh reuses the same scope authorization and row restrictions.
-const FORM_REFERENCE_DATASETS = new Set(["customers","customer_categories","customer_departments","projects","project_workers","project_access","site_workers","suppliers","categories","items","contract_service_types","customer_contract_services","equipment_registry","app_roles","role_permissions","accounts","access_projects"]);
+const FORM_REFERENCE_DATASETS = new Set(["item_aliases","customers","customer_categories","customer_departments","projects","project_workers","project_access","site_workers","suppliers","categories","items","contract_service_types","customer_contract_services","equipment_registry","app_roles","role_permissions","accounts","access_projects"]);
 function referenceSnapshot(snapshot: Row): Row {
   return Object.fromEntries(Object.entries(snapshot).filter(([name])=>FORM_REFERENCE_DATASETS.has(name)||["scope","current_user","refreshed_at","errors","work_content_types"].includes(name)));
 }
@@ -617,6 +619,7 @@ async function scopedSnapshot(user: AppUser, scopeName: string, optionsOnly = fa
   if(scopeName === "appointments")return appointmentSnapshot(user);
   if(scopeName === "dashboard")return dashboardSnapshot(user);
   let names = scopes[scopeName];
+  if(["inventory","transactions"].includes(scopeName)&&names)names=[...names,"item_aliases"];
   if(scopeName==="crm"&&user.permissions&&user.role!=="admin")names=[...new Set([...(hasPermission(user,"customers")?["customers","contract_service_types","customer_contract_services"]:[]),...(hasPermission(user,"projects")?["customers","projects","project_workers","site_workers"]:[]),...(hasPermission(user,"suppliers")?["suppliers"]:[])])];
   if (!names) throw new Error("不支援的資料載入範圍。");
   if(!scopeName.startsWith("site")&&names.includes("customers"))names=[...new Set([...names,"customer_categories","customer_departments"])];
@@ -628,6 +631,7 @@ async function scopedSnapshot(user: AppUser, scopeName: string, optionsOnly = fa
     if(name==="receipts"&&scopeName==="inventory"&&!hasPermission(user,"purchases"))return [name,[]] as const;
     if(scopedData&&name==="customer_departments")return [name,await customerDepartmentRows(scopedData.customers)] as const;
     if(scopedData&&protectedDatasets.includes(name))return [name,scopedData[name]||[]] as const;
+    if(name==="item_aliases")return [name,((await rpc("item_aliases_read_v1",{p_actor:user.id,p_filters:{integration:true}})) as Row).records] as const;
     const definition = datasets[name];
     if(name==="accounts"&&user.permissions&&!hasPermission(user,"users"))return [name,[]] as const;
     if (definition.adminOnly && user.role !== "admin" && !(["accounts","app_roles"].includes(name)&&user.permissions&&hasPermission(user,"users"))) return [name, []] as const;
@@ -1365,6 +1369,8 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "create_product_category") { requireOperation(user,operation,payload,["admin"]); const name=limited(payload.name,80),code_prefix=text(payload.code_prefix).toUpperCase(); if(!name||!/^[A-Z]{1,3}$/.test(code_prefix)) throw new Error("貨品種類名稱須為 1–80 個字，編號字首限 1–3 個英文字母。"); return rpc("create_product_category_v1",{p_name:name,p_code_prefix:code_prefix,p_actor:actor}); }
   const openingMeters=(value:unknown)=>{const n=value==null||value===''?0:Number(value);if(!Number.isFinite(n)||n<0||n>=1e12||Math.abs(n*100-Math.round(n*100))>0.000001)throw Error("期初米數須為非負數，最多兩位小數。");return n;};
   const cableMeters=(value:unknown)=>{const meters=value==null||value===''?null:Number(value);if(meters!==null&&(!Number.isFinite(meters)||meters<=0||meters>=1e12||Math.abs(meters*100-Math.round(meters*100))>0.000001))throw Error('預設長度須為正數，最多兩位小數。');return meters;};
+  if(operation === "save_item_alias"){requireOperation(user,operation,payload,["admin"]);return rpc("save_item_alias_v1",{p_actor:user.id,p_payload:payload});}
+  if(operation === "import_item_aliases"){requireOperation(user,operation,payload,["admin"]);return rpc("import_item_aliases_v1",{p_actor:user.id,p_rows:payload.rows});}
   if (operation === "create_inventory_item") { requireOperation(user,operation,payload,["admin"]); const category_id=uuid(payload.category_id),brand=limited(payload.brand,120),item_name=limited(payload.item_name,200),unit=limited(payload.unit,30),model=nullable(payload.model,120),opening_quantity=nonNegative(payload.opening_quantity); if (!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null) throw new Error("請完整填寫品項資料，期初庫存不可小於 0。"); const result=await rpc("create_inventory_items_batch_v1",{p_rows:[{category_id,model:model||null,brand,item_name,unit,opening_quantity,opening_meters:openingMeters(payload.opening_meters),meters_per_unit:cableMeters(payload.meters_per_unit)}],p_actor:actor}) as Row[];return result[0]; }
   if (operation === "create_inventory_item_batch") { requireOperation(user,operation,payload,["admin"]); if(!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>20) throw new Error("每次必須建立 1 至 20 筆品項。"); const rows=payload.rows.map((value,index)=>{ if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆品項格式不正確。`); const row=value as Row,category_id=uuid(row.category_id),brand=limited(row.brand,120),item_name=limited(row.item_name,200),unit=limited(row.unit,30),model=nullable(row.model,120),opening_quantity=nonNegative(row.opening_quantity); if(!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null||!Number.isInteger(opening_quantity)) throw new Error(`第 ${index+1} 筆品項資料不完整，期初庫存須為 0 以上整數。`); return {category_id,brand,item_name,unit,model:model||null,opening_quantity,opening_meters:openingMeters(row.opening_meters),meters_per_unit:cableMeters(row.meters_per_unit)}; }); const keys=rows.map(row=>[row.category_id,row.item_name,row.brand,row.model||""].map(value=>String(value).trim().toLocaleLowerCase("zh-Hant")).join("|")); if(new Set(keys).size!==keys.length) throw new Error("同一批次中有重複品項，請檢查種類、名稱、品牌與型號。"); return rpc("create_inventory_items_batch_v1",{p_rows:rows,p_actor:actor}); }
   if (operation === "update_inventory_item" && payload.units_only === true) {
@@ -1921,12 +1927,13 @@ function redactAuditValue(value: unknown, depth=0): unknown {
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
-const AUDIT_ENTITIES:Record<string,string[]>={"customers":["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],"projects":["project","projects","project_workers","construction_plans","construction_plan_items","construction_plan_assignees","construction_details","maintenance_details","project_costs"],"assignments":["work_assignment","work_assignments"],"worklogs":["site_work_logs","site_work_log_workers","site_assets","attachments","work_log_access_requests"],"repairs":["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],"phone":["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],"monitoring":["sites","site_devices","site_device_credentials","monitoring_device_imports","access_device_imports","site_spreadsheet_imports","site_spreadsheet_templates"],"inventory":["inventory_item","inventory_items","product_categories","stock_adjustment","stock_adjustments","suppliers","bulk_update_batches","bulk_update_batch_items"],"transactions":["stock_receipt","stock_receipts","stock_receipt_customers","stock_transaction_documents","pickup_record","pickup_records","supplier_return_documents","supplier_return_lines","supplier_return_customers","site_return_documents","site_return_lines"],"accounts":["app_user","app_users","session","app_roles","role_permissions","project_access","erp_private_access"],"accounting":["accounting_material_prices","accounting_worker_wages","supplier_payment_terms","accounting_payroll","accounting_payables"],"performance":["performance_access","performance_reviews","performance_periods","performance_templates","performance_shared_tasks"],"system":["system_operation","system_backup"]};
+const AUDIT_ENTITIES:Record<string,string[]>={"customers":["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],"projects":["project","projects","project_workers","construction_plans","construction_plan_items","construction_plan_assignees","construction_details","maintenance_details","project_costs"],"assignments":["work_assignment","work_assignments"],"worklogs":["site_work_logs","site_work_log_workers","site_assets","attachments","work_log_access_requests"],"repairs":["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],"phone":["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],"monitoring":["sites","site_devices","site_device_credentials","monitoring_device_imports","access_device_imports","site_spreadsheet_imports","site_spreadsheet_templates"],"inventory":["supplier_item_aliases","inventory_item","inventory_items","product_categories","stock_adjustment","stock_adjustments","suppliers","bulk_update_batches","bulk_update_batch_items"],"transactions":["stock_receipt","stock_receipts","stock_receipt_customers","stock_transaction_documents","pickup_record","pickup_records","supplier_return_documents","supplier_return_lines","supplier_return_customers","site_return_documents","site_return_lines"],"accounts":["app_user","app_users","session","app_roles","role_permissions","project_access","erp_private_access"],"accounting":["accounting_material_prices","accounting_worker_wages","supplier_payment_terms","accounting_payroll","accounting_payables"],"performance":["performance_access","performance_reviews","performance_periods","performance_templates","performance_shared_tasks"],"system":["system_operation","system_backup"]};
 // Metadata only: never persist submitted passwords, salary values or request bodies.
 function auditOperation(operation:string,payload:Row){
  const needed=operationPermission(operation,payload),module=needed?.module||"";
  const types:Record<string,string>={users:"app_users",settings:"app_roles",customers:"customers",suppliers:"suppliers",appointments:"work_assignments",projects:"project",inventory:"inventory_item",pickups:"pickup_record",purchases:"stock_receipt",repairs:"repair_items",phone:"phone_extensions",credentials:"phone_system_credentials",monitoring:"site_devices",monitoring_import:"monitoring_device_imports",history:"maintenance_events",worklogs:"site_work_logs",equipment:"site_devices",backup:"system_backup"};
  let entityType=types[module]||"system_operation";
+  if(operation.includes("item_alias"))entityType="supplier_item_aliases";
  if(/supplier_return/.test(operation))entityType="supplier_return_documents";
  else if(/site_return/.test(operation))entityType="site_return_documents";
  else if(/construction/.test(operation))entityType="construction_plans";
@@ -2172,6 +2179,7 @@ async function handleRequest(request: Request) {
         return json({scope:"performance",performance:result,current_user:publicUser(user),errors:[]});
       }
       authorizeRead(user,params,request.headers.get("x-guc-system")==="site");
+      if(params.get("scope")==="item_aliases")return json(await rpc("item_aliases_read_v1",{p_actor:user.id,p_filters:{q:params.get("q")||"",supplier_id:params.get("supplier_id")||"",status:params.get("status")||"",history_id:params.get("history_id")||null,export:params.get("export")==="1"}}));
       if(params.get("scope")==="system_backup_authorization")return json({current_user:publicUser(user),authorized:true,action:params.get("action"),capabilities:{view:hasPermission(user,"system_backups","VIEW"),create:hasPermission(user,"system_backups","CREATE"),restore:hasPermission(user,"system_backups","UPDATE")}});
       if(params.get("entity")!=="shared_work_log")params.forEach(value=>assertPrivatePayload(value));
       if(params.get("entity")==="shared_work_log"){requirePermission(user,"worklogs");const result=await rpc("read_shared_work_log_v1",{p_actor_user_id:user.id,p_work_log_id:uuid(params.get("id"))});privateContext.getStore()!.sharedResult=true;return json({record:result,current_user:publicUser(user)});}

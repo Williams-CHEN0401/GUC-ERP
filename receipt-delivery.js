@@ -8,7 +8,7 @@ async function receiptMutation(operation,payload,message){
  if(message)showToast(message);
  return result;
 }
-function receiptSupplierSearchFields(){return '<label>品項範圍<select id="receiptItemSearchScope"><option value="supplier">供應商歷史品項</option><option value="all">所有有效貨品</option></select></label>';}
+function receiptSupplierSearchFields(){return '<label>品項範圍<select id="receiptItemSearchScope"><option value="supplier">供應商歷史／對照品項</option><option value="all">所有有效貨品</option></select></label>';}
 async function loadReceiptSupplierItems(){
  const form=document.querySelector('#modalForm');if(!form||receiptEditorKind()!=='receipt')return;
  const supplier=form.elements.supplierId?.value||'',generation=(form._supplierGeneration||0)+1;form._supplierGeneration=generation;
@@ -22,19 +22,19 @@ async function loadReceiptSupplierItems(){
 }
 function receiptSearchItems(query){
  const form=document.querySelector('#modalForm'),history=form?._supplierHistory;
- const active=state.inventory.filter(item=>state.categories.some(category=>category.id===item.categoryId&&category.active)&&matches([item.name,item.brand,item.model,item.code],query));
+ const active=state.inventory.filter(item=>state.categories.some(category=>category.id===item.categoryId&&category.active)&&matches([item.name,item.brand,item.model,item.code,...itemAliasTerms(item.id,form?.elements.supplierId?.value)],query));
  if(document.querySelector('#receiptItemSearchScope')?.value==='all'){
   const rank=new Map((history?.items||[]).map((r,index)=>[r.inventory_item_id,index]));
   return active.sort((a,b)=>(rank.get(a.id)??Infinity)-(rank.get(b.id)??Infinity)||a.name.localeCompare(b.name,'zh-Hant'));
  }
- const byItem=new Map(active.map(item=>[item.id,item]));return (history?.items||[]).map(r=>byItem.get(r.inventory_item_id)).filter(Boolean);
+ const byItem=new Map(active.map(item=>[item.id,item])),ids=[...new Set([...(history?.items||[]).map(r=>r.inventory_item_id),...(state.itemAliases||[]).filter(a=>a.supplier_id===form?.elements.supplierId?.value&&a.status!=="inactive").map(a=>a.inventory_item_id)])];return ids.map(id=>byItem.get(id)).filter(Boolean);
 }
 function receiptSearchStatus(count,shown){
  const history=document.querySelector('#modalForm')?._supplierHistory,all=document.querySelector('#receiptItemSearchScope')?.value==='all';
  if(!all&&history?.loading)return '正在讀取供應商歷史品項…';
  if(!all&&history?.error)return `歷史品項載入失敗：${history.error}。可重新選擇供應商重試，或切換所有有效貨品。`;
  if(!all&&!history?.supplier)return '請先選擇供應商，或切換所有有效貨品。';
- return count?`${all?'所有有效貨品（供應商歷史優先）':'供應商歷史品項'}：${count} 筆${count>shown?'，先顯示 50 筆，請縮小關鍵字':''}。`:all?'沒有符合的有效貨品。':'沒有符合的歷史品項，可切換「所有有效貨品」選擇新採購品項。';
+ return count?`${all?'所有有效貨品（供應商歷史優先）':'供應商歷史／對照品項'}：${count} 筆${count>shown?'，先顯示 50 筆，請縮小關鍵字':''}。`:all?'沒有符合的有效貨品。':'沒有符合的歷史品項，可切換「所有有效貨品」選擇新採購品項。';
 }
 document.addEventListener('change',event=>{
  if(document.querySelector('#simpleModal')?.dataset.type!=='receiptModal')return;
