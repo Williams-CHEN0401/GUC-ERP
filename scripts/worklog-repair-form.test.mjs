@@ -32,6 +32,7 @@ test('開啟新增表單等待施工人員，不在進入前詢問維修品',asy
   const calls=[];
   const context=vm.createContext({
     PREVIEW_MODE:false,
+    canConstructionPermission:()=>true,
     apiRequest:async()=>({construction_plans:[]}),
     mergeConstructionContext:data=>assert.deepEqual(data,{construction_plans:[]}),
     ensureWorkLogWorkers:()=>ready,
@@ -45,6 +46,14 @@ test('開啟新增表單等待施工人員，不在進入前詢問維修品',asy
   release();
   assert.equal(await opening,true);
   assert.deepEqual(calls,[['workLogModal','']]);
+});
+
+test('施工規劃未授權時，一般工作日誌表單仍可開啟',async()=>{
+ const calls=[],context=vm.createContext({PREVIEW_MODE:false,canConstructionPermission:()=>false,
+  apiRequest:()=>assert.fail('不應查詢未授權的施工規劃'),ensureWorkLogWorkers:async()=>true,
+  openModal:(...args)=>calls.push(args),showToast:()=>assert.fail('一般日誌不應被施工規劃權限阻擋')});
+ vm.runInContext(sourceBetween('async function openWorkLogModal','function syncAttachmentOptions'),context);
+ assert.equal(await context.openWorkLogModal(),true);assert.deepEqual(calls,[['workLogModal','']]);
 });
 
 test('新增日誌選維修/查修直接顯示維修明細，其他類型隱藏，既有維修事件保持顯示',()=>{

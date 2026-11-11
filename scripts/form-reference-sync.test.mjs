@@ -6,7 +6,7 @@ const read=f=>readFileSync(new URL('../'+f,import.meta.url),'utf8'),source=read(
 function runtime(){
  const calls=[],applied=[],modal={dataset:{type:'pickupModal',id:'row',editVersion:'2'}};
  const document={hidden:false,querySelector:s=>s==='#simpleModal.open'?modal:null,addEventListener(){}};
- const context=vm.createContext({document,window:{addEventListener(){}},setInterval(){},Date,accessToken:'user-B',PREVIEW_MODE:false,loadedScopes:new Set(['transactions']),state:{currentUser:{id:'B'}},currentPage:()=> 'transactions',PAGE_SCOPES:{transactions:'transactions'},apiRequest:async args=>{calls.push(args);return {scope:'transactions',categories:[{id:'new'}]};},hydrateSnapshot:(data,options)=>applied.push({data,options}),logout:()=>{context.accessToken='';}});
+ const context=vm.createContext({itemAliasTerms:()=>[],itemAliasSummary:()=>"",refreshTransactionAliasLabels(){},document,window:{addEventListener(){}},setInterval(){},Date,accessToken:'user-B',PREVIEW_MODE:false,loadedScopes:new Set(['transactions']),state:{currentUser:{id:'B'}},currentPage:()=> 'transactions',PAGE_SCOPES:{transactions:'transactions'},apiRequest:async args=>{calls.push(args);return {scope:'transactions',categories:[{id:'new'}]};},hydrateSnapshot:(data,options)=>applied.push({data,options}),logout:()=>{context.accessToken='';}});
  vm.runInContext(source,context);return {context,calls,applied,modal,document};
 }
 test('customer search precedes category/customer/department in the shared selector and receipt picker',()=>{
@@ -81,7 +81,7 @@ test('BFF forwards the option-only query and never caches authenticated referenc
 });
 test('inventory search combines case-insensitive name/brand/model/code and Chinese name-first order',()=>{
  const extract=name=>app.split('\n').find(line=>line.startsWith('function '+name+'('));
- const context=vm.createContext({state:{inventory:[{id:'z',categoryId:'c',name:'電源',code:'A001',brand:'ACME',model:'X200'},{id:'a',categoryId:'c',name:'中文設備',code:'Z999',brand:'Other',model:'M'},{id:'b',categoryId:'other',name:'中文設備',code:'B001'}]}});
+ const context=vm.createContext({itemAliasTerms:()=>[],itemAliasSummary:()=>"",refreshTransactionAliasLabels(){},state:{inventory:[{id:'z',categoryId:'c',name:'電源',code:'A001',brand:'ACME',model:'X200'},{id:'a',categoryId:'c',name:'中文設備',code:'Z999',brand:'Other',model:'M'},{id:'b',categoryId:'other',name:'中文設備',code:'B001'}]}});
  vm.runInContext(['esc','valueText','matches','sortRows','inventoryItemOptions'].map(extract).join('\n'),context);
  const all=context.inventoryItemOptions('c');assert.ok(all.indexOf('value="a"')<all.indexOf('value="z"'));
  const filtered=context.inventoryItemOptions('c','',' ACME ');assert.ok(filtered.includes('value="z"'));assert.ok(!filtered.includes('value="a"'));assert.ok(!filtered.includes('value="b"'));

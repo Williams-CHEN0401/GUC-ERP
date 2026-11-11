@@ -24,21 +24,29 @@
   const next=await apiRequest({method:'GET',scope:'site_returns'});if(version!==generation)return;data=next;choices();render();message('');
  }catch(e){if(version===generation)message(e.message,true);}finally{if(version===generation)loading=false;}}
  const dialog=document.getElementById('siteReturnDialog'),form=document.getElementById('siteReturnForm');
- function formChoices(resetCustomer=false,resetProject=false){const category=form.elements.category.value,cid=resetCustomer?'':form.elements.customer.value,pid=resetCustomer||resetProject?'':form.elements.project.value;
-  form.elements.customer.innerHTML=options(data.customers.filter(c=>!category||c.category===category),cid,c=>`${c.code||''}｜${c.name}`,'請選擇客戶');
-  form.elements.project.innerHTML=options(data.projects.filter(p=>p.customer_id===form.elements.customer.value),pid,p=>`${p.code||''}｜${p.name}`,'請選擇工作案名');form.elements.project.disabled=editor.readonly||!form.elements.customer.value;
+ function formChoices(resetCustomer=false,resetProject=false){const category=form.elements.category.value,cid=resetCustomer?'':form.elements.customer.value,pid=resetCustomer||resetProject?'':form.elements.project.value,query=form.elements.customerSearch.value.trim();
+  const rows=data.customers.filter(c=>(!category||c.category===category)&&(c.id===cid||matches([c.code,c.name],query)));
+  const available=!!category||!!query||!!cid;
+  form.elements.customer.innerHTML=options(available?rows:[],cid,c=>String(c.code||'')+'｜'+c.name,available?'請選擇客戶':'請選擇分類或搜尋客戶');form.elements.customer.disabled=editor.readonly||!available||!rows.length;
+  form.elements.project.innerHTML=options(data.projects.filter(p=>p.customer_id===form.elements.customer.value),pid,p=>String(p.code||'')+'｜'+p.name,'請選擇工作內容');form.elements.project.disabled=editor.readonly||!form.elements.customer.value;
+  document.getElementById('returnCustomerSearchStatus').textContent=query?(rows.length?'找到 '+rows.length+' 位客戶'+(cid?'（包含目前選取）':''):'沒有符合的客戶。'):'';
  }
  function lineChoices(row){const category=row.querySelector('[data-return-item-category]').value,select=row.querySelector('[data-return-item]'),selected=select.value;
-  const rows=data.items.filter(i=>(i.active||i.id===selected)&&(!category||i.category_id===category));select.innerHTML=options(rows,selected,i=>`${i.code}｜${i.name} ${i.brand||''} ${i.model||''}`,'請選擇品項');
-  const i=item(select.value),mode=row.querySelector('[data-return-mode]');mode.options[0].textContent=i?.unit||'原單位';mode.options[1].disabled=!i?.meters_per_unit;if(!i?.meters_per_unit)mode.value='package';mode.disabled=editor.readonly||!!row.dataset.originalMode;
-  const meter=mode.value==='meter';row.querySelector('[data-return-length-field]').hidden=!meter;
-  row.querySelector('[data-return-unit]').textContent=meter?'米（散料）':i?.unit||'—';
-  row.querySelector('[data-return-conversion]').textContent=i?.meters_per_unit?'每'+i.unit+' '+i.meters_per_unit+' 米；整包裝與散料庫存分開計算。':'按原單位入庫；線材可先至商品與庫存雙點擊品項設定每箱／捲米數。';
-  updateLengths(row);
+  const rows=data.items.filter(i=>(i.active||i.id===selected)&&(!category||i.category_id===category));select.innerHTML=options(rows,selected,i=>String(i.code)+'｜'+i.name+' '+(i.brand||'')+' '+(i.model||''),'請選擇品項');
+  const i=item(select.value),mode=row.querySelector('[data-return-mode]'),originalItem=!!i&&row.dataset.originalItem===i.id,packageUnit=originalItem&&row.dataset.originalMode==='package'?(row.dataset.originalPackageUnit||i.legacy_unit||i.unit):i?.unit;mode.options[0].textContent=packageUnit||'原單位';const eligible=inventoryAllowsLooseMeters(i),legacy=originalItem&&row.dataset.originalMode==='meter';mode.options[1].textContent=eligible?'散料（米）':'米（既有紀錄）';mode.options[1].hidden=!eligible&&!legacy;mode.options[1].disabled=!eligible&&!legacy;if(!eligible&&!legacy)mode.value='package';mode.disabled=editor.readonly;
+  const meter=mode.value==='meter',quantity=row.querySelector('[data-return-quantity]');quantity.step=meter?'0.01':'1';quantity.min=meter?'0.01':'1';
+  row.querySelector('[data-return-label]').closest('label').hidden=!meter;
+  row.querySelector('[data-return-legacy]').hidden=!(meter&&legacy&&row.dataset.wasBox!=='true');
  }
- function parseLengths(value){if(!value.trim())return [];const parts=value.trim().split(/[、,，\s]+/);if(parts.length>100||parts.some(v=>!/^\d+(?:\.\d{1,2})?$/.test(v)||Number(v)<=0||Number(v)>=1e12))throw Error('每段米數須為正數、最多兩位小數，最多 100 段。');return parts.map(Number);}
- function updateLengths(row){const q=row.querySelector('[data-return-quantity]'),f=row.querySelector('[data-return-lengths]'),meter=row.querySelector('[data-return-mode]').value==='meter';q.readOnly=meter&&!!f.value.trim();f.setCustomValidity('');if(!meter)return;try{const values=parseLengths(f.value);if(values.length)q.value=String(values.reduce((n,v)=>n+Math.round(v*100),0)/100);}catch(e){f.setCustomValidity(e.message);}}
- function addLine(line={}){const row=document.createElement('div');row.className='site-return-line';row.dataset.originalMode=line.id?line.quantity_unit||'package':'';row.innerHTML=`<label>貨品種類<select data-return-item-category>${options([...new Map(data.items.map(i=>[i.category_id,{id:i.category_id,name:i.category}])).values()],item(line.inventory_item_id)?.category_id||'',r=>r.name,'所有種類')}</select></label><label class="return-item-field">品項名稱<select data-return-item required>${options(data.items,line.inventory_item_id||'',i=>`${i.code}｜${i.name} ${i.brand||''} ${i.model||''}`,'請選擇品項')}</select></label><label>入庫單位<select data-return-mode><option value="package">原單位</option><option value="meter" ${line.quantity_unit==='meter'?'selected':''}>散料（米）</option></select></label><label>入庫數量<input type="number" data-return-quantity min="0.01" max="999999999999.99" step="0.01" value="${esc(line.quantity||'')}" required></label><div>計量單位<strong data-return-unit>${esc(item(line.inventory_item_id)?.unit||'—')}</strong></div><label data-return-length-field class="return-lengths" hidden>餘料每段米數（可選填）<input data-return-lengths value="${esc((line.lengths||[]).join('、'))}" placeholder="例如：85、93、32" maxlength="1600"><small>以逗號、頓號或空白分隔，填寫後自動加總。</small></label><p data-return-conversion class="return-lengths"></p><button type="button" class="outline" data-return-remove>移除此項</button>`;
+ function addLine(line={}){const row=document.createElement('div');row.className='batch-row transaction-batch-row site-return-line';row.dataset.lineId=line.id||uid();row.dataset.originalMode=line.id?line.quantity_unit||'package':'';row.dataset.originalItem=line.id?line.inventory_item_id||'':'';row.dataset.originalPackageUnit=line.package_unit_snapshot||'';row.dataset.wasBox=String(!!line.is_remnant_box);row._lengths=line.lengths||[];row._originalQuantity=Number(line.quantity||0);
+  const label=(name,body,cls='')=>'<label'+(cls?' class="'+cls+'"':'')+'>'+name+body+'</label>';
+  row.innerHTML='<span class="batch-sequence" aria-label="序號"></span>'+
+  label('貨品種類','<select data-return-item-category>'+options([...new Map(data.items.map(i=>[i.category_id,{id:i.category_id,name:i.category}])).values()],item(line.inventory_item_id)?.category_id||'',r=>r.name,'所有種類')+'</select>')+
+  label('品項名稱','<select data-return-item required>'+options(data.items,line.inventory_item_id||'',i=>String(i.code)+'｜'+i.name+' '+(i.brand||'')+' '+(i.model||''),'請選擇品項')+'</select>','inventory-search-choice')+
+  label('數量／米數','<input type="number" data-return-quantity min="0.01" max="999999999999.99" step="0.01" value="'+esc(line.quantity??'')+'" required>')+
+  label('入庫單位','<select data-return-mode><option value="package">原單位</option><option value="meter" '+(line.quantity_unit==='meter'?'selected':'')+'>散料（米）</option></select>')+
+  label('箱號／備註','<input data-return-label maxlength="80" value="'+esc(line.box_label||'')+'" placeholder="選填；每列一箱">')+
+  '<button type="button" class="row-remove" data-return-remove aria-label="刪除此列">刪除</button><small data-return-legacy class="return-legacy-hint" hidden>歷史未分箱散料</small>';
   form.querySelector('[data-return-lines]').append(row);row.querySelectorAll('input,select,button').forEach(el=>el.disabled=editor.readonly);lineChoices(row);return row;
  }
  function renderItemSearch(){const query=val('returnItemSearch').trim(),rows=query?data.items.filter(i=>i.active&&matches([i.name,i.brand,i.model,i.code],query)).sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant')):[],shown=rows.slice(0,50);
@@ -46,8 +54,7 @@
   document.getElementById('returnItemSearchStatus').textContent=!query?'輸入關鍵字搜尋品項。':!rows.length?'沒有符合的品項。':rows.length>shown.length?`共 ${rows.length} 筆，顯示前 50 筆，請縮小關鍵字。`:`找到 ${rows.length} 筆品項。`;
  }
  function chooseSearchItem(id){if(saving||editor?.readonly)return;const selected=item(id);if(!selected?.active)return;
-  const rows=[...form.querySelectorAll('.site-return-line')],existing=rows.find(row=>row.querySelector('[data-return-item]').value===id),status=document.getElementById('returnItemSearchStatus');
-  if(existing){existing.querySelector('[data-return-quantity]').focus();status.textContent=`${selected.name} 已在入庫明細，請直接調整數量。`;return;}
+  const rows=[...form.querySelectorAll('.site-return-line')],status=document.getElementById('returnItemSearchStatus');
   let row=rows.find(row=>!row.querySelector('[data-return-item]').value);if(!row){if(rows.length>=50){status.textContent='每張入庫單最多 50 筆明細。';return;}row=addLine();}
   row.querySelector('[data-return-item-category]').value=selected.category_id||'';lineChoices(row);row.querySelector('[data-return-item]').value=id;lineChoices(row);row.querySelector('[data-return-quantity]').focus();
   status.textContent=`已帶入第 ${[...form.querySelectorAll('.site-return-line')].indexOf(row)+1} 列：${selected.name}。`;
@@ -65,13 +72,13 @@
   const result=await apiRequest({operation:action+'_site_return',payload:{...payload,request_id:requestKey}});
   loadedScopes.clear();invalidateSharedReports();await load();await loadPageData(currentPage(),{force:true,silent:true});return result;
  }
- form.addEventListener('change',e=>{if(e.target.name==='category')formChoices(true,true);if(e.target.name==='customer')formChoices(false,true);const row=e.target.closest('.site-return-line');if(row){if(e.target.hasAttribute('data-return-item-category'))row.querySelector('[data-return-item]').value='';lineChoices(row);}});
- form.addEventListener('input',e=>{if(e.target.id==='returnItemSearch')renderItemSearch();if(e.target.hasAttribute('data-return-lengths'))updateLengths(e.target.closest('.site-return-line'));});
+ form.addEventListener('change',e=>{if(e.target.name==='category')formChoices(true,true);if(e.target.name==='customer'){const selected=customer(form.elements.customer.value);if(selected)form.elements.category.value=selected.category;formChoices(false,true);}const row=e.target.closest('.site-return-line');if(row){if(e.target.hasAttribute('data-return-item-category'))row.querySelector('[data-return-item]').value='';lineChoices(row);}});
+ form.addEventListener('input',e=>{if(e.target.id==='returnItemSearch')renderItemSearch();if(e.target.name==='customerSearch')formChoices();});
  form.addEventListener('keydown',e=>{if(e.target.id==='returnItemSearch'&&e.key==='Enter'&&!e.isComposing){e.preventDefault();renderItemSearch();}});
  form.addEventListener('click',e=>{if(saving||editor?.readonly)return;const result=e.target.closest('[data-return-search-item]');if(result)chooseSearchItem(result.dataset.returnSearchItem);if(e.target.closest('[data-return-add]')){if(form.querySelectorAll('.site-return-line').length>=50)return;addLine();}if(e.target.closest('[data-return-remove]'))e.target.closest('.site-return-line').remove();});
  form.addEventListener('submit',async e=>{e.preventDefault();if(saving||editor.readonly)return;const output=form.querySelector('[data-return-form-message]');try{
-  const rows=[...form.querySelectorAll('.site-return-line')].map(row=>({inventory_item_id:row.querySelector('[data-return-item]').value,quantity:Number(row.querySelector('[data-return-quantity]').value),quantity_unit:row.querySelector('[data-return-mode]').value,lengths:row.querySelector('[data-return-mode]').value==='meter'?parseLengths(row.querySelector('[data-return-lengths]').value):[]}));
-  if(!rows.length||rows.some(r=>!r.inventory_item_id||!Number.isFinite(r.quantity)||r.quantity<=0))throw Error('請加入至少一筆有效材料。');if(new Set(rows.map(r=>r.inventory_item_id)).size!==rows.length)throw Error('相同品項請合併數量。');
+  const rows=[...form.querySelectorAll('.site-return-line')].map(row=>{const inventory_item_id=row.querySelector('[data-return-item]').value,quantity=Number(row.querySelector('[data-return-quantity]').value),quantity_unit=row.querySelector('[data-return-mode]').value,legacy=quantity_unit==='meter'&&row.dataset.originalMode==='meter'&&row.dataset.originalItem===inventory_item_id&&row.dataset.wasBox!=='true';return {id:row.dataset.lineId,inventory_item_id,quantity,quantity_unit,is_remnant_box:quantity_unit==='meter'&&!legacy,box_label:row.querySelector('[data-return-label]').value.trim(),lengths:legacy&&quantity===row._originalQuantity?row._lengths:[]};});
+  if(!rows.length||rows.some(r=>!r.inventory_item_id||!Number.isFinite(r.quantity)||r.quantity<=0))throw Error('請加入至少一筆有效材料。');
   saving=true;form.querySelector('fieldset').disabled=true;form.querySelector('[data-return-save]').disabled=true;output.textContent='儲存中…';
   await save(editor.version?'update':'create',{document_id:editor.id,row_version:editor.version,return_date:form.elements.date.value,customer_id:form.elements.customer.value,project_id:form.elements.project.value,rows,note:form.elements.note.value});dialog.close();showToast('案場餘料入庫已儲存，庫存與用料報表已更新。');
  }catch(e){output.textContent=e.message;}finally{saving=false;form.querySelector('fieldset').disabled=false;form.querySelector('[data-return-save]').disabled=false;}});

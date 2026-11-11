@@ -9,7 +9,7 @@
   if(mode!==null&&!['exclusive','inclusive'].includes(mode))throw Error('計價模式不正確。');
   if((mode===null)!==(rate===null)||rate!==null&&(!Number.isInteger(rate)||rate<0||rate>10000))throw Error('稅率須為 0 至 100%，最多兩位小數。');
   let input=0n,missing=0;
-  for(const line of lines){if(!Number.isSafeInteger(Number(line.quantity))||Number(line.quantity)<=0)throw Error('數量須為正整數。');if(line.unit_price==null||line.unit_price===''){missing++;continue;}const price=cents(line.unit_price);if(price>=100000000000000n)throw Error('單價超過上限。');input+=round(price*BigInt(line.quantity),100n);}
+  for(const line of lines){if(!Number.isFinite(Number(line.quantity))||Number(line.quantity)<=0||(line.quantity_unit==='meter'?!/^\d+(\.\d{1,2})?$/.test(String(line.quantity)):!Number.isSafeInteger(Number(line.quantity))))throw Error('數量須為正數，散料最多兩位小數。');if(line.unit_price==null||line.unit_price===''){missing++;continue;}const price=cents(line.unit_price);if(price>=100000000000000n)throw Error('單價超過上限。');input+=round(price*cents(line.quantity),10000n);}
   if(missing===0&&BigInt(discount)>input)throw Error("折扣不可超過進貨金額。");
   const after=input-BigInt(discount);let net=null,tax=null,total=null;
   if(mode&&missing===0){if(mode==='inclusive'){total=after;net=round(total*10000n,10000n+BigInt(rate));tax=total-net;}else{net=after;tax=round(net*BigInt(rate),10000n);total=net+tax;}}

@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import vm f
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 function fixture(){
  const c=vm.createContext({state:{categories:[{id:'weak',name:'弱電線材'},{id:'wire',name:'電線&電纜類'},{id:'camera',name:'監控設備'}]},inputField:(name,label,type,required,value)=>`<label>${label}<input name="${name}" value="${value}"></label>`,submitField:label=>`<button>${label}</button>`});
- for(const name of ['byId','esc','inventoryUnitIsMeter','cableLengthEnabled','inventoryUnitSettingsFields','inventoryUnitSettingsPayload','cablePickupUnitField'])vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),c);
+ for(const name of ['byId','esc','looseMeterCategory','inventoryAllowsLooseMeters','inventoryUnitIsMeter','cableLengthEnabled','inventoryUnitSettingsFields','inventoryUnitSettingsPayload','cablePickupUnitField'])vm.runInContext(app.split(/\r?\n/).find(line=>line.startsWith('function '+name+'(')),c);
  const item={id:'item-1',rowVersion:4,categoryId:'weak',name:'網路線',brand:'既有品牌',model:'原型號',unit:'箱',metersPerUnit:null,openingQuantity:7};return{c,item};
 }
 test('unit settings update one item using its pinned version, retaining all non-unit fields and original opening stock',()=>{
