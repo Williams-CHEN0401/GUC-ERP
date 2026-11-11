@@ -20,6 +20,7 @@ try{
  for(const role of ['writer','viewer','creator'])for(const module of ['website_erp','inventory','purchases','pickups','data_export'])await db.query('insert into role_permissions values($1,$2,true,$3,$4,$5)',[role,module,module==='website_erp'||role!=='viewer',role==='writer',role==='writer']);
  await db.query("insert into suppliers values($1,'元盛電子'),($2,'第二供應商')",[ids.s1,ids.s2]);await db.query("insert into inventory_items(id,inventory_code,item_name,unit)values($1,'A001','感應磁扣','個'),($2,'A002','其他商品','盒')",[ids.i1,ids.i2]);
  await db.exec(await sql('20261110152834_item_name_alias_management.sql'));
+ await db.exec(await sql('20261111051652_item_alias_optional_erp_item.sql'));
  const call=async(name,args)=>{await db.exec('set role service_role');try{return (await db.query('select public.'+name+'('+args.map((_,i)=>'$'+(i+1)).join(',')+') as r',args)).rows[0].r;}finally{await db.exec('reset role');}};
  const payload={supplier_id:ids.s1,inventory_item_id:ids.i1,supplier_item_name:'Mifare Standard',supplier_sku:'MF',status:'confirmed'};
  let a=await call('save_item_alias_v1',[ids.writer,JSON.stringify(payload)]);assert(a.id);
@@ -50,5 +51,21 @@ try{
  const off=await call('save_item_alias_v1',[ids.writer,JSON.stringify({id:a.id,row_version:a.row_version,action:'deactivate'})]);assert.equal(off.status,'inactive');
  assert(!(await call('item_aliases_read_v1',[ids.viewer,JSON.stringify({integration:true})])).records.some(r=>r.id===a.id));
  pass('atomic import rollback, invalid input, disabled aliases and history retention');
- assert.equal(groups,4);
+ const unassigned={supplier_id:ids.s1,supplier_item_name:'尚未找到 ERP 商品',supplier_sku:'UNMAPPED',status:'pending'};
+ let draft=await call('save_item_alias_v1',[ids.writer,JSON.stringify(unassigned)]);assert.equal(draft.inventory_item_id,null);
+ let found=(await call('item_aliases_read_v1',[ids.viewer,JSON.stringify({q:unassigned.supplier_item_name})])).records;assert.equal(found.length,1);assert.equal(found[0].id,draft.id);assert.equal(found[0].item_name,null);
+ assert(!(await call('item_aliases_read_v1',[ids.viewer,JSON.stringify({integration:true})])).records.some(r=>r.id===draft.id));
+ await assert.rejects(call('save_item_alias_v1',[ids.writer,JSON.stringify(unassigned)]),/已有相同對照/);
+ await assert.rejects(call('save_item_alias_v1',[ids.writer,JSON.stringify({...unassigned,inventory_item_id:ids.i1})]),/已有相同對照/);
+ await assert.rejects(call('save_item_alias_v1',[ids.writer,JSON.stringify({...unassigned,id:draft.id,row_version:draft.row_version,status:'confirmed'})]),/先選擇 ERP/);
+ await assert.rejects(call('save_item_alias_v1',[ids.viewer,JSON.stringify({...unassigned,supplier_sku:'denied'})]),/權限/);
+ const unassignedCount=await count();await assert.rejects(call('import_item_aliases_v1',[ids.writer,JSON.stringify([{...unassigned,supplier_item_name:'整批回滾',supplier_sku:'ROLLBACK'},unassigned])]),/已有相同對照/);assert.equal(await count(),unassignedCount);
+ assert.equal((await call('import_item_aliases_v1',[ids.writer,JSON.stringify([{...unassigned,supplier_item_name:'匯入未對照',supplier_sku:'IMPORT',inventory_item_id:null}])])).imported,1);
+ draft=await call('save_item_alias_v1',[ids.writer,JSON.stringify({...unassigned,id:draft.id,row_version:draft.row_version,inventory_item_id:ids.i1,status:'confirmed'})]);assert.equal(draft.inventory_item_id,ids.i1);assert.equal(draft.status,'confirmed');
+ assert((await call('item_aliases_read_v1',[ids.viewer,JSON.stringify({integration:true})])).records.some(r=>r.id===draft.id));
+ draft=await call('save_item_alias_v1',[ids.writer,JSON.stringify({...unassigned,id:draft.id,row_version:draft.row_version,inventory_item_id:''})]);assert.equal(draft.inventory_item_id,null);assert.equal(draft.status,'pending');
+ assert.equal((await call('item_aliases_read_v1',[ids.viewer,JSON.stringify({history_id:draft.id})])).history.length,3);
+ assert.deepEqual((await db.query('select to_jsonb(i) as r from inventory_items i order by id')).rows,before);
+ pass('optional ERP item saves, lists and imports; linking, clearing, duplicate, audit, RBAC and transaction isolation remain correct');
+ assert.equal(groups,5);
 }finally{await db.close();}

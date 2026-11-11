@@ -1,5 +1,6 @@
 /* Name identification reuses existing inventory/supplier masters and session. */
 function itemAliasRows(id,supplierId=''){
+ if(!id)return [];
  return (state.itemAliases||[]).filter(a=>a.inventory_item_id===id&&a.status!=='inactive'&&(!supplierId||a.supplier_id===supplierId));
 }
 function itemAliasTerms(id,supplierId=''){
@@ -29,7 +30,7 @@ function refreshTransactionAliasLabels(){
  function render(){
   const f=filters(),rows=data.records.filter(a=>(!f.supplier_id||a.supplier_id===f.supplier_id)&&(!f.status||a.status===f.status)&&matches([a.supplier_name,a.supplier_item_name,a.supplier_sku,a.item_name,a.inventory_code,a.brand,a.model,a.specification,a.item_brand,a.item_model],f.q));
   const pages=Math.max(1,Math.ceil(rows.length/10));page=Math.min(page,pages);
-  pane.querySelector('[data-alias-table]').innerHTML=rows.slice((page-1)*10,page*10).map(a=>`<tr><td>${esc(a.supplier_name)}</td><td><strong>${esc(a.supplier_item_name)}</strong><small>${esc([a.supplier_sku,a.brand,a.model,a.specification].filter(Boolean).join('｜'))}</small></td><td><strong>${esc(a.inventory_code)}｜${esc(a.item_name)}</strong><small>${esc([a.item_brand,a.item_model,a.item_unit].filter(Boolean).join('｜'))}</small></td><td><span class="status ${a.status==='confirmed'?'active':''}">${esc(statusLabels[a.status])}</span></td><td class="actions"><button type="button" data-alias-open="${esc(a.id)}">${data.permissions.update?'查看／編輯':'查看'}</button><button type="button" data-alias-history="${esc(a.id)}">異動紀錄</button>${a.status!=='inactive'&&data.permissions.delete?`<button type="button" data-alias-deactivate="${esc(a.id)}">停用</button>`:''}</td></tr>`).join('')||emptyRow(5,'沒有符合的品項名稱對照');
+  pane.querySelector('[data-alias-table]').innerHTML=rows.slice((page-1)*10,page*10).map(a=>`<tr><td>${esc(a.supplier_name)}</td><td><strong>${esc(a.supplier_item_name)}</strong><small>${esc([a.supplier_sku,a.brand,a.model,a.specification].filter(Boolean).join('｜'))}</small></td><td><strong>${a.inventory_item_id?esc(a.inventory_code)+'｜'+esc(a.item_name):'尚未指定 ERP 商品'}</strong><small>${esc([a.item_brand,a.item_model,a.item_unit].filter(Boolean).join('｜'))}</small></td><td><span class="status ${a.status==='confirmed'?'active':''}">${esc(statusLabels[a.status])}</span></td><td class="actions"><button type="button" data-alias-open="${esc(a.id)}">${data.permissions.update?'查看／編輯':'查看'}</button><button type="button" data-alias-history="${esc(a.id)}">異動紀錄</button>${a.status!=='inactive'&&data.permissions.delete?`<button type="button" data-alias-deactivate="${esc(a.id)}">停用</button>`:''}</td></tr>`).join('')||emptyRow(5,'沒有符合的品項名稱對照');
   pane.querySelector('[data-alias-pages]').innerHTML=`<span>共 ${rows.length} 筆 · 第 ${page}／${pages} 頁</span><button type="button" data-alias-prev ${page<=1?'disabled':''}>上一頁</button><button type="button" data-alias-next ${page>=pages?'disabled':''}>下一頁</button>`;
   pane.querySelector('[data-alias-new]').hidden=!data.permissions.create;pane.querySelector('[data-alias-import]').hidden=!data.permissions.create;
   pane.querySelector('[data-alias-export]').hidden=!data.permissions.export;
@@ -46,13 +47,13 @@ function refreshTransactionAliasLabels(){
  function syncItem(){
   const f=editor.querySelector('form'),term=f.elements.item_search.value.trim(),selected=f.elements.inventory_item_id.value;
   const choices=state.inventory.filter(i=>i.id===selected||matches([i.code,i.name,i.brand,i.model],term));
-  f.elements.inventory_item_id.innerHTML=options(choices,selected,i=>`${i.code}｜${i.name}｜${i.brand} ${i.model}`,'請選擇 ERP 商品');
-  const i=byId(state.inventory,f.elements.inventory_item_id.value);f.querySelector('[data-alias-item-detail]').textContent=i?`${i.code}｜${i.name}｜${i.brand} ${i.model}｜ERP 單位：${i.unit}${i.metersPerUnit?'｜每單位 '+i.metersPerUnit+' 米':''}`:'請從既有商品選取，商品名稱與編號會自動帶入。';
+  f.elements.inventory_item_id.innerHTML=options(choices,selected,i=>`${i.code}｜${i.name}｜${i.brand} ${i.model}`,'選填，可稍後選擇 ERP 商品');
+  const i=byId(state.inventory,f.elements.inventory_item_id.value);const confirmed=f.elements.status.querySelector('[value=confirmed]');confirmed.disabled=!i||!data.permissions.update;if(!i&&f.elements.status.value==='confirmed')f.elements.status.value='pending';f.querySelector('[data-alias-item-detail]').textContent=i?`${i.code}｜${i.name}｜${i.brand} ${i.model}｜ERP 單位：${i.unit}${i.metersPerUnit?'｜每單位 '+i.metersPerUnit+' 米':''}`:'可先不選商品，以待確認儲存；之後再補上對應的 ERP 商品。';
  }
  function open(id){
   const a=data.records.find(r=>r.id===id)||{},readonly=!!id&&!data.permissions.update;if(!id&&!data.permissions.create)return;
   editor=dialog(id?'品項名稱對照明細':'新增品項名稱對照');const d=editor;
-  d.querySelector('[data-alias-body]').innerHTML=`<form class="alias-form"><fieldset class="form-grid" ${readonly?'disabled':''}><label>供應商名稱<select name="supplier_id" required>${options(state.suppliers,a.supplier_id,s=>s.name,'請選擇供應商')}</select></label><label>供應商專業品名<input name="supplier_item_name" required maxlength="300" value="${esc(a.supplier_item_name||'')}"></label>${textField('supplier_sku','供應商商品料號（選填）',a.supplier_sku)}${textField('brand','商品品牌（選填）',a.brand)}${textField('model','商品型號（選填）',a.model)}${textField('specification','商品規格（選填）',a.specification,1000)}${textField('item_search','搜尋 ERP 商品編號／名稱','','200')}<label>公司 ERP 商品<select name="inventory_item_id" required>${options(state.inventory,a.inventory_item_id,i=>`${i.code}｜${i.name}｜${i.brand} ${i.model}`,'請選擇 ERP 商品')}</select></label><p data-alias-item-detail class="span-2 form-sync-hint"></p>${textField('supplier_unit','供應商單位（選填）',a.supplier_unit,30)}<label>單位換算參考值（選填）<input name="conversion_factor" type="number" min="0.000001" max="999999999999" step="0.000001" value="${esc(a.conversion_factor??'')}"><small>1 供應商單位＝此數量的 ERP 單位；供核對用。</small></label><label>對照狀態<select name="status">${Object.entries(statusLabels).map(([key,label])=>`<option value="${key}" ${a.status===key?'selected':''} ${key==='confirmed'&&!data.permissions.update||key==='inactive'&&!data.permissions.delete?'disabled':''}>${esc(label)}</option>`).join('')}</select></label><label class="span-2">備註說明<textarea name="notes" maxlength="2000">${esc(a.notes||'')}</textarea></label><div data-alias-conflicts class="span-2" hidden></div><p class="span-2 form-sync-hint">請核對型號、規格及單位後再確認對照。</p></fieldset>${id?`<p>建立：${esc(a.created_by_name)} · ${esc(formatDateTime(a.created_at))}<br>最後修改：${esc(a.updated_by_name)} · ${esc(formatDateTime(a.updated_at))}</p>`:''}<p data-alias-error role="alert" class="alias-error"></p>${!readonly?'<div class="form-submit"><button type="submit" class="primary">儲存對照</button></div>':''}</form>`;
+  d.querySelector('[data-alias-body]').innerHTML=`<form class="alias-form"><fieldset class="form-grid" ${readonly?'disabled':''}><label>供應商名稱<select name="supplier_id" required>${options(state.suppliers,a.supplier_id,s=>s.name,'請選擇供應商')}</select></label><label>供應商專業品名<input name="supplier_item_name" required maxlength="300" value="${esc(a.supplier_item_name||'')}"></label>${textField('supplier_sku','供應商商品料號（選填）',a.supplier_sku)}${textField('brand','商品品牌（選填）',a.brand)}${textField('model','商品型號（選填）',a.model)}${textField('specification','商品規格（選填）',a.specification,1000)}${textField('item_search','搜尋 ERP 商品編號／名稱','','200')}<label>公司 ERP 商品（選填）<select name="inventory_item_id">${options(state.inventory,a.inventory_item_id,i=>`${i.code}｜${i.name}｜${i.brand} ${i.model}`,'選填，可稍後選擇 ERP 商品')}</select></label><p data-alias-item-detail class="span-2 form-sync-hint"></p>${textField('supplier_unit','供應商單位（選填）',a.supplier_unit,30)}<label>單位換算參考值（選填）<input name="conversion_factor" type="number" min="0.000001" max="999999999999" step="0.000001" value="${esc(a.conversion_factor??'')}"><small>1 供應商單位＝此數量的 ERP 單位；供核對用。</small></label><label>對照狀態<select name="status">${Object.entries(statusLabels).map(([key,label])=>`<option value="${key}" ${a.status===key?'selected':''} ${key==='confirmed'&&!data.permissions.update||key==='inactive'&&!data.permissions.delete?'disabled':''}>${esc(label)}</option>`).join('')}</select></label><label class="span-2">備註說明<textarea name="notes" maxlength="2000">${esc(a.notes||'')}</textarea></label><div data-alias-conflicts class="span-2" hidden></div><p class="span-2 form-sync-hint">請核對型號、規格及單位後再確認對照。</p></fieldset>${id?`<p>建立：${esc(a.created_by_name)} · ${esc(formatDateTime(a.created_at))}<br>最後修改：${esc(a.updated_by_name)} · ${esc(formatDateTime(a.updated_at))}</p>`:''}<p data-alias-error role="alert" class="alias-error"></p>${!readonly?'<div class="form-submit"><button type="submit" class="primary">儲存對照</button></div>':''}</form>`;
   const f=d.querySelector('form');syncItem();f.elements.item_search.addEventListener('input',syncItem);f.elements.inventory_item_id.addEventListener('change',syncItem);
   let conflictVersions=[];f.addEventListener('input',()=>{if(!f.querySelector('[data-alias-conflicts]').hidden){const conflict=f.querySelector('[data-alias-conflicts]');if(!conflict.contains(document.activeElement)){conflict.hidden=true;conflict.innerHTML='';conflictVersions=[];}}});
   f.onsubmit=async event=>{
@@ -87,7 +88,7 @@ function refreshTransactionAliasLabels(){
  }
  function importExcel(){
   if(!data.permissions.create)return;const d=importDialog=dialog('品項名稱對照 Excel 匯入預覽');let pending=[],fileGeneration=0;
-  d.querySelector('[data-alias-body]').innerHTML='<p>選取第一個工作表、第一列為標題的 .xlsx，最多 5 MB／100 筆。供應商名稱及 ERP 商品編號須與既有資料相符；僅新增對照。</p><label>Excel 檔案<input type="file" accept=".xlsx" data-alias-file></label><button type="button" class="outline" data-alias-template>下載空白範本</button><p data-alias-import-status role="status"></p><div class="table-card" data-alias-import-preview></div><p class="alias-error" data-alias-import-error role="alert"></p><label><input type="checkbox" data-alias-import-confirm>我已核對供應商、ERP 商品、規格與單位</label><div class="form-submit"><button class="primary" type="button" data-alias-import-save disabled>確認匯入</button></div>';
+  d.querySelector('[data-alias-body]').innerHTML='<p>選取第一個工作表、第一列為標題的 .xlsx，最多 5 MB／100 筆。供應商名稱須與既有資料相符；ERP 商品編號可留白，先以待確認儲存。僅新增對照。</p><label>Excel 檔案<input type="file" accept=".xlsx" data-alias-file></label><button type="button" class="outline" data-alias-template>下載空白範本</button><p data-alias-import-status role="status"></p><div class="table-card" data-alias-import-preview></div><p class="alias-error" data-alias-import-error role="alert"></p><label><input type="checkbox" data-alias-import-confirm>我已核對供應商、ERP 商品、規格與單位</label><div class="form-submit"><button class="primary" type="button" data-alias-import-save disabled>確認匯入</button></div>';
   const input=d.querySelector('[data-alias-file]'),confirmBox=d.querySelector('[data-alias-import-confirm]'),save=d.querySelector('[data-alias-import-save]'),error=d.querySelector('[data-alias-import-error]');
   const invalidate=()=>{pending=[];confirmBox.checked=false;save.disabled=true;};
   input.onchange=async()=>{
@@ -95,24 +96,25 @@ function refreshTransactionAliasLabels(){
    const file=input.files[0];if(!file)return;
    try{const matrix=await GucAliasXlsx.read(file);if(generation!==fileGeneration)return;
     const head=matrix.shift()||[],map=Object.fromEntries(head.map((label,i)=>[String(label||'').trim(),i]));
-    for(const required of ['供應商名稱','供應商專業品名','ERP商品編號'])if(map[required]==null)throw Error('範本缺少欄位：'+required);
+    for(const required of ['供應商名稱','供應商專業品名'])if(map[required]==null)throw Error('範本缺少欄位：'+required);
     if(new Set(head.filter(Boolean)).size!==head.filter(Boolean).length)throw Error('範本有重複標題，請重新下載範本。');
     const rows=matrix.filter(r=>r.some(cell=>String(cell||'').trim()));if(!rows.length||rows.length>100)throw Error('請提供 1–100 筆對照。');
     const seen=new Set(),preview=[];
     for(const [index,row]of rows.entries()){
      const get=key=>String(row[map[columns.find(c=>c.key===key).label]]??'').trim();
-     const suppliers=state.suppliers.filter(s=>s.name.trim()===get('supplier_name')),items=state.inventory.filter(i=>i.code.toLowerCase()===get('inventory_code').toLowerCase());
-     if(suppliers.length!==1||items.length!==1)throw Error(`第 ${index+2} 列的供應商名稱或 ERP 商品編號無法唯一辨識。`);
+     const suppliers=state.suppliers.filter(s=>s.name.trim()===get('supplier_name')),items=get('inventory_code')?state.inventory.filter(i=>i.code.toLowerCase()===get('inventory_code').toLowerCase()):[];
+     if(suppliers.length!==1||(get('inventory_code')&&items.length!==1))throw Error(`第 ${index+2} 列的供應商名稱或 ERP 商品編號無法唯一辨識。`);
      const status=Object.keys(statusLabels).find(key=>statusLabels[key]===get('status'))||(!get('status')?'pending':null);
      if(!status)throw Error(`第 ${index+2} 列對照狀態無效。`);
+     if(status==='confirmed'&&!items.length)throw Error(`第 ${index+2} 列尚未指定 ERP 商品，請使用「待確認」。`);
      if(status==='confirmed'&&!data.permissions.update)throw Error('目前帳號沒有確認品項對照的權限，請使用「待確認」。');
-     const payload={supplier_id:suppliers[0].id,inventory_item_id:items[0].id,status};
+     const payload={supplier_id:suppliers[0].id,inventory_item_id:items[0]?.id??null,status};
      for(const key of ['supplier_item_name','supplier_sku','brand','model','specification','supplier_unit','conversion_factor','notes'])payload[key]=get(key);
      if(!payload.supplier_item_name)throw Error(`第 ${index+2} 列供應商專業品名為必填。`);
      const key=[payload.supplier_id,payload.supplier_item_name.toLowerCase(),payload.supplier_sku.toLowerCase()].join('|');
      if(seen.has(key))throw Error(`第 ${index+2} 列與本次檔案其他列重複。`);seen.add(key);
-     if(get('item_name')&&get('item_name')!==items[0].name)throw Error(`第 ${index+2} 列 ERP 商品名稱與主檔不符。`);
-     pending.push(payload);preview.push(`<tr><td>${index+2}</td><td>${esc(suppliers[0].name)}</td><td>${esc(payload.supplier_item_name)}</td><td>${esc(items[0].code)}｜${esc(items[0].name)}</td><td>${esc(statusLabels[status])}</td></tr>`);
+     if(get('item_name')&&get('item_name')!==items[0]?.name)throw Error(`第 ${index+2} 列 ERP 商品名稱與主檔不符。`);
+     pending.push(payload);preview.push(`<tr><td>${index+2}</td><td>${esc(suppliers[0].name)}</td><td>${esc(payload.supplier_item_name)}</td><td>${items.length?esc(items[0].code)+'｜'+esc(items[0].name):'尚未指定 ERP 商品'}</td><td>${esc(statusLabels[status])}</td></tr>`);
     }
     d.querySelector('[data-alias-import-preview]').innerHTML='<table><thead><tr><th>列</th><th>供應商</th><th>專業品名</th><th>ERP 商品</th><th>狀態</th></tr></thead><tbody>'+preview.join('')+'</tbody></table>';
     d.querySelector('[data-alias-import-status]').textContent=`已預覽 ${pending.length} 筆；重複與衝突會由伺服器再次核對，任一筆失敗整批不寫入。`;
