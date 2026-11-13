@@ -30,3 +30,11 @@ jobs:
       - name: Run checks
         run: npm run check
 
+      - name: Install isolated database test runtime
+        run: npm ci --prefix .github/db-tests --ignore-scripts
+
+      - name: Verify work-log editing and construction reassignment
+        run: node scripts/verify-construction-log-relink-db.mjs
+        env:
+          PGLITE_MODULE: ${{ github.workspace }}/.github/db-tests/node_modules/@electric-sql/pglite/dist/index.js
+

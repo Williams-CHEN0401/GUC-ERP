@@ -1,0 +1,8 @@
+{
+  "name": "guc-erp-database-regression",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.11"
+  }
+}
