@@ -84,7 +84,7 @@ function canManageConstruction(project,action='UPDATE'){
 }
 function constructionPlanButton(project){return constructionEligible(project)&&canConstructionPermission('construction_plans')?`<button type="button" class="outline" data-construction-project="${esc(project.id)}">施工規劃</button>`:"";}
 function constructionPlanById(id){return (state.constructionPlans||[]).find(p=>p.id===id);}
-function constructionLogDefaults(){const plan=constructionPlanById(activeConstructionLogPlanId),item=plan?.items?.find(i=>i.id===activeConstructionItemId);return plan?{projectId:plan.project_id,log_date:item?today():plan.construction_date,work_type:"工程施工",status:"in_progress",pending_content:"",completed_content:"",summary:"",workerIds:[],subcontractor_count:plan.subcontractor_count||0}:{};}
+function constructionLogDefaults(){const plan=constructionPlanById(activeConstructionLogPlanId);return plan?{projectId:plan.project_id,log_date:workLogToday(),work_type:"工程施工",status:"in_progress",pending_content:"",completed_content:"",summary:"",workerIds:[],subcontractor_count:plan.subcontractor_count||0}:{};}
 function mergeConstructionContext(data){
  if(invalidatePrivateCache(data)===false)throw new Error("權限已變更，請重新載入。");
  const merged={...data},projectIds=new Set((data.projects||[]).map(p=>p.id));

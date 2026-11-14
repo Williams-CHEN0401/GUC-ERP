@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../construction-plan-ui.js',import.meta.url),'utf8');
 function fixture(){
- const c=vm.createContext({document:{addEventListener(){}},state:{currentUser:{id:'A'},projectWorkers:[],constructionPlans:[],siteData:{logs:[]}},byId:(rows,id)=>rows.find(r=>r.id===id),canModule:()=>true,canAdmin:()=>false,esc:String,invalidatePrivateCache:()=>true,lastSnapshot:{}});
+ const c=vm.createContext({document:{addEventListener(){}},state:{currentUser:{id:'A'},projectWorkers:[],constructionPlans:[],siteData:{logs:[]}},byId:(rows,id)=>rows.find(r=>r.id===id),canModule:()=>true,canAdmin:()=>false,workLogToday:()=> '2026-11-13',esc:String,invalidatePrivateCache:()=>true,lastSnapshot:{}});
  c.hydrateSnapshot=value=>c.merged=value;vm.runInContext(readFileSync(new URL('../construction-checklist.js',import.meta.url),'utf8'),c);vm.runInContext(source,c);return c;
 }
 test('item completion is separate from actual days and exceeding duration does not complete a plan',()=>{
@@ -42,10 +42,10 @@ test('plan affordances require existing project owner and module permissions',()
  c.state.projectWorkers=[{projectId:'P',userId:'A'}];assert.equal(c.canManageConstruction(project),true);
  c.canModule=(_module,action)=>action!=='UPDATE';assert.equal(c.canManageConstruction(project),false);
 });
-test('new plan logs inherit date and project without prefilled notes or reporter attendance',()=>{
+test('new plan logs use today and inherit project without prefilled notes or reporter attendance',()=>{
  const c=fixture();c.state.constructionPlans=[{id:'plan',project_id:'P',construction_date:'2026-10-10',content:'一樓配管'}];
  vm.runInContext('activeConstructionLogPlanId="plan"',c);
- assert.deepEqual(JSON.parse(JSON.stringify(c.constructionLogDefaults())),{projectId:'P',log_date:'2026-10-10',work_type:'工程施工',status:'in_progress',pending_content:'',completed_content:'',summary:'',workerIds:[],subcontractor_count:0});
+ assert.deepEqual(JSON.parse(JSON.stringify(c.constructionLogDefaults())),{projectId:'P',log_date:'2026-11-13',work_type:'工程施工',status:'in_progress',pending_content:'',completed_content:'',summary:'',workerIds:[],subcontractor_count:0});
 });
 test('reread removes archived/unauthorized logs and obsolete owners from cached project',()=>{
  const c=fixture();c.lastSnapshot={site_work_logs:[{id:'old',project_id:'P',construction_plan_id:'plan'},{id:'ordinary',project_id:'P',construction_plan_id:null},{id:'other',project_id:'Q',construction_plan_id:'other-plan'}],site_work_log_workers:[{work_log_id:'old',user_id:'A'}],project_workers:[{project_id:'P',user_id:'former-owner'},{project_id:'Q',user_id:'B'}]};
