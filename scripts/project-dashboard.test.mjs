@@ -24,12 +24,32 @@ test('Accounting preserves cents; price edit controls follow existing permission
  const writer=render({report:r,accounting:true,pricePermissions:{view:true,update:true,delete:true}});assert.match(writer,/data-gr-edit-price="item"/);assert.match(writer,/data-gr-clear-price="item"/);
 });
 test('report geometry remains usable under production CSP without inline styles',()=>{
- const r=report();r.workerStats=[{name:'阿祥',constructionDays:9},{name:'阿勝',constructionDays:6}];
+ const r=report();r.workerStats=[{name:'阿祥',constructionDays:14},{name:'阿勝',constructionDays:20}];r.dailyRows=[{date:'2026-11-11',dailyHeadcount:9},{date:'2026-11-12',dailyHeadcount:6}];
  const html=render({report:r});
  assert.doesNotMatch(html,/\sstyle=/);
  const bars=[...html.matchAll(/class="gr-column-bar"[^>]+height="([\d.]+)"/g)].map(m=>Number(m[1]));
  assert.equal(bars.length,2);assert(bars[0]>0);assert(Math.abs(bars[1]/bars[0]-2/3)<.0001);
  assert.match(html,/class="gr-gauge"/);assert.match(html,/class="gr-gantt-bar"/);
+});
+
+test('personnel charts display one authoritative headcount per day instead of worker days',()=>{
+ const r=report();r.workerStats=[{id:'a',name:'甲',constructionDays:99}];
+ r.dailyRows=[{date:'2026-11-12',dailyHeadcount:5,subcontractorCount:3},{date:'2026-11-11',dailyHeadcount:2},{date:'2026-11-12',dailyHeadcount:5,subcontractorCount:3}];
+ for(const tab of ['overview','workers'])for(const accounting of [false,true]){
+  const html=render({report:r,tab,accounting});
+  assert.deepEqual([...html.matchAll(/data-chart-value="([\d.]+)"/g)].map(m=>Number(m[1])),[2,5]);
+  assert.match(html,/每日施工人數直式長條圖：2026-11-11 2 人；2026-11-12 5 人/);
+  assert.match(html,/<span>施工人數<\/span>/);
+  assert.doesNotMatch(html,/人員施工天數直式長條圖/);
+  const ticks=[...html.matchAll(/class="gr-axis-tick"[^>]*>([\d.,]+)<\/text>/g)].map(m=>Number(m[1].replaceAll(',','')));
+  assert(ticks.length>1&&ticks.every(Number.isInteger));
+ }
+});
+
+test('headcount chart keeps zero, omits unavailable values and never falls back to elapsed days',()=>{
+ const r=report();r.workerStats=[{name:'甲',constructionDays:12}];r.dailyRows=[{date:'2026-11-10',dailyHeadcount:0},{date:'2026-11-11',dailyHeadcount:null},{date:'2026-11-12',dailyHeadcount:''},{date:'2026-11-13',dailyHeadcount:1.5},{date:'2026-11-14',dailyHeadcount:-1}];
+ let html=render({report:r,tab:'workers'});assert.deepEqual([...html.matchAll(/data-chart-value="([\d.]+)"/g)].map(m=>Number(m[1])),[0]);assert.match(html,/2026-11-10 0 人/);
+ r.dailyRows=[];html=render({report:r});assert.match(html,/沒有每日施工人數紀錄/);assert.doesNotMatch(html,/data-chart-value|NaN|Infinity/);
 });
 function materialReport(){
  const r=report();
