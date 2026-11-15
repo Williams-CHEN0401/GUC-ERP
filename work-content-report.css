@@ -131,3 +131,21 @@
 .guc-report .gr-price-dialog{max-height:calc(100dvh - 32px);overflow:auto}
 @media(max-width:780px){.guc-report .gr-monitor-header{flex-wrap:wrap}.guc-report .gr-monitor-plan{padding:16px}.guc-report .gr-monitor-metrics{gap:14px}.guc-report .gr-heading .gr-status{white-space:normal}.guc-report .gr-plan>summary>b{white-space:normal;overflow-wrap:anywhere}}
 @media(max-width:560px){.guc-report .gr-monitor-metrics{grid-template-columns:minmax(0,1fr);gap:16px}.guc-report .gr-monitor-metrics>div{grid-template-columns:minmax(0,1fr) auto;gap:4px 12px}.guc-report .gr-monitor-metrics small{grid-column:1/-1}.guc-report .gr-monitor-plan{padding:14px}.guc-report .gr-monitor-header .gr-status{max-width:100%}}
+
+/* Reflow phone content while keeping chart labels at their actual text size. */
+.guc-report .gr-chart-scroll-hint{display:none;color:var(--gr-muted);margin-top:10px}
+@media(max-width:780px){
+ .guc-report .gr-columns{width:auto;min-width:0;max-width:none}
+ .guc-report .gr-card,.guc-report .gr-heading,.guc-report .gr-kpi{overflow-wrap:anywhere}
+ .guc-report .gr-chart-scroll-hint{display:block;font-size:var(--gr-body-size);line-height:1.6}
+ .guc-report .gr-personnel-chart>.gr-chart-legend{justify-self:start}
+}
+@media(max-width:560px){
+ .guc-report .gr-kpis{grid-template-columns:minmax(0,1fr)}
+ .guc-report .gr-report-toolbar .gr-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+ .guc-report .gr-report-toolbar .gr-tabs>button{min-width:0;width:100%}
+ .guc-report .gr-plan>summary{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px}
+ .guc-report .gr-plan>summary:before{grid-column:1;grid-row:1}
+ .guc-report .gr-plan>summary>span{grid-column:2;grid-row:1}
+ .guc-report .gr-plan>summary>b{grid-column:2;grid-row:2;margin-left:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+}
