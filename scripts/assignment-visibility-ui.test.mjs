@@ -13,6 +13,20 @@ function harness(){
  const choose=value=>{node('#assignmentScope').value=value;for(const[name,fn]of listeners)if(name==='change')fn({target:{id:'assignmentScope',value,closest:()=>null}});};
  return {context,state,node,choose};
 }
+
+test('management groups request members before filters, retaining independent status/actions and edited context',()=>{
+ const h=harness(),c=h.context;c.canModule=()=>true;c.APPOINTMENT_STATUSES=[['pending','待處理'],['completed','已完成']];c.formatDateTime=v=>v;c.matches=(words,term)=>!term||words.some(w=>String(w||'').includes(term));
+ vm.runInContext(readFileSync(new URL('../assignment-management.js',import.meta.url),'utf8'),c);
+ const first={id:'a',assignment_request_id:'request',created_by_user_id:'creator',assignment_type:'general',project_id:'project',project:'工作',project_code:'P1',customer:'客戶',assignee:'甲',creator:'管理員',status:'pending',instructions:'查修'};
+ const second={...first,id:'b',assignee:'乙',status:'completed'},third={...first,id:'c',assignee:'丙',instructions:'後續送貨'};
+ const rows=[first,second,third,{...first,id:'independent',assignment_request_id:'other'},{...first,id:'legacy',assignment_request_id:null}];
+ const groups=c.assignmentManagementGroups(rows,'','');assert.equal(groups.length,3);
+ const html=c.assignmentManagementRow(groups[0]);assert.equal((html.match(/<tr /g)||[]).length,1);assert.match(html,/甲、乙、丙/);assert.match(html,/待處理 2 人、已完成 1 人/);assert.match(html,/後續送貨/);
+ assert.match(html,/data-assignment-edit="a"/);assert.match(html,/data-assignment-edit="c"/);assert.doesNotMatch(html,/data-assignment-edit="b"|data-assignment-cancel="b"/);
+ assert.equal(c.assignmentManagementGroups(rows,'completed','乙')[0].assignment_members.length,3);
+ assert.equal(c.assignmentManagementGroups(rows,'pending','乙').length,0);
+ assert.equal(c.assignmentManagementGroups([first],'','')[0].assignment_members.length,1,'Only authorized rows enter a group');
+});
 test('every Dashboard uses the assignee ID, including admins with stale all-person data',()=>{
  const h=harness(),mine={id:'mine',assignee_user_id:'admin'},other={id:'other',assignee_user_id:'worker'};
  h.state.dashboard.assignments={pending:[mine,other],all_pending:[mine,other]};

@@ -134,6 +134,19 @@
 
 /* Reflow phone content while keeping chart labels at their actual text size. */
 .guc-report .gr-chart-scroll-hint{display:none;color:var(--gr-muted);margin-top:10px}
+.guc-report .gr-estimates{margin-top:20px;border-top:1px solid var(--gr-line);padding-top:16px}
+.guc-report .gr-estimate-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.guc-report .gr-comparison-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:16px;margin-bottom:8px}
+.guc-report .gr-comparison-legend span:first-child{color:#a08059}
+.guc-report .gr-comparison-legend span:last-child{color:#4b6047}
+.gr-estimate-dialog{width:min(820px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto}
+.gr-estimate-dialog [data-estimate-error]{color:#913e2c}
+.gr-estimate-dialog .form-grid{padding:12px 0}
+.gr-estimate-dialog .table-card{max-width:100%;overflow:auto}
+.gr-estimate-dialog :is(input,select,button){font-size:16px;min-height:44px}
+.assignment-member+.assignment-member{margin-top:16px;padding-top:12px;border-top:1px solid #dcded2}
+#assignmentManagementTable td{vertical-align:top}
+@media(max-width:560px){.gr-estimate-dialog .form-grid{grid-template-columns:minmax(0,1fr)}.gr-estimate-dialog .span-2{grid-column:1}.gr-estimate-dialog{padding:16px}}
 @media(max-width:780px){
  .guc-report .gr-columns{width:auto;min-width:0;max-width:none}
  .guc-report .gr-card,.guc-report .gr-heading,.guc-report .gr-kpi{overflow-wrap:anywhere}

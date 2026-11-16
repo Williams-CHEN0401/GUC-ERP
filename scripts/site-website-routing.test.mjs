@@ -10,6 +10,29 @@ function harness(){
  const c=vm.createContext({AsyncLocalStorage,URL,URLSearchParams,Request,Response,Headers,AbortController,setTimeout,clearTimeout,console,crypto,performance,Error,Deno:{env:{get:()=>''},serve:()=>{}}});
  vm.runInContext(source,c);return c;
 }
+test('material estimate reads require reports access and cannot be routed through site entities',()=>{
+ const c=harness(),reader={role:'custom',permissions:[{module:'reports',can_view:true}]};
+ assert.doesNotThrow(()=>c.authorizeRead(reader,new URLSearchParams('scope=material_estimates'),false));
+ assert.throws(()=>c.authorizeRead({role:'custom',permissions:[]},new URLSearchParams('scope=material_estimates'),false),/權限/);
+ assert.throws(()=>c.authorizeRead(reader,new URLSearchParams('scope=material_estimates&entity=inventory'),false),/不支援/);
+ assert.throws(()=>c.authorizeRead(reader,new URLSearchParams('scope=material_estimates'),true),/不支援/);
+});
+test('creating, modifying and clearing estimates all require project UPDATE permission',()=>{
+ const c=harness(),creator={role:'custom',permissions:[{module:'projects',can_create:true}]},editor={role:'custom',permissions:[{module:'projects',can_update:true}]};
+ for(const payload of [{row_version:0,planned_quantity:5},{row_version:1,planned_quantity:0},{row_version:2,planned_quantity:null}]){
+  assert.equal(c.operationPermission('save_project_material_estimate',payload).action,'UPDATE');
+  assert.throws(()=>c.requireOperation(creator,'save_project_material_estimate',payload,['admin','operator']),/權限/);
+  assert.doesNotThrow(()=>c.requireOperation(editor,'save_project_material_estimate',payload,['admin','operator']));
+ }
+});
+test('inventory-only users retain alias access after relocation without reading transaction data or clearing cached masters',async()=>{
+ const c=harness(),user={id:'fixture',role:'custom',permissions:[{module:'inventory',can_view:true}]};
+ assert.doesNotThrow(()=>c.authorizeRead(user,new URLSearchParams('scope=transactions'),false));
+ assert.doesNotThrow(()=>c.authorizeRead(user,new URLSearchParams('scope=item_aliases'),false));
+ const snapshot=await c.restrictedSnapshot(user,'transactions');
+ assert.equal(snapshot.receipts.length,0);assert.equal(snapshot.pickups.length,0);
+ for(const key of ['items','categories','customers','projects','suppliers'])assert.equal(Object.hasOwn(snapshot,key),false);
+});
 const siteOperations=['import_site_spreadsheet','save_site_spreadsheet_template','import_access_devices','upsert_contract_site_entry','delete_contract_site_entry','upsert_monitoring_device','delete_monitoring_device','batch_update_monitoring_devices','import_monitoring_devices','check_monitoring_ip_conflicts','save_equipment_history','void_maintenance_event','create_phone_terminal_version','upsert_phone_system','delete_phone_system','upsert_phone_extension','delete_phone_extension','batch_update_phone_extensions','batch_delete_phone_extensions','import_phone_terminal_rows','set_phone_system_credential','reveal_phone_system_credential'];
 test('every site page command, including spreadsheet commits and template saves, routes to the site website',()=>{
  const c=harness(),request=new Request('https://fixture.invalid',{headers:{'x-guc-system':'site'}});

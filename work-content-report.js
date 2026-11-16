@@ -21,6 +21,22 @@
  function categoryPicker(report){return `<label class="gr-category-picker">貨品種類 <select data-gr-material-category aria-label="用料貨品種類"><option value="">全部貨品種類</option>${(report.materialCategoryStats||[]).map(r=>`<option value="${esc(categoryKey(r.id))}"${selectedMaterialCategory===categoryKey(r.id)?' selected':''}>${esc(r.name)}</option>`).join('')}</select></label>`;}
 
  const color=i=>colors[i%colors.length];
+ function estimateRows(report){return (report.materialEstimates?.records||[]).filter(r=>r.planned_quantity!=null&&(!selectedMaterialCategory||categoryKey(r.categoryId)===selectedMaterialCategory));}
+ function comparisonRows(report){
+  const rows=(report.materialStats||[]).map(r=>({...r}));
+  for(const estimate of estimateRows(report)){
+   let row=rows.find(r=>r.id===estimate.inventory_item_id&&r.unit===estimate.unit);
+   if(!row){row={...estimate,id:estimate.inventory_item_id,quantity:0,issuedQuantity:0,returnedQuantity:0};rows.push(row);}
+   row.plannedQuantity=Number(estimate.planned_quantity);
+  }
+  return rows;
+ }
+ function chartCategories(report,scoped=false){const rows=[...(report.materialCategoryStats||[])];for(const e of (scoped?estimateRows(report):(report.materialEstimates?.records||[]).filter(r=>r.planned_quantity!=null)))if(!rows.some(c=>categoryKey(c.id)===categoryKey(e.categoryId)))rows.push({id:e.categoryId,name:e.categoryName});return rows;}
+ function estimatesPanel(report){
+  if(!report.materialEstimates)return '';
+  const rows=comparisonRows(report).filter(r=>r.plannedQuantity!=null);
+  return `<section class="gr-estimates"><div class="gr-estimate-toolbar"><h3>初始預計用料</h3>${report.materialEstimates.can_write?'<button type="button" data-gr-edit-estimates>設定預計用料</button>':''}</div><p class="gr-note">預計量為整個工作內容的用量；實際量沿用目前日期篩選的淨用量（領用－餘料退回）。同品項、同單位才比較，不自動換算舊規格。</p>${rows.length?table(['品項名稱','單位','初始預計','實際淨用量','差異（實際－預計）'],rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.unit)}</td><td>${num(r.plannedQuantity)}</td><td>${num(r.quantity)}</td><td>${num(Number(r.quantity)-r.plannedQuantity)}</td></tr>`),'materialEstimateComparison'):blank('尚未設定預計用料，圖表依原用量顯示。')}</section>`;
+ }
  const short=(value,length=12)=>{const chars=Array.from(String(value||''));return chars.length>length?chars.slice(0,length-1).join('')+'…':chars.join('');};
  const chartCard=(title,body,note='',extra='')=>card(title,body,note,'gr-chart-card '+extra);
  function columns(series,{label,unit,project,workers=false,items=false,accounting=false}){
@@ -54,17 +70,19 @@
   return rows.length?columns(rows,{label:'每日施工人數直式長條圖',unit:'人',workers:true,accounting:!!options?.accounting})+'<p class="gr-chart-scroll-hint">左右滑動查看完整日期與人數。</p>':blank('此日期區間沒有每日施工人數紀錄。');
  }
  function materialChartData(report,options){
-  const categories=report.materialCategoryStats;
+  const categories=report.materialCategoryStats?chartCategories(report,true):null;
   if(!categories)return blank('材料分類統計尚未載入，請確認報表更新已套用。');
   if(!categories.length)return blank('此日期區間沒有用料紀錄。');
-  const priced=!!options.pricePermissions?.view,rows=report.materialStats||[];
+  const priced=!!options.pricePermissions?.view,rows=priced?(report.materialStats||[]):comparisonRows(report);
   const itemName=r=>[r.name,r.model&&!String(r.name||'').includes(r.model)?r.model:''].filter(Boolean).join('／');
   const groups=categories.map((c,i)=>{
    const entries=rows.filter(r=>categoryKey(r.categoryId)===categoryKey(c.id));if(!entries.length)return '';
    const units=priced?['元']:[...new Set(entries.map(r=>r.unit||'未標示單位'))];
    return units.map(unit=>{
     const items=priced?entries:entries.filter(r=>(r.unit||'未標示單位')===unit);
-    return `<section class="gr-material-category" data-gr-material-category-group="${esc(categoryKey(c.id))}"><h3>${esc(c.name)}</h3><section class="gr-material-unit" data-gr-unit="${esc(unit)}"><p class="gr-material-unit-label">${priced?'淨用料金額':'淨用量'}（${esc(unit)}）</p>${columns(items.map(r=>({id:r.id,name:itemName(r),value:priced?r.amount:r.quantity,missing:priced&&r.amount==null,color:color(i)})),{label:c.name+'各品項'+(priced?'參考金額':'用量')+'直式長條圖（'+unit+'）',unit,items:true,accounting:!!options.accounting})}</section></section>`;
+    const compare=!priced&&items.some(r=>r.plannedQuantity!=null);
+    const series=items.flatMap(r=>r.plannedQuantity!=null&&!priced?[{id:r.id,name:itemName(r)+' 預計',value:r.plannedQuantity,color:'#a08059'},{id:r.id,name:itemName(r)+' 實際',value:r.quantity,color:'#4b6047'}]:[{id:r.id,name:itemName(r),value:priced?r.amount:r.quantity,missing:priced&&r.amount==null,color:color(i)}]);
+    return `<section class="gr-material-category" data-gr-material-category-group="${esc(categoryKey(c.id))}"><h3>${esc(c.name)}</h3><section class="gr-material-unit" data-gr-unit="${esc(unit)}"><p class="gr-material-unit-label">${compare?'預計／實際淨用量':priced?'淨用料金額':'淨用量'}（${esc(unit)}）</p>${compare?'<p class="gr-comparison-legend"><span>■ 預計</span><span>■ 實際</span></p>':''}${columns(series,{label:c.name+'各品項'+(compare?'預計與實際用量':priced?'參考金額':'用量')+'直式長條圖（'+unit+'）',unit,items:true,accounting:!!options.accounting})}</section></section>`;
    }).join('');
   }).join('');
   if(!groups)return blank('此日期區間沒有用料紀錄。');
@@ -72,7 +90,7 @@
   return '<div class="gr-material-facets">'+groups+'</div><p class="gr-chart-note">'+(priced?`各品項分別呈現參考金額${missing?'；'+num(missing)+' 個品項未設定價格，未計入金額':'；非實際結算成本'}。`:'各品項呈現領用扣除退料後的淨用量；不同單位分圖顯示。區間退料多於領用時顯示負值。')+'</p>';
 
  }
- function materialChart(report,options){return categoryPicker(report)+'<div data-gr-category-chart>'+materialChartData(categoryReport(report),options)+'</div>';}
+ function materialChart(report,options){return categoryPicker({...report,materialCategoryStats:chartCategories(report)})+'<div data-gr-category-chart>'+materialChartData(categoryReport(report),options)+'</div><div data-gr-estimates>'+estimatesPanel(categoryReport(report))+'</div>';}
  function semicircle(percent,accounting=false){
   const angle=Math.PI*(1-Math.min(100,positive(percent))/100),x=160+100*Math.cos(angle),y=145-100*Math.sin(angle);
   const height=accounting?165:230,value=percent==null?'—':num(percent)+'%';
@@ -101,7 +119,7 @@
   return `<div class="gr-monitor-warning" role="status"><strong>⚠ 施工進度未達目標</strong><p>設定：${num(row.warning_work_days??row.warning_after_days)} 天內應完成 ${pct(row.warning_min_progress)}。目前已施工 ${num(row.worked_days)} 天，完成 ${pct(row.progress_percent??row.completion_percent)}，落後 ${num(row.progress_gap)} 個百分點。</p></div>`;
  }
  function logsTable(logs,accounting){return table(['日期','工作摘要','狀態','原始資料'],logs.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(l.summary||'—')}</td><td>${esc(status(l.status))}</td><td>${l.can_open?`<button type="button" ${accounting?'data-gr-open-log':'data-edit-work-log'}="${esc(l.id)}">查看原日誌</button>`:'—'}</td></tr>`));}
- function planDetailsBody(p,accounting){return `<div class="gr-plan-body"><p>施工日期：${esc(p.construction_date||'—')} · ${esc(status(p.status))}</p><p>指派施工人員：${esc((p.assignees||[]).map(a=>a.name).join('、')||'未指派')}</p>${p.notes?`<p>${esc(p.notes)}</p>`:''}${(p.items||[]).map(i=>`<details class="gr-item"><summary>${esc(i.title)} <span>${i.is_completed?'已勾選完成':'未勾選完成'}</span></summary><div><p>預計第 ${num(i.start_day)} 工作日起 · ${num(i.planned_days)} 天；實際施工 ${num(i.worked_days)} 天</p>${i.assignees?.length?`<p>指派施工人員：${esc(i.assignees.map(a=>a.name).join('、'))}</p>`:''}${logsTable(i.logs||[],accounting)}</div></details>`).join('')}${p.can_open?`<button type="button" ${accounting?'data-gr-open-plan':'data-construction-project'}="${esc(p.project_id)}">開啟施工規劃</button>`:''}<h3>相關工作日誌（${p.logs?.length||0}）</h3>${logsTable(p.logs||[],accounting)}</div>`;}
+ function planDetailsBody(p,accounting){return `<div class="gr-plan-body">${ganttChart([p])}<p>施工日期：${esc(p.construction_date||'—')} · ${esc(status(p.status))}</p><p>指派施工人員：${esc((p.assignees||[]).map(a=>a.name).join('、')||'未指派')}</p>${p.notes?`<p>${esc(p.notes)}</p>`:''}${(p.items||[]).map(i=>`<details class="gr-item"><summary>${esc(i.title)} <span>${i.is_completed?'已勾選完成':'未勾選完成'}</span></summary><div><p>預計第 ${num(i.start_day)} 工作日起 · ${num(i.planned_days)} 天；實際施工 ${num(i.worked_days)} 天</p>${i.assignees?.length?`<p>指派施工人員：${esc(i.assignees.map(a=>a.name).join('、'))}</p>`:''}${logsTable(i.logs||[],accounting)}</div></details>`).join('')}${p.can_open?`<button type="button" ${accounting?'data-gr-open-plan':'data-construction-project'}="${esc(p.project_id)}">開啟施工規劃</button>`:''}<h3>相關工作日誌（${p.logs?.length||0}）</h3>${logsTable(p.logs||[],accounting)}</div>`;}
  function plansDetail(plans,accounting,project){return card('施工規劃明細',plans.length?plans.map(p=>{const n=planProgress(p);return `<article class="gr-monitor-plan${p.progress_alert?' gr-progress-warning':''}" data-gr-plan-card="${esc(p.id)}"><header class="gr-monitor-header"><div><h3>${esc(p.content)}</h3><p>${esc([project.customer,project.name].filter(Boolean).join('｜'))}</p></div><span class="gr-status${p.progress_alert?' gr-alert-badge':''}">${p.progress_alert?'施工進度落後':esc(status(p.status))}</span></header><div class="gr-monitor-metrics"><div><span>施工項目</span><strong>${num(n.done)} / ${num(n.count)}</strong><small>已完成 ${num(n.done)} 項</small></div><div><span>工程完成度</span><strong>${pct(n.percent)}</strong><small>${p.warning_min_progress==null?'尚未設定進度告警門檻':'目標 '+pct(p.warning_min_progress)}</small></div><div><span>工期執行</span><strong>${num(n.worked)} / ${n.planned?num(n.planned):'未設定'}</strong><small>已施工 ${num(n.worked)} 天</small></div></div>${progress(p)}${progressWarning(p)}<details class="gr-plan" data-report-plan="${esc(p.id)}"><summary><span>施工規劃明細</span></summary>${planDetailsBody(p,accounting)}</details></article>`;}).join(''):blank('尚未建立施工規劃。'),'完成度依有效施工項目數；工期依實際施工日期去重。展開可查看指派人員、項目及日誌。','gr-plans-card');}
  function ganttChart(plans){
   const rows=plans.flatMap(p=>(p.items?.length?p.items.map(i=>({...i,label:p.content+' / '+i.title})): [{...p,label:p.content,start_day:1}]));
@@ -109,7 +127,6 @@
   const width=1000,left=400,plot=580,height=50+rows.length*42,ticks=Math.min(max,6);
   return card('排程圖',rows.length?`<div class="gr-gantt" tabindex="0" role="region" aria-label="各規劃起始工作日排程"><svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="施工項目工作日甘特圖">${Array.from({length:ticks+1},(_,i)=>{const day=Math.round(i*max/ticks),x=left+day/max*plot;return `<line x1="${x}" y1="38" x2="${x}" y2="${height-5}" stroke="#dcded2"/><text x="${x}" y="23" text-anchor="middle">第 ${day+1} 日</text>`;}).join('')}${rows.map((r,i)=>{const y=48+i*42,x=left+positive(Number(r.start_day||1)-1)/max*plot,w=positive(r.planned_days)/max*plot;return `<g><title>${esc(r.label)}：第 ${num(r.start_day||1)} 工作日起，${r.planned_days?num(r.planned_days)+' 天':'未設定天數'}</title><text x="${left-12}" y="${y+16}" text-anchor="end">${esc(short(r.label,18))}（${r.planned_days?num(r.planned_days)+'天':'未設定'}）</text>${w?`<rect class="gr-gantt-bar" x="${x}" y="${y+4}" width="${w}" height="14" fill="#4b6047"/>`:`<text x="${x+5}" y="${y+16}">未設定</text>`}</g>`;}).join('')}</svg></div>`:blank('尚無施工排程。'),'預計工作日排程；各規劃起始日為第 1 日，不代表實際施工日期。','gr-gantt-card');
  }
- function gantt(plans,accounting){return card('施工項目排程',plans.length?plans.map(p=>`<details class="gr-plan${p.progress_alert?' gr-progress-warning':''}" data-gr-schedule="${esc(p.id)}"><summary><span>${esc(p.content)}</span><b>預計${p.planned_days?num(p.planned_days):'未設定'}天完成｜已完成${num(p.completed_item_count)}項</b></summary><div class="gr-plan-body">${ganttChart([p])}${progress(p)}${progressWarning(p)}${planDetailsBody(p,accounting)}</div></details>`).join(''):blank('尚無施工排程。'),'點選 ＋ 展開施工項目、排程圖、指派人員與日誌，再按 − 收合。','gr-gantt-card');}
  function materialTableData(report,options){
   const price=!!options.pricePermissions?.view;
   return table(['品項名稱','貨品種類','品牌／型號','領用數量','餘料退回','淨用料','領用次數','首次／最近',...(price?['單價（元）','金額（元）','價格來源／日期','價格操作']:[])],report.materialStats.map(r=>`<tr><td><strong>${esc(r.name)}</strong></td><td>${esc(r.categoryName||'未分類')}</td><td>${esc([r.brand,r.model].filter(Boolean).join('｜')||'—')}</td><td>${num(r.issuedQuantity??r.quantity)} ${esc(r.unit)}</td><td>${num(r.returnedQuantity||0)} ${esc(r.unit)}</td><td>${num(r.quantity)} ${esc(r.unit)}</td><td>${num(r.recordCount)}</td><td>${esc(r.firstDate||'—')}<small>${esc(r.recentDate||'—')}</small></td>${price?`<td>${r.unit_price==null?'未設定':r.meters_per_unit>1?Number(r.unit_price).toLocaleString('zh-TW',{maximumFractionDigits:6}):num(r.unit_price)}${r.meters_per_unit>1&&r.package_unit_price!=null?`<small>${num(r.package_unit_price)} 元／${esc(r.package_unit)} ÷ ${num(r.meters_per_unit)} 米</small>`:''}</td><td>${r.amount==null?'—':num(r.amount)}</td><td>${r.price_source==='manual'?'人工參考價格':r.price_source==='snapshot'?'領用時未稅參考成本':r.price_source==='receipt'?(r.source_tax_mode==='inclusive'?'最近進貨（折扣後分攤未稅）':r.source_tax_mode==='exclusive'?'最近進貨（折扣後未稅）':'最近進貨（歷史計稅未設定）'):'沒有價格'}<small>${esc(r.price_date||'—')}</small></td><td>${(r.price_source==='manual'?options.pricePermissions.update:options.pricePermissions.create)?`<button type="button" data-gr-edit-price="${esc(r.id)}" ${options.readOnly?'disabled':''}>修改參考單價</button>`:''}${r.price_source==='manual'&&options.pricePermissions.delete?`<button type="button" data-gr-clear-price="${esc(r.id)}" ${options.readOnly?'disabled':''}>恢復原參考成本</button>`:''}</td>`:''}</tr>`),'materialStatsTable');
@@ -132,12 +149,12 @@
   if(!s)return card('施工規劃資料尚未載入',blank('報表服務尚未提供施工統計，請確認本次增量更新已套用。'))+materials(report,options)+workers(report,options);
   const percent=s.progressPercent??null;
   const gauge=chartCard('專案進度',semicircle(percent,true)+`<p class="gr-chart-note">已完成 ${num(s.completedItemCount)} / ${num(s.totalItemCount)} 項<br>實際施工 ${num(s.projectDays)} 天（跨規劃日期去重）</p>`,'','gr-gauge-card');
-  return `<section class="gr-kpis">${kpi('施工規劃',num(s.planCount)+' 筆','包含尚未開始的規劃')}${kpi('預計施工',num(s.plannedDays)+' 天','規劃天數總和')}${kpi('已完成項目',num(s.completedItemCount)+' / '+num(s.totalItemCount)+' 項','全部有效施工項目合計')}${kpi('實際施工',num(s.projectDays)+' 天','跨規劃有效施工日期去重')}${kpi('落後施工規劃',num(s.delayedPlanCount)+' 筆','已達告警天數但完成度未達門檻',s.delayedPlanCount>0)}</section><p class="gr-note">工程完成度依已勾選完成項目數 ÷ 全部有效項目數；未設定項目時不推算完成度。工期與進度告警採全部有效且已實際施工的不同日期，履約期限則依日曆日期判斷；用料與人員明細仍套用查詢日期。</p><div class="gr-dashboard">${gantt(plans,options.accounting)}${plansDetail(plans,options.accounting,report.project||{})}${chartCard('人員施工統計',workerChart(report,options),'每日出工人數（含代工），同人同日不重複計算','gr-workers-card')}${gauge}${chartCard('用料統計',materialChart(report,options),`${num(report.materialCategoryStats?.length)} 種材料分類 · ${num(k.materialTypeCount)} 個品項`,'gr-materials-card')}<div class="gr-distribution" data-gr-category-donut>${materialDonut(report,options)}</div>${card('材料品項彙總',materialTable(report,options),'領用、餘料退回與淨用料；日期篩選同時套用領料及退料日期。','gr-summary-card')}</div>${laborSummary(report,options)}${receiptHistory(report,options)}`;
+  return `<section class="gr-kpis">${kpi('施工規劃',num(s.planCount)+' 筆','包含尚未開始的規劃')}${kpi('預計施工',num(s.plannedDays)+' 天','規劃天數總和')}${kpi('已完成項目',num(s.completedItemCount)+' / '+num(s.totalItemCount)+' 項','全部有效施工項目合計')}${kpi('實際施工',num(s.projectDays)+' 天','跨規劃有效施工日期去重')}${kpi('落後施工規劃',num(s.delayedPlanCount)+' 筆','已達告警天數但完成度未達門檻',s.delayedPlanCount>0)}</section><p class="gr-note">工程完成度依已勾選完成項目數 ÷ 全部有效項目數；未設定項目時不推算完成度。工期與進度告警採全部有效且已實際施工的不同日期，履約期限則依日曆日期判斷；用料與人員明細仍套用查詢日期。</p><div class="gr-dashboard">${plansDetail(plans,options.accounting,report.project||{})}${chartCard('人員施工統計',workerChart(report,options),'每日出工人數（含代工），同人同日不重複計算','gr-workers-card')}${gauge}${chartCard('用料統計',materialChart(report,options),`${num(report.materialCategoryStats?.length)} 種材料分類 · ${num(k.materialTypeCount)} 個品項`,'gr-materials-card')}<div class="gr-distribution" data-gr-category-donut>${materialDonut(report,options)}</div>${card('材料品項彙總',materialTable(report,options),'領用、餘料退回與淨用料；日期篩選同時套用領料及退料日期。','gr-summary-card')}</div>${laborSummary(report,options)}${receiptHistory(report,options)}`;
  }
  function render(options){
   const {report,tab='overview'}=options,p=report.project||options.project||{};
   if(currentProject!==p.id){selectedMaterialCategory='';currentProject=p.id;}
-  if(selectedMaterialCategory&&!(report.materialCategoryStats||[]).some(r=>categoryKey(r.id)===selectedMaterialCategory))selectedMaterialCategory='';
+  if(selectedMaterialCategory&&!chartCategories(report).some(r=>categoryKey(r.id)===selectedMaterialCategory))selectedMaterialCategory='';
   currentOptions=options;
   const heading=`<article class="gr-heading"><div><span class="gr-code">${esc(p.code||'未編號')}</span><h2>${esc(p.name)}</h2><p>${esc(p.customer||'')} · ${esc(p.type||'工程施工')} · 工作內容負責人：${esc(p.owner||'未指派')}</p><p>建立：${date(p.createdAt)}${p.date?' · 工作日期：'+date(p.date):''} · 結案：${date(p.completedOn)}</p><div class="gr-contract${p.contractOverdue?' gr-contract-overdue':''}"><p>履約期限：${date(p.contractStartDate)} 至 ${date(p.contractEndDate)}</p><p>${p.contractOverdue?'⚠ 履約期限已逾期，工程尚未完成':p.contractEndDate?(p.remainingContractDays==null?'剩餘履約日曆天數未提供':p.remainingContractDays<0?'履約截止日已過 '+num(Math.abs(p.remainingContractDays))+' 個日曆天':'剩餘履約日曆天數 '+num(p.remainingContractDays)+' 天'):'尚未設定履約截止日期'}</p></div></div><span class="gr-status">${esc(status(p.status))}</span></article>`;
   return heading+(tab==='materials'?materials(report,options):tab==='workers'?workers(report,options):overview(report,options));
@@ -167,6 +184,7 @@
    selectedMaterialCategory=select.value;
    const host=select.closest('.guc-report')||select.closest('.gr-report-content'),{report}=currentOptions;
    host.querySelectorAll('[data-gr-category-chart]').forEach(el=>el.innerHTML=materialChartData(categoryReport(report),currentOptions));
+   host.querySelectorAll('[data-gr-estimates]').forEach(el=>el.innerHTML=estimatesPanel(categoryReport(report)));
    host.querySelectorAll('[data-gr-category-table]').forEach(el=>el.innerHTML=materialTableData(categoryReport(report),currentOptions));
    host.querySelectorAll('[data-gr-category-rows]').forEach(el=>el.innerHTML=materialRowsTable(report));host.querySelectorAll('[data-gr-return-rows]').forEach(el=>el.innerHTML=returnRowsTable(report));
    host.querySelectorAll('[data-gr-category-donut]').forEach(el=>el.innerHTML=materialDonut(report,currentOptions));

@@ -12,7 +12,8 @@ test('reference-style card separates item counts, execution days and contract ca
  const html=render({report:report()});
  assert.match(html,/<strong>1 \/ 7<\/strong>/);assert.match(html,/14\.3%/);assert.match(html,/<strong>3 \/ 7<\/strong>/);
  assert.match(html,/工期執行：3天\/7天/);assert.match(html,/剩餘履約日曆天數 67 天/);
- assert.match(html,/預計7天完成｜已完成1項/);assert.match(html,/gr-monitor-plan gr-progress-warning/);
+ assert.match(html,/gr-gantt-bar/);assert.match(html,/gr-monitor-plan gr-progress-warning/);
+ assert.equal((html.match(/data-report-plan="plan"/g)||[]).length,1);assert.doesNotMatch(html,/data-gr-schedule/);
  assert.match(html,/落後 15\.7 個百分點/);assert.doesNotMatch(html,/依各子項目預計天數加權|完成工期/);
  assert.match(html,/<details class="gr-plan" data-report-plan="plan">/);assert.doesNotMatch(html,/<details[^>]*open/);
  assert.match(html,/工程師甲/);assert.match(html,/data-edit-work-log="log"/);assert.match(html,/data-construction-project="work"/);

@@ -1,0 +1,54 @@
+-- Run only in a populated isolated database. All mutations roll back.
+begin;
+set local statement_timeout='60s';
+do $$
+declare actor uuid; project uuid; item uuid; u text; result jsonb; baseline text; actual text;
+ denied boolean; viewer uuid:=gen_random_uuid(); auth_id uuid:=gen_random_uuid();
+begin
+ select id into actor from public.app_users where role='admin' and is_active limit 1;
+ select id into project from public.projects where deleted_at is null and project_type='construction' limit 1;
+ select id,unit into item,u from public.inventory_items where length(btrim(unit)) between 1 and 30 limit 1;
+ if actor is null or project is null or item is null then raise exception 'Isolated fixture data required';end if;
+ select md5(coalesce(jsonb_agg(to_jsonb(i) order by i.id)::text,'')) into baseline from public.inventory_items i;
+ delete from public.project_material_estimates where project_id=project and inventory_item_id=item and unit=u;
+ execute 'set local role service_role';
+ result:=public.save_project_material_estimate_v1(actor,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',25.5,'row_version',0));
+ if (result->>'planned_quantity')::numeric<>25.5 or (result->>'row_version')::int<>1 then raise exception 'Create mismatch';end if;
+ if not exists(select 1 from jsonb_array_elements(public.project_material_estimates_v1(actor,project,false)->'records') r where r->>'id'=result->>'id' and (r->>'planned_quantity')::numeric=25.5) then raise exception 'Reread mismatch';end if;
+ result:=public.save_project_material_estimate_v1(actor,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',0,'row_version',1));
+ if (result->>'planned_quantity')::numeric<>0 then raise exception 'Zero was discarded';end if;
+ denied:=false;begin perform public.save_project_material_estimate_v1(actor,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',20,'row_version',1));exception when others then denied:=sqlerrm like '%其他人修改%';end;if not denied then raise exception 'Stale write allowed';end if;
+ denied:=false;begin perform public.save_project_material_estimate_v1(actor,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',-1,'row_version',2));exception when others then denied:=sqlerrm like '%非負數%';end;if not denied then raise exception 'Negative quantity allowed';end if;
+ denied:=false;begin perform public.save_project_material_estimate_v1(actor,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',1.001,'row_version',2));exception when others then denied:=sqlerrm like '%兩位小數%';end;if not denied then raise exception 'Precision mismatch';end if;
+ denied:=false;begin perform public.save_project_material_estimate_v1(actor,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit','不存在的計量單位','planned_quantity',1,'row_version',0));exception when others then denied:=sqlerrm like '%計量單位%';end;if not denied then raise exception 'Invalid unit accepted';end if;
+ result:=public.save_project_material_estimate_v1(actor,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',null,'row_version',2));
+ if result->>'planned_quantity' is not null or (result->>'row_version')::int<>3 then raise exception 'Clear/version mismatch';end if;
+ result:=public.save_project_material_estimate_v1(actor,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',12,'row_version',3));
+ if (select count(*) from public.audit_logs where entity_type='project_material_estimates' and entity_id=(result->>'id')::uuid and event_kind='change')<>4 then raise exception 'Missing audit history';end if;
+ select md5(coalesce(jsonb_agg(to_jsonb(i) order by i.id)::text,'')) into actual from public.inventory_items i;
+ if actual<>baseline then raise exception 'Inventory master modified';end if;
+ if has_table_privilege('authenticated','public.project_material_estimates','SELECT') or has_function_privilege('anon','public.save_project_material_estimate_v1(uuid,jsonb)','EXECUTE') or not(select relrowsecurity from pg_class where oid='public.project_material_estimates'::regclass) then raise exception 'Data API ACL/RLS failure';end if;
+ raise notice 'PASS persistence, zero, clear/recreate, stale version, invalid values/units, audit, inventory preservation and Data API denial';
+ execute 'reset role';
+ insert into public.app_roles(code,name,project_scoped) values('estimate_test_scoped','Isolated estimate test',true);
+ insert into public.role_permissions(role_code,module,can_view,can_create,can_update,can_delete) values
+ ('estimate_test_scoped','reports',true,false,false,false),('estimate_test_scoped','inventory',true,false,false,false),('estimate_test_scoped','projects',true,false,false,false);
+ insert into auth.users(id) values(auth_id);
+ insert into public.app_users(id,auth_user_id,username,display_name,role) values(viewer,auth_id,'estimate_test_'||left(viewer::text,8),'Isolated estimate test','estimate_test_scoped');
+ execute 'set local role service_role';
+ denied:=false;begin perform public.project_material_estimates_v1(viewer,project,false);exception when others then denied:=sqlerrm like '%沒有統計查看權限%';end;if not denied then raise exception 'Cross-project read allowed';end if;
+ denied:=false;begin perform public.save_project_material_estimate_v1(viewer,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',10,'row_version',4));exception when others then denied:=sqlerrm like '%沒有修改預計用料%';end;if not denied then raise exception 'Read-only write allowed';end if;
+ execute 'reset role';
+ update public.role_permissions set can_update=true where role_code='estimate_test_scoped' and module='projects';
+ execute 'set local role service_role';
+ denied:=false;begin perform public.save_project_material_estimate_v1(viewer,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',10,'row_version',4));exception when others then denied:=sqlerrm like '%沒有統計查看權限%';end;if not denied then raise exception 'Cross-project write allowed';end if;
+ execute 'reset role';
+ insert into public.project_workers(project_id,user_id,can_view) values(project,viewer,true);
+ execute 'set local role service_role';
+ result:=public.save_project_material_estimate_v1(viewer,jsonb_build_object('project_id',project,'inventory_item_id',item,'unit',u,'planned_quantity',10,'row_version',4));
+ if (result->>'row_version')::int<>5 then raise exception 'Scoped editor update failed';end if;
+ execute 'reset role';update public.app_users set is_active=false where id=viewer;execute 'set local role service_role';
+ denied:=false;begin perform public.project_material_estimates_v1(viewer,project,false);exception when others then denied:=sqlerrm like '%權限%';end;if not denied then raise exception 'Inactive access allowed';end if;
+ raise notice 'PASS existing role permissions, scoped project boundaries, authorized editor and inactive denial';
+end $$;
+rollback;

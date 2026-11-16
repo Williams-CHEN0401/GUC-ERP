@@ -332,7 +332,7 @@ const OPERATION_MODULES:Record<string,string[]>={
  customers:["create_contract_service_type","update_contract_service_type","delete_contract_service_type","create_customer_department","update_customer_department","deactivate_customer_department","create_customer_category","update_customer_category","delete_customer_category","create_customer","update_customer","delete_customer","create_customer_contact","manage_customer_service"],
  suppliers:["create_supplier","update_supplier","delete_supplier"],
  appointments:["upsert_customer_appointment"],
- projects:["create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","update_work_assignment","cancel_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
+ projects:["save_project_material_estimate","create_project","create_erp_project","update_erp_project","delete_erp_project","create_work_assignment","update_work_assignment","cancel_work_assignment","complete_work_assignment","acknowledge_work_assignment","close_work_content"],
  inventory:["save_item_alias","import_item_aliases","bulk_update_inventory_items","create_product_category","update_product_category","delete_product_category","create_inventory_item","create_inventory_item_batch","update_inventory_item","delete_inventory_item","create_stock_adjustment"],
  pickups:["create_pickup","create_pickup_batch","update_pickup","delete_pickups","update_pickup_document","delete_pickup_document"],
  purchases:["create_supplier_return","update_supplier_return","delete_supplier_return","create_site_return","update_site_return","delete_site_return","cancel_site_return","delete_stock_receipt_document","create_stock_receipt_document","update_stock_receipt_document","create_stock_receipt_batch","update_stock_receipt","delete_stock_receipts"],
@@ -355,6 +355,7 @@ function operationPermission(operation:string,payload:Row):{module:string;action
   if(["complete_work_assignment","acknowledge_work_assignment","close_work_content"].includes(operation))action="UPDATE";
  if(operation==="save_equipment_history")action=(payload.event as Row)?.id?"UPDATE":"CREATE";
  if(operation==="manage_customer_service")action=({create:"CREATE",update:"UPDATE",delete:"DELETE"} as Record<string,PermissionAction>)[text(payload.action)]||"UPDATE";
+  if(operation==="save_project_material_estimate")action="UPDATE";
   if(operation==="save_item_alias"&&payload.action==="deactivate")action="DELETE";
  return {module,action};
 }
@@ -396,6 +397,7 @@ function requestWebsite(request:Request,params:URLSearchParams,operation='',payl
 }
 function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) {
  const scope=text(params.get("scope"))||"dashboard",entity=text(params.get("entity"));
+ if(scope==="material_estimates"){if(entity||siteRequest)throw Error("不支援此預計用料查詢。");requirePermission(user,"reports");return;}
  if(!siteRequest&&scope==='worklogs'&&!entity&&!hasPermission(user,'worklogs')&&hasConstructionPermission(user,'construction_plans')&&hasConstructionPermission(user,'construction_logs'))return;
  if(scope==="item_aliases"){if(entity||siteRequest)throw Error("不支援此品項對照查詢。");if(!["inventory","purchases","pickups"].some(module=>hasPermission(user,module)))throw Error("沒有品項對照查詢權限。");return;}
   if(scope==="assignment_management"){if(entity)throw new Error("不支援其他資料查詢。");requirePermission(user,"appointments");requirePermission(user,"projects");return;}
@@ -426,7 +428,7 @@ function authorizeRead(user:AppUser,params:URLSearchParams,siteRequest:boolean) 
   if(user.project_scoped)throw new Error("您的帳號沒有執行此操作的權限。");
   return;
  }
- const modules:Record<string,string[]>={appointments:["appointments"],dashboard:["dashboard"],transactions:["purchases","pickups"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],work_report:["reports"],pending_work_log_items:["worklogs"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
+ const modules:Record<string,string[]>={appointments:["appointments"],dashboard:["dashboard"],transactions:["purchases","pickups","inventory"],inventory:["inventory"],crm:["customers","projects","suppliers"],repairs:["repairs"],worklogs:["worklogs"],materials:["reports"],work_report:["reports"],material_estimates:["reports"],pending_work_log_items:["worklogs"],settings:["settings","users","audit"],backup:["backup"],sites:["site"],site_customer:["site"],site_navigation:["site"]};
  if(!modules[scope]?.some(module=>hasPermission(user,module)))throw new Error("您的帳號沒有執行此操作的權限。");
 }
 async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
@@ -449,6 +451,7 @@ async function enforceWorkLogScope(user:AppUser,operation:string,payload:Row) {
  }
 }
 async function restrictedSnapshot(user:AppUser,scopeName:string,optionsOnly=false):Promise<Row|null> {
+ if(scopeName==="transactions"&&!hasPermission(user,"purchases")&&!hasPermission(user,"pickups")&&hasPermission(user,"inventory"))return {scope:scopeName,current_user:publicUser(user),errors:[],receipts:[],pickups:[]};
  if(scopeName==='worklogs'&&!hasPermission(user,'worklogs'))return {...await constructionSnapshot(user),scope:scopeName};
  if(scopeName==="worklogs"&&user.project_scoped){const data=await privateReadRpc("work_log_scope_v1",{p_user_id:user.id},user) as Row;return {scope:scopeName,...data,customer_departments:await customerDepartmentRows(data.customers),customer_categories:await getAll(datasets.customer_categories.path),current_user:publicUser(user),errors:[],refreshed_at:new Date().toISOString()};}
  if(!user.permissions||user.role==="admin")return null;
@@ -1369,6 +1372,7 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
   if (operation === "create_product_category") { requireOperation(user,operation,payload,["admin"]); const name=limited(payload.name,80),code_prefix=text(payload.code_prefix).toUpperCase(); if(!name||!/^[A-Z]{1,3}$/.test(code_prefix)) throw new Error("貨品種類名稱須為 1–80 個字，編號字首限 1–3 個英文字母。"); return rpc("create_product_category_v1",{p_name:name,p_code_prefix:code_prefix,p_actor:actor}); }
   const openingMeters=(value:unknown)=>{const n=value==null||value===''?0:Number(value);if(!Number.isFinite(n)||n<0||n>=1e12||Math.abs(n*100-Math.round(n*100))>0.000001)throw Error("期初米數須為非負數，最多兩位小數。");return n;};
   const cableMeters=(value:unknown)=>{const meters=value==null||value===''?null:Number(value);if(meters!==null&&(!Number.isFinite(meters)||meters<=0||meters>=1e12||Math.abs(meters*100-Math.round(meters*100))>0.000001))throw Error('預設長度須為正數，最多兩位小數。');return meters;};
+  if(operation === "save_project_material_estimate"){requireOperation(user,operation,payload,["admin","operator"]);return rpc("save_project_material_estimate_v1",{p_actor_user_id:user.id,p_payload:payload});}
   if(operation === "save_item_alias"){requireOperation(user,operation,payload,["admin"]);return rpc("save_item_alias_v1",{p_actor:user.id,p_payload:payload});}
   if(operation === "import_item_aliases"){requireOperation(user,operation,payload,["admin"]);return rpc("import_item_aliases_v1",{p_actor:user.id,p_rows:payload.rows});}
   if (operation === "create_inventory_item") { requireOperation(user,operation,payload,["admin"]); const category_id=uuid(payload.category_id),brand=limited(payload.brand,120),item_name=limited(payload.item_name,200),unit=limited(payload.unit,30),model=nullable(payload.model,120),opening_quantity=nonNegative(payload.opening_quantity); if (!category_id||!brand||!item_name||!unit||model===null||opening_quantity===null) throw new Error("請完整填寫品項資料，期初庫存不可小於 0。"); const result=await rpc("create_inventory_items_batch_v1",{p_rows:[{category_id,model:model||null,brand,item_name,unit,opening_quantity,opening_meters:openingMeters(payload.opening_meters),meters_per_unit:cableMeters(payload.meters_per_unit)}],p_actor:actor}) as Row[];return result[0]; }
@@ -1927,7 +1931,7 @@ function redactAuditValue(value: unknown, depth=0): unknown {
   if(typeof value==="string")return value.replace(/Bearer\s+\S+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|token|secret|密碼)\s*[:=]\s*[^\s,;]+/gi,"[已遮蔽]");
   return value;
 }
-const AUDIT_ENTITIES:Record<string,string[]>={"customers":["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],"projects":["project","projects","project_workers","construction_plans","construction_plan_items","construction_plan_assignees","construction_details","maintenance_details","project_costs"],"assignments":["work_assignment","work_assignments"],"worklogs":["site_work_logs","site_work_log_workers","site_assets","attachments","work_log_access_requests"],"repairs":["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],"phone":["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],"monitoring":["sites","site_devices","site_device_credentials","monitoring_device_imports","access_device_imports","site_spreadsheet_imports","site_spreadsheet_templates"],"inventory":["supplier_item_aliases","inventory_item","inventory_items","product_categories","stock_adjustment","stock_adjustments","suppliers","bulk_update_batches","bulk_update_batch_items"],"transactions":["stock_receipt","stock_receipts","stock_receipt_customers","stock_transaction_documents","pickup_record","pickup_records","supplier_return_documents","supplier_return_lines","supplier_return_customers","site_return_documents","site_return_lines"],"accounts":["app_user","app_users","session","app_roles","role_permissions","project_access","erp_private_access"],"accounting":["accounting_material_prices","accounting_worker_wages","supplier_payment_terms","accounting_payroll","accounting_payables"],"performance":["performance_access","performance_reviews","performance_periods","performance_templates","performance_shared_tasks"],"system":["system_operation","system_backup"]};
+const AUDIT_ENTITIES:Record<string,string[]>={"customers":["customer_departments","customer_categories","customers","customer_contacts","customer_contract_services","contract_service_types"],"projects":["project_material_estimates","project","projects","project_workers","construction_plans","construction_plan_items","construction_plan_assignees","construction_details","maintenance_details","project_costs"],"assignments":["work_assignment","work_assignments"],"worklogs":["site_work_logs","site_work_log_workers","site_assets","attachments","work_log_access_requests"],"repairs":["repair_items","repair_item","maintenance_events","maintenance_event_equipment","maintenance_event_workers","maintenance_event_result"],"phone":["phone_systems","phone_extensions","phone_terminal_points","phone_terminal_import_logs","phone_system_credentials","phone_terminal_versions"],"monitoring":["sites","site_devices","site_device_credentials","monitoring_device_imports","access_device_imports","site_spreadsheet_imports","site_spreadsheet_templates"],"inventory":["supplier_item_aliases","inventory_item","inventory_items","product_categories","stock_adjustment","stock_adjustments","suppliers","bulk_update_batches","bulk_update_batch_items"],"transactions":["stock_receipt","stock_receipts","stock_receipt_customers","stock_transaction_documents","pickup_record","pickup_records","supplier_return_documents","supplier_return_lines","supplier_return_customers","site_return_documents","site_return_lines"],"accounts":["app_user","app_users","session","app_roles","role_permissions","project_access","erp_private_access"],"accounting":["accounting_material_prices","accounting_worker_wages","supplier_payment_terms","accounting_payroll","accounting_payables"],"performance":["performance_access","performance_reviews","performance_periods","performance_templates","performance_shared_tasks"],"system":["system_operation","system_backup"]};
 // Metadata only: never persist submitted passwords, salary values or request bodies.
 function auditOperation(operation:string,payload:Row){
  const needed=operationPermission(operation,payload),module=needed?.module||"";
@@ -2209,9 +2213,11 @@ async function handleRequest(request: Request) {
       if(scopeName==="receipt_delivery_options")return json(await rpc("receipt_delivery_options_v1",{p_actor_user_id:user.id}));
       if(scopeName==="assignment_management")return json({...await rpc("work_assignment_management_v1",{p_actor_user_id:user.id}) as Row,current_user:publicUser(user),errors:[]});
       if(scopeName==="site_returns")return json({...await rpc("site_return_list_v1",{p_actor_user_id:user.id}) as Row,current_user:publicUser(user),errors:[]});
+      if(scopeName==="material_estimates"){const id=uuid(params.get("project_id"));if(!id)throw Error("請選擇工作內容。");return json(await rpc("project_material_estimates_v1",{p_actor_user_id:user.id,p_project_id:id,p_options:true}));}
       if(scopeName==="materials"||scopeName==="work_report"){
         const id=params.get("project_id");if(id&&!uuid(id))throw new Error("工作內容編號不正確。");
         const data=await rpc("work_content_report_v1",{p_actor_user_id:user.id,p_project_id:id?uuid(id):null,p_from:date(params.get("from")),p_to:date(params.get("to")),p_work_type:params.get("work_type")||null,p_accounting:false}) as Row;
+        if(id&&data.report)(data.report as Row).materialEstimates=await rpc("project_material_estimates_v1",{p_actor_user_id:user.id,p_project_id:uuid(id),p_options:false});
         return json({...data,scope:scopeName,current_user:publicUser(user),customer_categories:await getAll(datasets.customer_categories.path),customer_departments:await customerDepartmentRows(data.customers),errors:[]});
       }
       if(scopeName==="pending_work_log_items"){

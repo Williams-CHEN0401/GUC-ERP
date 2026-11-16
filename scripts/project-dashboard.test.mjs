@@ -172,13 +172,33 @@ test('category changes filter item charts, summary, detail and distribution with
  r.project.id='another-work';
  assert.equal(itemColumns(renderer({report:r})).length,5,'Changing work contents clears the previous category filter');
 });
-test('overview keeps the project heading and five KPIs before the requested five report rows',()=>{
+test('overview keeps heading and KPIs, and nests one Gantt inside each plan detail',()=>{
  const html=render({report:materialReport()}),dashboard=html.indexOf('<div class="gr-dashboard">');
  assert(dashboard>0);assert(html.indexOf('class="gr-heading"')<dashboard);
  assert.equal([...html.slice(0,dashboard).matchAll(/class="gr-kpi(?: gr-alert)?"/g)].length,5);
- const titles=['施工項目排程','施工規劃明細','人員施工統計','專案進度','用料統計','材料種類領用占比','材料品項彙總'];
+ const titles=['施工規劃明細','人員施工統計','專案進度','用料統計','材料種類領用占比','材料品項彙總'];
  const offsets=titles.map(title=>html.indexOf('<h2>'+title+'</h2>',dashboard));
  assert(offsets.every(position=>position>dashboard));
  assert(offsets.every((position,i)=>i===0||position>offsets[i-1]),'Report cards follow schedule, details, personnel/progress, material/distribution, summary order');
- assert.match(html,/<details class="gr-plan" data-gr-schedule="p1">/);assert.match(html,/<details class="gr-plan" data-report-plan="p1">/);
+ assert.doesNotMatch(html,/data-gr-schedule|<h2>施工項目排程<\/h2>/);
+ assert.match(html,/<details class="gr-plan" data-report-plan="p1">[\s\S]*?<div class="gr-plan-body"><article class="gr-card gr-gantt-card">/);
+ assert.equal((html.match(/aria-label="施工項目工作日甘特圖"/g)||[]).length,1);
+});
+
+test('planned material comparison keeps zero, units and estimates without pickups distinct',()=>{
+ const r=materialReport();r.materialEstimates={can_write:true,records:[
+  {inventory_item_id:'wire',name:'網路線',unit:'米',categoryId:'cable',categoryName:'線材',planned_quantity:200},
+  {inventory_item_id:'wire',name:'網路線',unit:'箱',categoryId:'cable',categoryName:'線材',planned_quantity:1},
+  {inventory_item_id:'black-tie',name:'束帶',unit:'包',categoryId:'supplies',categoryName:'耗材',planned_quantity:0},
+  {inventory_item_id:'unused',name:'未領用設備',unit:'台',categoryId:'new',categoryName:'設備',planned_quantity:3},
+  {inventory_item_id:'white-tie',unit:'包',planned_quantity:null}
+ ]};
+ const html=render({report:r,tab:'materials'}),bars=itemColumns(html);
+ assert.deepEqual(bars.filter(r=>r.id==='wire').map(r=>r.value),[200,150,1,0]);
+ assert.deepEqual(bars.filter(r=>r.id==='black-tie').map(r=>r.value),[0,1]);
+ assert.deepEqual(bars.filter(r=>r.id==='unused').map(r=>r.value),[3,0]);
+ assert.deepEqual(bars.filter(r=>r.id==='white-tie').map(r=>r.value),[3]);
+ assert.match(html,/data-gr-edit-estimates/);assert.match(html,/實際－預計/);assert.match(html,/>-50<\/td>/);
+ r.materialEstimates.can_write=false;assert.doesNotMatch(render({report:r,tab:'materials'}),/data-gr-edit-estimates/);
+ r.materialEstimates.records=[];assert.deepEqual(itemColumns(render({report:r,tab:'materials'})).map(r=>r.value),[3,1,150,2,5]);
 });
