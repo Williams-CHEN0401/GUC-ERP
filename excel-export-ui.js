@@ -10,7 +10,7 @@
   ['customer_categories','customerCategoryTable','customers',()=>({q:value('customerCategorySearch')})],
   ['contract_services','contractServiceTable','customers',()=>({q:value('contractServiceSearch')})],
   ['suppliers','supplierTable','suppliers',()=>({q:value('supplierSearch')})],
-  ['inventory','inventoryTable','inventory',()=>({q:value('inventorySearch'),category_name:value('categoryFilter')})],
+  ['inventory','inventoryTable','inventory',()=>({q:tableState.inventory.search,category_name:value('categoryFilter')})],
   ['product_categories','productCategoryTable','inventory',()=>({q:value('productCategorySearch'),status:value('productCategoryStatus')})],
   ['projects','projectTable','projects',()=>({q:value('projectSearch'),...projectFilters('projectFilter')})],
   ['construction_projects','constructionProjectTable','projects',()=>({q:value('constructionSearch'),construction_category:value('constructionCategoryFilter')})],
