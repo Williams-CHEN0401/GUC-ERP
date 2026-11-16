@@ -1,14 +1,27 @@
 // Management uses work_assignments; the Dashboard remains the assignee's inbox.
 let assignmentManagementRows=[],assignmentManagementLoading=false,assignmentManagementGeneration=0,assignmentManagementUser='';
 function canAssignmentManage(action='VIEW'){return canModule('appointments')&&canModule('projects')&&canModule('projects',action);}
+function assignmentManagementGroups(rows,status,search){
+ return groupPendingAssignments(rows).filter(group=>(group.assignment_members||[group]).some(row=>
+  (!status||(status==='active'?['pending','in_progress'].includes(row.status):row.status===status))
+  &&matches([row.project,row.project_code,row.customer,row.assignee,row.creator,row.instructions],search)));
+}
+function assignmentManagementRow(group){
+ const members=group.assignment_members||[group],label=row=>APPOINTMENT_STATUSES.find(([key])=>key===row.status)?.[1]||row.status;
+ const same=key=>members.every(row=>row[key]===group[key]);
+ const counts=[...new Set(members.map(row=>row.status))].map(status=>`${label({status})} ${members.filter(row=>row.status===status).length} 人`).join('、');
+ const actions=row=>['pending','in_progress'].includes(row.status)?`${canAssignmentManage('UPDATE')?`<button type="button" data-assignment-edit="${esc(row.id)}" aria-label="修改 ${esc(row.assignee)} 的指派">修改</button>`:''}${canAssignmentManage('DELETE')?`<button type="button" data-assignment-cancel="${esc(row.id)}" aria-label="取消 ${esc(row.assignee)} 的指派">刪除／取消指派</button>`:''}`:'歷史紀錄保留';
+ const memberDetails=members.map(row=>`<div class="assignment-member"><strong>${esc(row.assignee)} · ${esc(label(row))}</strong>${row.completed_at?`<small>${esc(formatDateTime(row.completed_at))}</small>`:''}${!same('project_id')?`<p>${esc(row.project_code)}｜${esc(row.project)} · ${esc(row.customer)}</p>`:''}${!same('instructions')?`<p>${esc(row.instructions)}</p>`:''}${!same('construction_plan_id')||!same('construction_item_id')?assignmentPlanningSummary(row):''}<div class="actions">${actions(row)}</div></div>`).join('');
+ return `<tr data-assignment-group="${esc(group.assignment_request_id||group.id)}"><td><strong>${same('project_id')?esc(group.project_code)+'｜'+esc(group.project):'同次指派（含個別調整）'}</strong><small>${same('project_id')?esc(group.customer):'展開查看各負責人的工作內容'}</small></td><td><strong>${esc(members.map(row=>row.assignee).join('、'))}</strong><small>指派人：${esc(group.creator)}</small></td><td>${group.assignment_type==='pickup'?'取貨工作':'一般工作'}<small>${same('instructions')?esc(group.instructions):'工作說明已個別調整，請展開查看。'}</small>${same('construction_plan_id')&&same('construction_item_id')?assignmentPlanningSummary(group):''}</td><td>${esc(counts)}</td><td>${members.length>1?`<details><summary>負責人明細／操作（${members.length} 人）</summary>${memberDetails}</details>`:memberDetails}</td></tr>`;
+}
 function renderAssignmentManagement(){
  const host=document.querySelector('#assignmentManagementTable');if(!host)return;
  if(assignmentManagementUser!==(state.currentUser?.id||'')){assignmentManagementUser=state.currentUser?.id||'';assignmentManagementRows=[];assignmentManagementGeneration++;assignmentManagementLoading=false;}
  if(!canAssignmentManage())assignmentManagementRows=[];
  document.querySelector('#assignmentManagementPane [data-open="workAssignmentModal"]').hidden=!canAssignmentManage('CREATE');
  const status=document.querySelector('#assignmentManagementStatus').value,search=document.querySelector('#assignmentManagementSearch').value;
- const rows=assignmentManagementRows.filter(row=>(!status||(status==='active'?['pending','in_progress'].includes(row.status):row.status===status))&&matches([row.project,row.project_code,row.customer,row.assignee,row.creator,row.instructions],search));
- host.innerHTML=rows.map(row=>`<tr><td><strong>${esc(row.project_code)}｜${esc(row.project)}</strong><small>${esc(row.customer)}</small></td><td><strong>${esc(row.assignee)}</strong><small>指派人：${esc(row.creator)}</small></td><td>${row.assignment_type==='pickup'?'取貨工作':'一般工作'}<small>${esc(row.instructions)}</small>${assignmentPlanningSummary(row)}</td><td>${esc(APPOINTMENT_STATUSES.find(([key])=>key===row.status)?.[1]||row.status)}${row.completed_at?`<small>${esc(formatDateTime(row.completed_at))}</small>`:''}</td><td class="actions">${['pending','in_progress'].includes(row.status)?`${canAssignmentManage('UPDATE')?`<button type="button" data-assignment-edit="${esc(row.id)}">修改</button>`:''}${canAssignmentManage('DELETE')?`<button type="button" data-assignment-cancel="${esc(row.id)}">刪除／取消指派</button>`:''}`:'歷史紀錄保留'}</td></tr>`).join('')||emptyRow(5,assignmentManagementLoading?'載入中…':canAssignmentManage()?'沒有符合條件的工作指派':'沒有工作指派查看權限');
+ const rows=assignmentManagementGroups(assignmentManagementRows,status,search);
+ host.innerHTML=rows.map(assignmentManagementRow).join('')||emptyRow(5,assignmentManagementLoading?'載入中…':canAssignmentManage()?'沒有符合條件的工作指派':'沒有工作指派查看權限');
 }
 async function loadAssignmentManagement(){
  renderAssignmentManagement();const generation=++assignmentManagementGeneration;assignmentManagementRows=[];assignmentManagementLoading=true;renderAssignmentManagement();

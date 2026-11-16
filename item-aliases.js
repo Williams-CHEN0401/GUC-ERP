@@ -135,10 +135,10 @@ function refreshTransactionAliasLabels(){
   for(const [attribute,fn]of [['open',open],['history',history],['deactivate',deactivate]]){const b=e.target.closest('[data-alias-'+attribute+']');if(b)void fn(b.dataset['alias'+attribute[0].toUpperCase()+attribute.slice(1)]);}
   if(e.target.closest('[data-alias-import]'))importExcel();if(e.target.closest('[data-alias-export]'))exportExcel();if(e.target.closest('[data-alias-template]'))void template().catch(e=>notify(e.message,true));
  });
- document.addEventListener('click',e=>{if(e.target.closest('[data-tabs="inventory"] [data-tab="aliases"]'))void load();});
+ document.addEventListener('click',e=>{if(e.target.closest('[data-tabs="transaction"] [data-tab="aliases"]'))void load();});
  document.addEventListener('change',e=>{if(e.target.matches('#modalForm [data-batch-item],#modalForm [name="supplierId"]'))refreshTransactionAliasLabels();});
  document.addEventListener('guc:form-references-updated',()=>{refreshTransactionAliasLabels();if(pane.classList.contains('active'))void load();});
  // Added rows and reopened documents share the same labels. No form values change.
  const modal=document.getElementById('modalForm');if(modal)new MutationObserver(changes=>{if(changes.some(change=>!change.target.closest?.('[data-transaction-alias]')))queueMicrotask(refreshTransactionAliasLabels);}).observe(modal,{childList:true,subtree:true});
- const interval=setInterval(()=>{if(!state.currentUser||!loadedScopes.has('inventory'))return;clearInterval(interval);if(new URLSearchParams(location.search).get('tab')==='aliases')document.querySelector('[data-tabs="inventory"] [data-tab="aliases"]').click();},250);setTimeout(()=>clearInterval(interval),30000);
+ const interval=setInterval(()=>{if(!state.currentUser||!loadedScopes.has('transactions'))return;clearInterval(interval);if(new URLSearchParams(location.search).get('tab')==='aliases')document.querySelector('[data-tabs="transaction"] [data-tab="aliases"]').click();},250);setTimeout(()=>clearInterval(interval),30000);
 })();
