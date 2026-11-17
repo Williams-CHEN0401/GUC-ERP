@@ -43,7 +43,7 @@ async function saveReceiptDocument(form,id,data){
   const payload={
     document_id:snapshot.id,existing:snapshot.existing,document_no:data.documentNo?.trim()||null,receipt_date:data.date,supplier_id:data.supplierId,
     customer_ids:[...new FormData(form).getAll('receiptCustomerId')],customer_departments:collectReceiptCustomerDepartments(),receipt_metadata:receiptMetadataPayload(form,id),
-    rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.itemId,quantity:row.quantity,quantity_unit:row.quantityUnit,note:row.note,...(isReturn?{remnant_line_id:row.remnantLineId||null}:{}),...receiptPricePayload(elements[index])}))
+    rows:rows.map((row,index)=>({id:elements[index].dataset.receiptId||null,inventory_item_id:row.newItem?null:row.itemId,...(row.newItem?{new_item:row.newItem}:{}),quantity:row.quantity,quantity_unit:row.quantityUnit,note:row.note,...(isReturn?{remnant_line_id:row.remnantLineId||null}:{}),...receiptPricePayload(elements[index])}))
   };
   if(isReturn){payload.return_date=payload.receipt_date;delete payload.receipt_date;payload.row_version=snapshot.rowVersion;payload.request_id=snapshot.requestId;const signature=JSON.stringify({...payload,request_id:null});if(snapshot.signature&&snapshot.signature!==signature)payload.request_id=snapshot.requestId=uid();snapshot.signature=signature;}
   return await (isReturn?mutate:receiptMutation)(operation,payload,isReturn?(id?'整張退貨單已修改':'退貨單已建立'):(id?'整張進貨單已修改':'進貨單已建立'));
