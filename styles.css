@@ -179,7 +179,8 @@ html{font-size:17px;line-height:1.55}.brand strong{font-size:18px}.brand small,.
 .assignment-completion-actions button:disabled{opacity:.55;cursor:not-allowed}
 .customer-department-selector>.customer-selector-search{grid-column:1/-1}
 .receipt-customers>.customer-selector-search{display:block;margin-bottom:16px}
-.inventory-search-choice input[type=search]{margin-bottom:6px}
+.inventory-search-choice{display:grid;gap:6px;min-width:0}
+.inventory-search-choice [data-toggle-transaction-new-item]{min-height:44px;max-width:100%;white-space:normal}
 .pickup-item-search>label{display:block;margin-top:12px}
 .pickup-item-results{display:grid;gap:8px;max-height:260px;overflow-y:auto;margin-top:12px;min-width:0}
 .pickup-item-results>button{display:grid;gap:4px;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0;width:100%}
