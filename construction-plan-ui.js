@@ -65,7 +65,7 @@ function renderConstructionDashboard(){
  const expanded=new Set([...host.querySelectorAll('[data-dashboard-plan][open]')].map(row=>row.dataset.dashboardPlan));
  const plans=state.dashboard?.construction_progress||[];host.hidden=!plans.length;
  host.innerHTML='<h2>負責的施工規劃進度</h2>'+[...plans].sort((a,b)=>Number(b.progress_alert||b.contract_overdue)-Number(a.progress_alert||a.contract_overdue)).map(p=>`<article class="construction-monitor-card ${p.progress_alert||p.contract_overdue?'is-warning':''}"><header class="construction-monitor-heading"><div><h3>${esc(p.content)}</h3><p>${esc(p.project)} · ${esc(p.construction_date)}</p></div>${constructionMonitorBadges(p)}</header>${constructionProgress(p)}${constructionWarning(p)}${constructionContractSummary(p)}<details class="construction-plan-card construction-plan-fold" data-dashboard-plan="${esc(p.id)}"${expanded.has(p.id)?' open':''}><summary><span>施工規劃明細</span><small>預計${p.planned_days||'未設定'}天完成｜已完成${Number(p.completed_item_count||0)}項</small></summary><div class="construction-plan-body"><button type="button" class="outline" data-construction-project="${esc(p.project_id)}">查看施工規劃</button></div></details></article>`).join('');
- if(plans.some(p=>p.progress_alert||p.contract_overdue))document.querySelector('#dashboard')?.prepend(host);
+ document.querySelector('#dashboardWorkContentCard')?.before(host);
 }
 async function refreshConstructionProgressViews(){
  invalidateSharedReports();

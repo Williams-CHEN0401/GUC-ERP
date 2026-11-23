@@ -29,7 +29,7 @@ test('search is below pickup rows in both entry forms, never inside pickup item 
  assert.equal(c.transactionItemSearchFields('receipt').replaceAll('receipt','pickup').replaceAll('進貨','取貨'),c.pickupItemSearchFields());
 });
 
-test('receipt search fills category and item, preserves quantity/notes, appends receipt rows and focuses duplicates',()=>{
+test('receipt search fills category and item, preserves quantity/notes, appends independent receipt rows for repeated items',()=>{
  const {c,rows,notices,status,addedTypes}=harness();
  c.chooseTransactionSearchItem('receipt','a');
  assert.equal(rows[0].querySelector('[data-batch-item]').value,'a');
@@ -43,7 +43,7 @@ test('receipt search fills category and item, preserves quantity/notes, appends 
  assert.equal(rows[1].querySelector('[data-batch-category]').value,'two');
  assert.equal(rows[1].querySelector('[name="batchQuantity"]').value,'1');
  c.chooseTransactionSearchItem('receipt','a');c.chooseTransactionSearchItem('receipt','off');c.chooseTransactionSearchItem('receipt','missing');
- assert.equal(rows.length,2);assert.match(notices[0],/已在進貨明細/);
+ assert.equal(rows.length,3);assert.equal(rows[2].querySelector('[data-batch-item]').value,'a');assert.equal(notices.length,0);
  assert.equal(rows[0].querySelector('[name="batchQuantity"]').focused,true);
 });
 
@@ -86,7 +86,7 @@ test('search matches across active categories by name/brand/model/code; empty qu
  assert.equal(c.pickupSearchItems('OFF').length,0);
  assert.equal(c.pickupSearchItems(' ').length,0);
 });
-test('click fills first blank preserving quantity; subsequent item appends; duplicate and inactive IDs do not overwrite',()=>{
+test('click fills first blank preserving quantity; subsequent item appends; repeated items append while inactive IDs do not overwrite',()=>{
  const {c,rows,notices}=harness();
  c.choosePickupSearchItem('a');
  assert.equal(rows[0].querySelector('[data-batch-item]').value,'a');
@@ -96,7 +96,7 @@ test('click fills first blank preserving quantity; subsequent item appends; dupl
  assert.equal(rows[1].querySelector('[data-batch-category]').value,'two');
  assert.equal(rows[1].querySelector('[data-batch-item]').value,'b');
  c.choosePickupSearchItem('a');c.choosePickupSearchItem('off');c.choosePickupSearchItem('missing');
- assert.equal(rows.length,2);assert.match(notices[0],/已在取貨明細/);
+ assert.equal(rows.length,3);assert.equal(rows[2].querySelector('[data-batch-item]').value,'a');assert.equal(notices.length,0);
 });
 test('maximum rows is enforced without replacing completed selections',()=>{
  const {c,rows,notices}=harness();
