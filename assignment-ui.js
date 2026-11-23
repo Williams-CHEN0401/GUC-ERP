@@ -4,7 +4,7 @@ let assignmentCompletionRow=null,assignmentCompletionBusy=false,assignmentComple
 const assignmentAcknowledgements=new Set();
 function assignmentPendingRows(){
   document.querySelector('#pendingAssignmentTitle').textContent='我的待辦';
-  document.querySelector('#assignmentVisibilityHint').textContent='只顯示目前登入帳號被指派的未完成工作；完成通知保留給原指派人。';
+  document.querySelector('#assignmentVisibilityHint').textContent='依既有權限顯示工作指派與預約事項；完成通知保留給原指派人。';
   return (state.dashboard.assignments?.pending||[]).filter(row=>row.assignment_type==='construction'||row.assignee_user_id===state.currentUser?.id);
 }
 function groupPendingAssignments(rows){
@@ -22,7 +22,7 @@ function groupPendingAssignments(rows){
   return groups;
 }
 function assignmentPendingCard(row){
-  const ownAssignment=(row.assignment_members||[row]).find(member=>member.assignee_user_id===state.currentUser?.id);
+  const ownAssignment=(row.assignment_members||[row]).find(member=>member.assignee_user_id===state.currentUser?.id&&['pending','in_progress'].includes(member.status));
   const mine=row.assignment_type==='construction'
     ?(state.dashboard.assignments?.pending||[]).some(item=>item.id===row.id)
     :Boolean(ownAssignment);
@@ -61,6 +61,7 @@ async function refreshAssignmentsAfterWrite(){
   // A pre-write GET may already be running; do not mistake it for a fresh reread.
   await scopeRequests.get('dashboard')?.catch(()=>{});
   loadedScopes.clear();
+  assignmentCalendarLoadedAt=0;
   const snapshot=await loadScope('dashboard',{force:true,silent:true});
   if(snapshot?.errors?.length)throw Error('首頁部分資料尚未載入');
 }

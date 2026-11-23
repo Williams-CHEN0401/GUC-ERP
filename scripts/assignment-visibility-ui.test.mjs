@@ -38,8 +38,9 @@ test('every Dashboard uses the assignee ID, including admins with stale all-pers
  assert.equal(h.context.assignmentPendingRows().length,0);
 });
 test('other-person cards are read-only, names are escaped, and own entries beyond personal page still complete',()=>{
- const h=harness(),row={id:'beyond-page',assignment_type:'general',assignee_user_id:'admin',assignee:'<人員>',creator:'<管理員>',project:'工作',instructions:'測試'};
+ const h=harness(),row={id:'beyond-page',status:'pending',assignment_type:'general',assignee_user_id:'admin',assignee:'<人員>',creator:'<管理員>',project:'工作',instructions:'測試'};
  assert.match(h.context.assignmentPendingCard(row),/data-complete-assignment="beyond-page"/);
+ assert.doesNotMatch(h.context.assignmentPendingCard({...row,status:'completed'}),/data-complete-assignment/);
  const other=h.context.assignmentPendingCard({...row,assignee_user_id:'other'});
  assert.doesNotMatch(other,/data-complete-assignment/);assert.match(other,/負責人：&lt;人員>/);
  assert.doesNotMatch(other,/<人員>|<管理員>/);

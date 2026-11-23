@@ -23,13 +23,13 @@ test('both batch types show a safely escaped optional last note, before delete',
  }
  assert.match(c.transactionBatchRow('pickup'),/maxlength="500"/);
 });
-test('row collector preserves each note, trims blank, rejects overlong and duplicate pickups',()=>{
+test('row collector preserves each note, trims blank, rejects overlong notes and preserves repeated pickup lines',()=>{
  const c=ui(),data=[{item:'i',note:' A '},{item:'j',note:' B '}];
  c.document={querySelector:()=>({_transactionLimit:20}),querySelectorAll:()=>data.map(row=>({querySelector:key=>({value:key==='[data-batch-category]'?'c':key==='[data-batch-item]'?row.item:key==='[name="batchQuantity"]'?'2':key==='[name="batchQuantityUnit"]'?'package':key==='[name="batchRemnantLine"]'?'':row.note})}))};
  assert.deepEqual(Array.from(c.collectTransactionBatchRows('pickup'),x=>x.note),['A','B']);
  data[1].note='  ';assert.equal(c.collectTransactionBatchRows('pickup')[1].note,'');
  data[1].note='長'.repeat(501);assert.throws(()=>c.collectTransactionBatchRows('pickup'),/500/);
- data[1].note='不同';data[1].item='i';assert.throws(()=>c.collectTransactionBatchRows('pickup'),/重複/);
+ data[1].note='不同';data[1].item='i';assert.equal(c.collectTransactionBatchRows('pickup').length,2);
 });
 test('both pickup submit paths send notes, hydrate and edit retain them, Gateway selects them',()=>{
  for(const prefix of ['  if(type==="pickupModal"){const project=','  if(type==="workLogPickupModal"){const log=']){
