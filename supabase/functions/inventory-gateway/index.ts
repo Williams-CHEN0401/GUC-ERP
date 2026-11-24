@@ -1772,6 +1772,9 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     const links=await get(`customer_contract_services?is_active=eq.true&customer_id=eq.${customer_id}&service_type_id=eq.${service_type_id}&select=customer_id`) as {customer_id:string}[];
     const projects=await get(`projects?id=eq.${project_id}&customer_id=eq.${customer_id}&select=id,name`) as {id:string;name:string}[];
     if(customers.length!==1||services.length!==1||links.length!==1||projects.length!==1) throw new Error("找不到客戶、承攬內容與專案的有效關聯。");
+    const workLogId=payload.work_log_id?uuid(payload.work_log_id):null;
+    if(payload.work_log_id&&!workLogId)throw new Error("工作日誌 ID 不正確。");
+    const createOnly=attachmentsCreateOnly(project_id);
     let uploadFolder="";
     const rows=values.map((value,index)=>{
       if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`第 ${index+1} 筆附件索引格式不正確。`);
@@ -1780,12 +1783,12 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
       const slash=nas_path.lastIndexOf("/"),folder=slash>0?nas_path.slice(0,slash):"",storedName=slash>0?nas_path.slice(slash+1):"",expectedFolder=`/GUC-ERP/${safePathPart(customers[0].name)}/${safePathPart(services[0].name)}/${safePathPart(projects[0].name)}/${log_date}`;
       if(folder!==expectedFolder||!storedName||storedName!==safePathPart(storedName)||!["new","overwrite","rename"].includes(conflict_resolution)||(conflict_resolution!=="rename"&&storedName!==safePathPart(original_name))) throw new Error(`第 ${index+1} 筆 NAS 路徑與客戶、承攬內容、專案或日期不相符。`);
       if(uploadFolder&&folder!==uploadFolder) throw new Error("同一批附件必須保存在相同日期資料夾。");
+      if(createOnly&&conflict_resolution==="overwrite")throw new Error("此工作內容的附件不可覆蓋，請選擇另存新檔。");
       uploadFolder=folder;
-      return {id,project_id,work_log_id:null,asset_type,title:original_name,description:description||null,original_name,mime_type,file_size,nas_path,upload_status:"uploaded",uploaded_by:user!.username,uploaded_at,sha256};
+      return {id,project_id,work_log_id:null,asset_type,title:original_name,description:description||null,original_name,mime_type,file_size,nas_path,upload_status:"uploaded",uploaded_by:user!.username,uploaded_at,sha256,...(createOnly?{create_only:true,target_work_log_id:workLogId}:{})};
     });
     if(new Set(rows.map(row=>row.id)).size!==rows.length||new Set(rows.map(row=>row.nas_path)).size!==rows.length) throw new Error("附件索引中有重複檔案。");
-    if(payload.work_log_id){
-      const workLogId=uuid(payload.work_log_id);if(!workLogId)throw new Error("工作日誌 ID 不正確。");
+    if(workLogId){
       return rpc("register_work_log_attachments_v1",{p_customer_id:customer_id,p_service_type_id:service_type_id,p_project_id:project_id,p_work_log_id:workLogId,p_rows:rows,p_actor:actor});
     }
     return rpc("register_contract_site_attachments_v2",{p_customer_id:customer_id,p_service_type_id:service_type_id,p_project_id:project_id,p_rows:rows,p_actor:actor});
@@ -2126,6 +2129,11 @@ async function monitoringIpConflicts(payload: Row) {
   return {ips:[...new Set(records.map(row=>row.ip_address))]};
 }
 
+function attachmentsCreateOnly(projectId:string){
+  const access=privateContext.getStore();
+  return Boolean(access?.configured&&!access.direct&&access.mutation_project_ids?.includes(projectId));
+}
+
 async function nasUploadContext(params:URLSearchParams,user:AppUser) {
   if(params.has("construction_plan_id")){
     const planId=uuid(params.get("construction_plan_id")),projectId=uuid(params.get("project_id")),customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("contract_service_type_id"));
@@ -2136,10 +2144,9 @@ async function nasUploadContext(params:URLSearchParams,user:AppUser) {
   }
   const customerId=uuid(params.get("customer_id")),serviceId=uuid(params.get("contract_service_type_id")),projectId=uuid(params.get("project_id"));
   if(!customerId||!serviceId||!projectId)throw new Error("缺少有效的客戶、承攬內容或專案編號。");
-  const access=privateContext.getStore();
-  // NAS folders are shared at project level. Do not expose hidden paths or allow
-  // an outsider to overwrite another private log's file in the same folder.
-  if(access?.configured&&!access.direct&&access.mutation_project_ids?.includes(projectId))throw new Error("此工作內容包含私人日誌，沒有共用附件目錄的操作權限。");
+  const createOnly=attachmentsCreateOnly(projectId);
+  // Old NAS servers cannot enforce create-only writes. Keep those callers blocked.
+  if(createOnly&&params.get("attachment_policy")!=="create_only_v1")throw new Error("此工作內容包含私人日誌，沒有共用附件目錄的操作權限。");
   // Only the four selected rows are needed; do not load the full sites/worklogs/equipment snapshot.
   const [customers,services,links,projects]=await Promise.all([
     get(`customers?select=id,name&id=eq.${customerId}&limit=1`),
@@ -2154,8 +2161,8 @@ async function nasUploadContext(params:URLSearchParams,user:AppUser) {
     const logs=await get(`site_work_logs?select=id&deleted_at=is.null&id=eq.${workLogId}&project_id=eq.${projectId}&limit=1`) as Row[];
     if(logs.length!==1)throw new Error("工作日誌與工作內容不相符，請重新整理。");
   }
-  const protectedPaths=workLogId?(await getAll(`site_assets?select=nas_path&project_id=eq.${projectId}&work_log_id=neq.${workLogId}`) as Row[]).map(row=>row.nas_path):[];
-  return {scope:"nas_upload_context",current_user:publicUser(user),customers,contract_service_types:services,customer_contract_services:links,projects,...(workLogId?{work_log_id:workLogId,protected_paths:protectedPaths}:{}),errors:[]};
+  const protectedPaths=workLogId&&!createOnly?(await getAll(`site_assets?select=nas_path&project_id=eq.${projectId}&work_log_id=neq.${workLogId}`) as Row[]).map(row=>row.nas_path):[];
+  return {scope:"nas_upload_context",current_user:publicUser(user),customers,contract_service_types:services,customer_contract_services:links,projects,can_overwrite:!createOnly,...(workLogId?{work_log_id:workLogId,protected_paths:protectedPaths}:{}),errors:[]};
 }
 
 async function handleRequest(request: Request) {

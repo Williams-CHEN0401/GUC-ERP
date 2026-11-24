@@ -3,8 +3,10 @@ import {receiptDocumentServer} from './receipt-document-fixture.mjs';
 import {sql,definition,ids} from './worklog-save-fixture.mjs';
 import {createNasMemoryFixture} from './nas-memory-fixture.mjs';
 import nasApi from '../api/nas.mjs';
-export async function worklogAttachmentsServer(){
- const fixture=await receiptDocumentServer(),{db,server,gatewayHandler,historical,additionalRpcs}=fixture;
+import {withWebsiteAccess} from './website-access-test-helper.mjs';
+export async function worklogAttachmentsServer(createFixture=receiptDocumentServer){
+ const fixture=await createFixture(),{db,server,gatewayHandler,gatewayContext,historical,additionalRpcs}=fixture;
+ gatewayContext.currentUser=withWebsiteAccess(gatewayContext.currentUser);
  await db.exec(`create table if not exists contract_service_types(id uuid primary key,code text,name text,is_active boolean default true,sort_order integer default 1);
  alter table customer_contract_services add column if not exists is_active boolean default true;
  grant select on contract_service_types to service_role;`);
@@ -19,6 +21,7 @@ export async function worklogAttachmentsServer(){
  await db.query('update sites set customer_id=$1,contract_service_type_id=$2 where id=$3',[ids.customer,ids.service,historical.work_log.site_id]);
  await db.exec(definition(await sql('20260828000300_contract_centric_sites.sql'),'ensure_customer_contract_site_v1'));
  await db.exec(await sql('20260829000100_contract_attachment_project_path.sql'));
+ await db.exec(await sql('20261124000659_mixed_private_log_attachment_create_only.sql'));
  additionalRpcs.push('register_work_log_attachments_v1','register_contract_site_attachments_v2');
  const nas=createNasMemoryFixture(),originalFetch=globalThis.fetch,envNames=['VERCEL_ENV','NAS_WEBDAV_URL','NAS_WEBDAV_USERNAME','NAS_WEBDAV_PASSWORD','NAS_WEBDAV_ROOT'],originalEnv=Object.fromEntries(envNames.map(k=>[k,process.env[k]]));
  Object.assign(process.env,{VERCEL_ENV:'production',NAS_WEBDAV_URL:'https://nas.fixture.test',NAS_WEBDAV_USERNAME:'fixture',NAS_WEBDAV_PASSWORD:'fixture-only',NAS_WEBDAV_ROOT:'/GUC-ERP'});
@@ -37,6 +40,11 @@ export async function worklogAttachmentsServer(){
    const url=new URL(req.url,'http://127.0.0.1');
    const json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
    try{
+     if(url.pathname==='/api/public-config'){
+       res.writeHead(200,{'Content-Type':'application/javascript','Cache-Control':'no-store'});
+       res.end('globalThis.GUC_PUBLIC_CONFIG={localProduction:true,productionOrigin:location.origin};sessionStorage.setItem("GUC_ERP_ACCESS_TOKEN","isolated-fixture-only");');
+       return;
+     }
      if(url.pathname==='/api/nas'){
        let bytes=0,chunks=[];for await(const part of req){bytes+=part.length;if(bytes>4500000)throw Error('Hosting payload limit');chunks.push(part);}
        const request=new Request(url,{method:req.method,headers:req.headers,...(req.method==='POST'?{body:Buffer.concat(chunks)}:{})});

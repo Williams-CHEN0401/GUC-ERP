@@ -38,3 +38,8 @@ jobs:
         env:
           PGLITE_MODULE: ${{ github.workspace }}/.github/db-tests/node_modules/@electric-sql/pglite/dist/index.js
 
+
+      - name: Verify attachment uploads in projects with private work logs
+        run: node --experimental-vm-modules scripts/verify-mixed-private-attachments.mjs
+        env:
+          PGLITE_MODULE: ${{ github.workspace }}/.github/db-tests/node_modules/@electric-sql/pglite/dist/index.js
