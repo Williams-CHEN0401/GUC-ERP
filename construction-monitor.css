@@ -57,3 +57,12 @@
  .construction-monitor-metrics small { grid-column:1/-1; }
  .construction-monitor-settings .form-grid { grid-template-columns:1fr; }
 }
+
+.construction-matrix { min-width: 0; margin-block: 1rem; }
+.construction-matrix summary { cursor: pointer; font-weight: 700; }
+.construction-matrix table { width: 100%; }
+.construction-matrix th, .construction-matrix td { padding: .5rem; white-space: nowrap; }
+.construction-matrix [data-cell-status="done"] { background: #e8f2e6; color: #264c31; }
+.construction-matrix [data-cell-status="working"] { background: #fff2ce; color: #66470b; }
+[data-equipment-entry] { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem; margin-block: .5rem; }
+[data-equipment-entry] label { flex: 1 1 10rem; min-width: 0; }
