@@ -10,8 +10,8 @@ import {createNasMemoryFixture} from './nas-memory-fixture.mjs';
 import nasApi from '../api/nas.mjs';
 
 export const drawingMigration='20261101061126_construction_plan_nas_drawings.sql';
-export async function constructionDrawingsServer(){
- const fixture=await constructionPlanServer(),{db,server,gatewayHandler,additionalRpcs}=fixture;
+export async function constructionDrawingsServer(existingFixture,existingPlans){
+ const fixture=existingFixture??await constructionPlanServer(),{db,server,gatewayHandler,additionalRpcs}=fixture;
  // Released read/audit columns absent from the older construction test schema.
  await db.exec(`alter table customers add column if not exists deleted_at timestamptz;
   alter table projects add column if not exists contract_start_date date,add column if not exists contract_end_date date;
@@ -40,8 +40,8 @@ export async function constructionDrawingsServer(){
   grant select,insert,update on site_assets to service_role;`);
  await db.exec(await sql(drawingMigration));
  additionalRpcs.push('construction_drawings_v1','construction_drawing_file_v1','construction_drawing_upload_context_v1','register_construction_drawings_v1');
- const plans=[];
- for(const [index,projectId]of [fixture.planProjects.small,fixture.planProjects.tender].entries()){
+ const plans=existingPlans??[];
+ if(!existingPlans)for(const [index,projectId]of [fixture.planProjects.small,fixture.planProjects.tender].entries()){
   plans.push(await callAsService(db,'save_construction_plan_v1',[planUsers.owner,JSON.stringify({id:randomUUID(),project_id:projectId,construction_date:'2026-11-01',content:index?'二樓網路設備配置':'一樓監控配管與工程圖',status:'pending',planned_days:7,notes:'隔離測試：工程圖保存在記憶體 NAS，重新啟動即清除。',assignee_user_ids:[planUsers.A,planUsers.B]}),false]));
  }
  const originalUser=fixture.gatewayContext.currentUser;
