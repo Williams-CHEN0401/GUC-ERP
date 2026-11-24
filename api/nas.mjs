@@ -197,7 +197,7 @@ function requireLegacyAttachmentPermission(user) {
 }
 
 async function resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization, workLogId = "", constructionPlanId = "") {
-  const params = new URLSearchParams({ scope: "nas_upload_context", customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}), ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}) });
+  const params = new URLSearchParams({ scope: "nas_upload_context", attachment_policy: "create_only_v1", customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}), ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}) });
   const response = await gatewayRequest(`?${params}`, authorization, "ERP 承攬資料服務");
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new HttpError([400, 401, 403, 404, 409].includes(response.status) ? response.status : 502, data.error || "無法讀取 ERP 承攬資料。", "CONTRACT_LOOKUP_FAILED");
@@ -220,6 +220,7 @@ async function resolveUploadContext(customerId, contractServiceTypeId, projectId
     customerName: safePart(customer.name, "未命名客戶"),
     projectName: safePart(project.name, "未命名專案"),
     logDate: formatTaipeiDate(),
+    canOverwrite: data.can_overwrite !== false,
     protectedPaths: Array.isArray(data.protected_paths)?data.protected_paths:[]
   };
 }
@@ -492,7 +493,13 @@ export function verifyChunkTicket(config, value, expected, authorization, now = 
   return ticket;
 }
 
-async function handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, constructionPlanId, requestId, authMs, formMs }) {
+function requireOverwritePermission(action, context) {
+  if (action === "overwrite" && context?.canOverwrite === false) {
+    throw new HttpError(409, "此工作內容的附件不可覆蓋，請選擇另存新檔。", "NAS_OVERWRITE_FORBIDDEN");
+  }
+}
+
+async function handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, constructionPlanId, requestId, authMs, formMs, checkedContext }) {
   const startedAt = Date.now();
   const expected = { actor: user.username, customer_id: customerId, contract_service_type_id: contractServiceTypeId, project_id: projectId, ...(workLogId?{work_log_id:workLogId}:{}), ...(constructionPlanId ? {construction_plan_id: constructionPlanId} : {}) };
   if (mode === "begin_file") {
@@ -503,6 +510,7 @@ async function handleChunkUpload({ config, form, mode, user, authorization, cust
     if (preflight.expected_size !== undefined && preflight.expected_size !== size) throw ticketError();
     const tailBytes = form.get("inline_tail") === "true" ? Math.min(size, INLINE_TAIL_BYTES) : 0;
     const conflict = firstText(form.get("conflict_action")) || "new";
+    requireOverwritePermission(conflict, checkedContext);
     if (!["new", "rename", "overwrite"].includes(conflict)) throw new HttpError(400, "同名檔案處理選項不正確。", "CONFLICT_ACTION_INVALID");
     const now = Date.now(), ticket = {
       ...expected, version: 2, purpose: "nas-chunks", issued_at: now, expires_at: now + CHUNK_TICKET_TTL_MS,
@@ -539,6 +547,7 @@ async function handleChunkUpload({ config, form, mode, user, authorization, cust
   if (!tailBytes && tail) throw new HttpError(400, "照片分段格式不正確。", "CHUNK_TAIL_INVALID");
   const contextStartedAt = Date.now();
   const finalContext=await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
+  requireOverwritePermission(ticket.conflict, finalContext);
   if(ticket.conflict==="overwrite"&&finalContext.protectedPaths.includes(`${ticket.target_folder}/${constructionPlanId ? drawingFileName(ticket.name) : safePart(ticket.name)}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
   const contextMs = elapsedMs(contextStartedAt), readStartedAt = Date.now();
   const parts = await mapWithConcurrency(Array.from({ length: count }, (_, i) => i), NAS_CONCURRENCY, async index => {
@@ -652,11 +661,12 @@ export default {
       if (!customerId || !contractServiceTypeId || !projectId) throw new HttpError(400, "缺少客戶、承攬內容或專案資料；附件未上傳。", "UPLOAD_CONTEXT_REQUIRED");
       // Signed upload tickets accelerate file transfer, but never preserve a revoked ACL.
       // Check before any NAS write, including intermediate chunks and ticket reuse.
-      if(constructionPlanId || (user.private_access?.configured&&!user.private_access.direct))
-        await resolveUploadContext(customerId,contractServiceTypeId,projectId,authorization,workLogId,constructionPlanId);
+      const checkedContext = constructionPlanId || (user.private_access?.configured&&!user.private_access.direct)
+        ? await resolveUploadContext(customerId,contractServiceTypeId,projectId,authorization,workLogId,constructionPlanId)
+        : null;
 
       if (["begin_file", "upload_chunk", "complete_file", "cancel_file"].includes(mode)) {
-        return await handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, constructionPlanId, requestId, authMs, formMs });
+        return await handleChunkUpload({ config, form, mode, user, authorization, customerId, contractServiceTypeId, projectId, workLogId, constructionPlanId, requestId, authMs, formMs, checkedContext });
       }
 
       if (mode === "preflight" || mode === "prepare_batch") {
@@ -673,13 +683,14 @@ export default {
         const rootStartedAt = Date.now();
         await requireRoot(config);
         const rootMs = elapsedMs(rootStartedAt), contextStartedAt = Date.now();
-        const context = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
+        const context = checkedContext || await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
         const contextMs = elapsedMs(contextStartedAt), folderParts = context.folderParts || [context.customerName, context.contractServiceName, context.projectName, context.logDate];
         const targetFolder = `${config.root}/${folderParts.join("/")}`, nasPreflightStartedAt = Date.now();
-        const [folders, files] = await Promise.all([
+        const [folders, checkedFiles] = await Promise.all([
           inspectNestedFolders(config, folderParts),
           preflightFiles(config, targetFolder, fileNames, davRequest, maxFiles,Boolean(constructionPlanId))
         ]);
+        const files = context.canOverwrite === false ? checkedFiles.map(file => ({ ...file, can_overwrite: false })) : checkedFiles;
         const existingFolderDepth = folders.findIndex((folder) => !folder.exists);
         if (mode === "prepare_batch") {
           await ensureNestedFolder(config, folderParts, davRequest, existingFolderDepth < 0 ? folderParts.length : existingFolderDepth);
@@ -717,8 +728,9 @@ export default {
       let conflictActions = {};
       try { conflictActions = JSON.parse(firstText(form.get("conflict_actions")) || "{}"); } catch { throw new HttpError(400, "同名檔案處理選項格式不正確。", "CONFLICT_ACTION_INVALID"); }
       if (!conflictActions || typeof conflictActions !== "object" || Array.isArray(conflictActions)) throw new HttpError(400, "同名檔案處理選項格式不正確。", "CONFLICT_ACTION_INVALID");
+      const wantsOverwrite = Object.values(conflictActions).some(action => firstText(action) === "overwrite");
       const ticketStartedAt = Date.now(), preflightTicket = firstText(form.get("preflight_ticket"));
-      let folderParts, targetFolder, existingFolderDepth = 0, fallbackValidationMs = 0, ticketReused = false, protectedPaths=[];
+      let folderParts, targetFolder, existingFolderDepth = 0, fallbackValidationMs = 0, ticketReused = false, uploadContext=checkedContext;
       if (preflightTicket) {
         const ticket = verifyPreflightTicket(config, preflightTicket, {
           actor: user.username,
@@ -731,7 +743,7 @@ export default {
         }, authorization);
         if (ticket.expected_size !== undefined && (files.length !== 1 || ticket.expected_size !== files[0].size)) throw ticketError();
         // Tickets share folder preparation, while final writes still check current business access.
-        if (ticket.batch_prepared||workLogId||constructionPlanId) protectedPaths=(await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId)).protectedPaths;
+        if (!uploadContext && (ticket.batch_prepared||workLogId||constructionPlanId||wantsOverwrite)) uploadContext=await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
         folderParts = ticket.folder_parts;
         targetFolder = ticket.target_folder;
         existingFolderDepth = ticket.existing_folder_depth;
@@ -739,11 +751,12 @@ export default {
       } else {
         const fallbackStartedAt = Date.now();
         await requireRoot(config);
-        const context = await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);protectedPaths=context.protectedPaths;
-        folderParts = context.folderParts || [context.customerName, context.contractServiceName, context.projectName, context.logDate];
+        uploadContext ||= await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
+        folderParts = uploadContext.folderParts || [uploadContext.customerName, uploadContext.contractServiceName, uploadContext.projectName, uploadContext.logDate];
         targetFolder = `${config.root}/${folderParts.join("/")}`;
         fallbackValidationMs = elapsedMs(fallbackStartedAt);
       }
+      if(wantsOverwrite)requireOverwritePermission("overwrite", uploadContext);
       const ticketMs = elapsedMs(ticketStartedAt), folderStartedAt = Date.now();
       await ensureNestedFolder(config, folderParts, davRequest, existingFolderDepth);
       const folderMs = elapsedMs(folderStartedAt);
@@ -753,8 +766,9 @@ export default {
       const outcomes = await mapWithConcurrency(files, NAS_CONCURRENCY, async (file, index) => {
         try {
           const storedName = constructionPlanId ? drawingFileName(file.name) : safePart(file.name, "附件");
-          if((conflictActions[storedName]||conflictActions[file.name])==="overwrite"&&protectedPaths.includes(`${targetFolder}/${storedName}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
-          const result = await uploadFile(config, targetFolder, file, firstText(conflictActions[storedName]) || firstText(conflictActions[file.name]) || "new", davRequest, Boolean(constructionPlanId));
+          const action = firstText(conflictActions[storedName]) || firstText(conflictActions[file.name]) || "new";
+          if(action==="overwrite"&&uploadContext?.protectedPaths.includes(`${targetFolder}/${storedName}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
+          const result = await uploadFile(config, targetFolder, file, action, davRequest, Boolean(constructionPlanId));
           if (result.skipped) return { failed: { name: safePart(file.name, `附件 ${index + 1}`), error: result.reason, skipped: true } };
           const uploaded = {
             id: result.id,
