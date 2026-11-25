@@ -1142,6 +1142,10 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!uuid(payload.id))throw new Error("施工規劃編號不正確。");
     return rpc("save_construction_plan_v1",{p_actor_user_id:user!.id,p_payload:payload,p_delete:operation==="delete_construction_plan"});
   }
+  if(operation==="save_construction_drawing_marker"){
+    if(!uuid(payload.asset_id)||typeof payload.code!=="string"||typeof payload.sha256!=="string")throw new Error("請指定工程圖及設備編號。");
+    return rpc("save_construction_drawing_marker_v1",{p_actor_user_id:user!.id,p_asset_id:payload.asset_id,p_sha256:payload.sha256,p_code:payload.code,p_expected:payload.expected??null,p_position:payload.position??null});
+  }
   if(operation==="create_construction_drawing_batch"){
     const planId=uuid(payload.construction_plan_id),projectId=uuid(payload.project_id),customerId=uuid(payload.customer_id),serviceId=uuid(payload.contract_service_type_id);
     if(!planId||!projectId||!customerId||!serviceId||!Array.isArray(payload.rows)||payload.rows.length<1||payload.rows.length>30||payload.work_log_id)throw new Error("工程圖缺少施工規劃、承攬內容或工作內容資料。");
