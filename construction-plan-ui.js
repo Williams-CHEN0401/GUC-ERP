@@ -164,7 +164,8 @@ function syncConstructionLogSelectors(initial=false){
  form.dataset.constructionPlanId=selected?.id||'';
  host.hidden=!plans.length;
  const required=!!log?.construction_plan_id,legacyUnclassified=!!log&&log.construction_plan_id===selected?.id&&!log.construction_item_id;
- host.innerHTML=`<label>施工規劃<select name="constructionPlanId" ${editable?'':'disabled'} ${required?'required':''}><option value="">${required?'請選擇施工規劃':'不指定施工規劃'}</option>${plans.map(p=>`<option value="${esc(p.id)}">${esc(p.construction_date)}｜${esc(p.content)}</option>`).join('')}</select></label>${items.length?`<fieldset data-items-required="${!legacyUnclassified}" class="span-2" ${editable?'':'disabled'}><legend>今日施作子項目（可複選）</legend>${items.map(i=>`<label class="construction-item-check"><input type="checkbox" data-log-item value="${esc(i.id)}" ${itemIds.includes(i.id)?'checked':''}>${esc(i.title)}${i.is_completed?'（已完成）':''}</label>`).join('')}</fieldset>`:''}${equipmentEntriesEditor(selected,entries,editable)}`;
+ host.innerHTML=`<label>施工規劃<select name="constructionPlanId" ${editable?'':'disabled'} ${required?'required':''}><option value="">${required?'請選擇施工規劃':'不指定施工規劃'}</option>${plans.map(p=>`<option value="${esc(p.id)}">${esc(p.construction_date)}｜${esc(p.content)}</option>`).join('')}</select></label>${items.length?`<fieldset data-items-required="${!legacyUnclassified}" class="span-2" ${editable?'':'disabled'}><legend>今日施作子項目（可複選）</legend>${items.map(i=>`<label class="construction-item-check"><input type="checkbox" data-log-item value="${esc(i.id)}" ${itemIds.includes(i.id)?'checked':''}>${esc(i.title)}${i.is_completed?'（已完成）':''}</label>`).join('')}</fieldset>`:''}${equipmentEntriesEditor(selected)}`;
+ initEquipmentEditor(host,selected,entries,editable);
  form.elements.constructionPlanId.value=selected?.id||'';
 }
 document.addEventListener('change',event=>{

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-const ui=vm.createContext({document:{addEventListener(){}},esc:s=>String(s)});
+const ui=vm.createContext({document:{addEventListener(){}},esc:s=>String(s),canModule:()=>true});
 vm.runInContext(await readFile(new URL('../construction-equipment.js',import.meta.url),'utf8'),ui);
 test('UTF-8 BOM, quoted commas, Excel paste and leading zero codes round trip',()=>{
   const points=ui.parseDrawingPoints('\uFEFF設備編號,位置\r\n"001","1F,東側"\r\nA-2\t1F');

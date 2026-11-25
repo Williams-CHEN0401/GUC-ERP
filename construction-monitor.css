@@ -64,8 +64,12 @@
 .construction-matrix th, .construction-matrix td { padding: .5rem; white-space: nowrap; }
 .construction-matrix [data-cell-status="done"] { background: #e8f2e6; color: #264c31; }
 .construction-matrix [data-cell-status="working"] { background: #fff2ce; color: #66470b; }
-[data-equipment-entry] { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem; margin-block: .5rem; }
-[data-equipment-entry] label { flex: 1 1 10rem; min-width: 0; }
+.equipment-log-editor { min-width: 0; }
+.equipment-log-editor [hidden] { display: none; }
+.equipment-device-list { max-height: 22rem; overflow: auto; margin-block: .5rem; }
+.equipment-device-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(7.5rem, auto); align-items: center; gap: .5rem; padding: .4rem; border-bottom: 1px solid var(--line,#cbd2c5); }
+.equipment-device-row .construction-item-check { margin: 0; overflow-wrap: anywhere; }
+.equipment-device-row select { min-width: 0; }
 
 #drawingAnnotationViewer {margin-block:1rem;padding:1rem;border:1px solid var(--line,#cbd2c5);border-radius:8px}
 .drawing-canvas {position:relative;margin-block:.75rem}
@@ -89,3 +93,9 @@
 @media(max-width:650px){.drawing-grid > .drawing-note{grid-column:1/-1;max-height:40vh}}
 .drawing-scroll {overflow:auto;max-width:100%}
 @media(max-width:650px){.drawing-scroll .drawing-stage {min-width:46rem}}
+.matrix-import-dialog {width:min(44rem,94vw);max-height:85vh;overflow:auto;box-sizing:border-box;border:1px solid #cbd2c5;border-radius:8px;padding:1.2rem;color:inherit;background:#fffdf7}
+.matrix-import-dialog::backdrop {background:#26352a66}
+.matrix-import-dialog output {display:block;margin-block:.8rem}
+.matrix-import-dialog [data-diff] {max-height:32vh;overflow:auto}
+.matrix-import-dialog .construction-plan-actions {margin-top:1rem}
+.matrix-import-dialog [hidden] {display:none}
