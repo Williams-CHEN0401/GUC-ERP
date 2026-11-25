@@ -20,6 +20,8 @@ try {
   const report=await sql('20261117150501_dashboard_calendar_duplicate_transaction_rows.sql');
   await db.exec(definition(report,'work_content_report_v1'));
   await db.exec(await sql('20261124000130_construction_log_progress.sql'));
+  await db.exec(await sql('20261125073532_equipment_matrix_workbook.sql'));
+  f.additionalRpcs.push('import_construction_matrix_v1');
   const points=[{code:'暫編-CAM-001',location:'1F'},{code:'暫編-CAM-002',location:'1F'}];
   const configure=async(drawing_points,actor=planUsers.owner)=>{
     const row=(await db.query('select * from construction_plans where id=$1',[plan.id])).rows[0];
@@ -60,12 +62,34 @@ try {
   await assert.rejects(db.query('update construction_plan_items set deleted_at=now() where id=$1',[two]),/保留/);
   assert.equal((await db.query("select has_function_privilege('authenticated','save_construction_work_log_v1(uuid,uuid,jsonb)','execute') allowed")).rows[0].allowed,false);
   console.log('PASS legacy days, point import, authorization, replay, two items/one log, cell history, invalid scope, archive and private RPC');
+  const payloadForImport=async(names,changes=[])=>({row_version:(await read()).row_version,request_id:randomUUID(),log_date:'2026-11-24',names,changes});
+  const importMatrix=(actor,input)=>rpc('import_construction_matrix_v1',actor,plan.id,JSON.stringify(input));
+  const rosterEdit=await payloadForImport([{code:'0007',name:'試作設備'}]);
+  await assert.rejects(importMatrix(planUsers.A,rosterEdit),/權限/);
+  await assert.rejects(importMatrix(planUsers.C,rosterEdit),/權限|找不到/);
+  const namesOnly=await importMatrix(planUsers.owner,rosterEdit);
+  assert.equal(namesOnly.log_id,null);
+  const updated=await read();assert(updated.drawing_points.some(p=>p.code==='0007'&&p.name==='試作設備'));
+  await configure(updated.drawing_points.map(({code,location})=>({code,location})));
+  assert.equal((await read()).drawing_points.find(p=>p.code==='0007').name,'試作設備');
+  const conflicting=await payloadForImport([{code:'0007',name:'不同名稱'}],[{code:points[0].code,item:one,status:'working',before:null}]);
+  await assert.rejects(importMatrix(planUsers.owner,conflicting),/變更/);
+  assert.equal((await read()).drawing_points.find(p=>p.code==='0007').name,'試作設備');
+  const progress=await payloadForImport([],[{code:points[0].code,item:one,status:'working',before:'done'}]);
+  const logCount=async()=>(await db.query('select count(*)::int n from site_work_logs')).rows[0].n;
+  const beforeCount=await logCount();
+  assert((await importMatrix(planUsers.A,progress)).log_id);
+  await assert.rejects(importMatrix(planUsers.A,progress),/變更/);
+  assert.equal(await logCount(),beforeCount+1);
+  assert.equal((await db.query("select has_function_privilege('authenticated','import_construction_matrix_v1(uuid,uuid,jsonb)','execute') allowed")).rows[0].allowed,false);
+  console.log('PASS matrix import: text codes, names without attendance, old-client preservation, scoped writes, atomic rollback and duplicate retry');
   if(process.argv.includes('--preview')){
     // Prepare an empty classroom demo after exercising the synthetic historical logs.
     await db.query('update site_work_logs set deleted_at=now() where construction_plan_id=$1 and deleted_at is null',[plan.id]);
     await db.exec('alter table work_assignments add column if not exists assigned_date date, add column if not exists appointment_date date, add column if not exists customer_id uuid');
     await db.exec(definition(report,'dashboard_calendar_v1'));
     f.additionalRpcs.push('dashboard_calendar_v1');
+    await db.query("insert into role_permissions(role_code,module,can_view,can_create,can_update,can_delete) values('plan_owner','data_export',true,false,false,false) on conflict(role_code,module) do update set can_view=true");
     const serve=f.server.listeners('request')[0];
     f.server.removeListener('request',serve);
     f.server.on('request',(req,res)=>{
@@ -79,7 +103,7 @@ try {
     await db.query("update customers set name='土庫國小（示範）' where id=(select customer_id from projects where id=$1)",[plan.project_id]);
     await db.query("update construction_plans set content='配管作業' where id=$1",[plan.id]);
     await db.query("update construction_plan_items set title=case when id=$1 then '配管作業' else '設備安裝' end where construction_plan_id=$2",[one,plan.id]);
-    const demoPoints=Array.from({length:61},(_,i)=>({code:'暫編-CAM-'+String(i+1).padStart(3,'0'),location:'1F'}));
+    const demoPoints=Array.from({length:61},(_,i)=>({code:'暫編-CAM-'+String(i+1).padStart(3,'0'),name:'一樓攝影機 '+String(i+1).padStart(3,'0'),location:'1F'}));
     const latest=(await db.query('select * from construction_plans where id=$1',[plan.id])).rows[0];
     await db.query("update projects set name='一樓攝影機工程（隔離示範）' where id=$1",[plan.project_id]);
     const columns=(await db.query('select * from construction_plan_items where construction_plan_id=$1 order by sort_order',[plan.id])).rows;

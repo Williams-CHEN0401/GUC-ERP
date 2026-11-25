@@ -1,9 +1,9 @@
 /* Bounded, local-only XLSX reader. Reuses the shared workbook exporter. */
 (()=>{
  const decode=new TextDecoder(),MAX=20*1024*1024;
- async function files(buffer){
+ async function files(buffer,limit){
   const bytes=new Uint8Array(buffer),v=new DataView(buffer),out=new Map();let end=-1,total=0;
-  if(bytes.length<22||bytes.length>5*1024*1024)throw Error('Excel 檔案須為 5 MB 以下的 .xlsx。');
+  if(bytes.length<22||bytes.length>limit)throw Error(`Excel 檔案須為 ${limit/1024/1024} MB 以下的 .xlsx。`);
   for(let p=bytes.length-22;p>=Math.max(0,bytes.length-65557);p--)if(v.getUint32(p,true)===0x06054b50){end=p;break;}
   if(end<0)throw Error('無法讀取 Excel 活頁簿，請使用 .xlsx 格式。');
   if(v.getUint16(end+4,true)||v.getUint16(end+6,true))throw Error('不支援分割壓縮活頁簿。');
@@ -26,16 +26,18 @@
  }
  const xml=text=>{if(!text||/<!DOCTYPE|<!ENTITY/i.test(text))throw Error('Excel XML 格式不支援。');const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.querySelector('parsererror'))throw Error('Excel XML 格式損毀。');return doc;};
  const nodes=(doc,name)=>[...doc.getElementsByTagNameNS('*',name)];
- async function read(file){
-  if(!/\.xlsx$/i.test(file.name))throw Error('請選擇 .xlsx 格式。');const zip=await files(await file.arrayBuffer());
+ async function readSheet(file,{maxRows=102,maxColumns=50,maxBytes=5*1024*1024}={}){
+  if(!/\.xlsx$/i.test(file.name))throw Error('請選擇 .xlsx 格式。');if(file.size>maxBytes)throw Error(`Excel 檔案不可超過 ${maxBytes/1024/1024} MB。`);const zip=await files(await file.arrayBuffer(),maxBytes);
   const workbook=xml(zip.get('xl/workbook.xml')),first=nodes(workbook,'sheet')[0];if(!first)throw Error('Excel 沒有工作表。');
   const relationship=first.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
   const relation=nodes(xml(zip.get('xl/_rels/workbook.xml.rels')),'Relationship').find(r=>r.getAttribute('Id')===relationship);
   const target=relation?.getAttribute('Target')||'';if(relation?.getAttribute('TargetMode')==='External')throw Error('不支援外部工作表。');
   const path=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');if(path.includes('..'))throw Error('工作表路徑無效。');
   const shared=zip.has('xl/sharedStrings.xml')?nodes(xml(zip.get('xl/sharedStrings.xml')),'si').map(si=>nodes(si,'t').map(n=>n.textContent).join('')):[];
-  const rows=nodes(xml(zip.get(path)),'row');if(rows.length>102)throw Error('每次最多匯入 100 筆，請使用第一列作為標題。');
-  return rows.map(row=>{const cells=[];for(const c of nodes(row,'c')){if(nodes(c,'f').length)throw Error('對照匯入不接受公式，請貼上純值後重試。');const ref=c.getAttribute('r')||'',letters=ref.match(/^[A-Z]+/)?.[0];if(!letters)throw Error('Excel 儲存格位置無效。');let index=0;for(const char of letters)index=index*26+char.charCodeAt(0)-64;if(index>50)throw Error('匯入範本最多支援 50 欄。');const value=nodes(c,'v')[0]?.textContent||'';cells[index-1]=c.getAttribute('t')==='s'?shared[Number(value)]||'':c.getAttribute('t')==='inlineStr'?nodes(c,'t').map(n=>n.textContent).join(''):value;}return cells;});
+  const rows=nodes(xml(zip.get(path)),'row');if(rows.length>maxRows)throw Error(`工作表最多 ${maxRows} 列（含標題）。`);
+  const values=rows.map(row=>{const cells=[];for(const c of nodes(row,'c')){if(nodes(c,'f').length)throw Error('對照匯入不接受公式，請貼上純值後重試。');const ref=c.getAttribute('r')||'',letters=ref.match(/^[A-Z]+/)?.[0];if(!letters)throw Error('Excel 儲存格位置無效。');let index=0;for(const char of letters)index=index*26+char.charCodeAt(0)-64;if(index>maxColumns)throw Error(`匯入範本最多支援 ${maxColumns} 欄。`);const value=nodes(c,'v')[0]?.textContent||'';cells[index-1]=c.getAttribute('t')==='s'?shared[Number(value)]||'':c.getAttribute('t')==='inlineStr'?nodes(c,'t').map(n=>n.textContent).join(''):value;}return cells;});
+  return {sheetName:first.getAttribute("name"),rows:values};
  }
- globalThis.GucAliasXlsx={read};
+ globalThis.GucWorkbookReader={readSheet};
+ globalThis.GucAliasXlsx={read:async file=>(await readSheet(file)).rows};
 })();

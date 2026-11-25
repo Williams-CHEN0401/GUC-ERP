@@ -655,9 +655,21 @@ async function scopedSnapshot(user: AppUser, scopeName: string, optionsOnly = fa
 }
 
 async function exportErpData(payload:Row,user:AppUser){
- const {ERP_EXPORT_SPECS,buildErpExport}=await import('./export-lists.ts');
- const resource=text(payload.resource),spec=ERP_EXPORT_SPECS[resource];
  requirePermission(user,'data_export');
+ const resource=text(payload.resource);
+ if(resource==='construction_equipment_matrix'){
+  const projectId=uuid(payload.project_id),planId=uuid(payload.plan_id);
+  if(!projectId||!planId)throw new Error('請指定施工規劃。');
+  const scope=await rpc('construction_scope_v1',{p_actor_user_id:user.id,p_project_id:projectId}) as Row;
+  const plan=((scope.construction_plans||[]) as Row[]).find(p=>p.id===planId&&p.project_id===projectId);
+  if(!plan)throw new Error('沒有此施工規劃的匯出權限。');
+  return {plan:{id:plan.id,project_id:projectId,content:plan.content,
+    items:((plan.items||[]) as Row[]).map(({id,title})=>({id,title})),
+    drawing_points:((plan.drawing_points||[]) as Row[]).map(({code,name})=>({code,name})),
+    equipment_state:((plan.equipment_state||[]) as Row[]).map(({code,item,status})=>({code,item,status}))}};
+ }
+ const {ERP_EXPORT_SPECS,buildErpExport}=await import('./export-lists.ts');
+ const spec=ERP_EXPORT_SPECS[resource];
  if(!spec)throw new Error('不支援的匯出清單。');
  requirePermission(user,spec.module);
  if(resource==='assignments'&&(payload.filters as Row|undefined)?.assignment_scope==='all')throw new Error('您的帳號沒有執行此操作的權限。');
@@ -1141,6 +1153,10 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!hasConstructionPermission(user!,'construction_plans',operation==='delete_construction_plan'?'DELETE':payload.row_version?'UPDATE':'CREATE'))throw new Error('沒有施工規劃操作權限。');
     if(!uuid(payload.id))throw new Error("施工規劃編號不正確。");
     return rpc("save_construction_plan_v1",{p_actor_user_id:user!.id,p_payload:payload,p_delete:operation==="delete_construction_plan"});
+  }
+  if(operation==="import_construction_matrix"){
+    if(!uuid(payload.plan_id)||!uuid(payload.request_id)||!Number.isInteger(payload.row_version))throw new Error("請重新核對施工規劃與匯入版本。");
+    return rpc("import_construction_matrix_v1",{p_actor_user_id:user!.id,p_plan_id:payload.plan_id,p_payload:payload});
   }
   if(operation==="save_construction_drawing_marker"){
     if(!uuid(payload.asset_id)||typeof payload.code!=="string"||typeof payload.sha256!=="string")throw new Error("請指定工程圖及設備編號。");
