@@ -1,7 +1,7 @@
 // Shared catalog only; customer-services.js retains per-customer assignments.
 function contractServiceDeleteReason(row){
  if(["phone_system","surveillance"].includes(row.code))return "系統必要承攬，可改名但不能刪除";
- if(state.customers.some(c=>(c.contractServiceCodes||[]).includes(row.code)))return "已有客戶使用，不能刪除";
+ if(!row.active)return "已停用";
  return "";
 }
 function applyContractServiceCatalogSnapshot(snapshot){
@@ -21,7 +21,7 @@ function renderContractServiceCatalog(){
   return `<tr><td><strong>${esc(row.name)}</strong>${row.active?"":"<small>已停用</small>"}</td><td>${count}</td><td class="actions">${canModule("customers","UPDATE")?`<button type="button" data-edit-contract-service="${esc(row.id)}" ${ready?"":"disabled"}>修改</button>`:""}${canModule("customers","DELETE")?`<button type="button" data-delete-contract-service="${esc(row.id)}" ${reason||!ready?`disabled title="${esc(reason||"資料尚未就緒")}"`:""}>刪除</button>`:""}${reason?`<small>${esc(reason)}</small>`:""}</td></tr>`;
  }).join("")||emptyRow(3,"沒有符合的承攬內容");
  document.querySelector('[data-open="contractServiceModal"]').disabled=!state.contractServicesReady;
- document.querySelector("#contractServiceHint").textContent=state.contractServicesReady?"名稱同步至共用承攬表單；新增項目須先在客戶資料勾選才會出現在該客戶的日誌與附件選單。已有客戶、設備或歷史紀錄的項目不能刪除。":"承攬內容管理尚未就緒，請重新載入或確認資料庫更新已完成。";
+ document.querySelector("#contractServiceHint").textContent=state.contractServicesReady?"名稱同步至共用承攬表單；新增項目須先在客戶資料勾選才會出現在該客戶的日誌與附件選單。刪除自訂承攬會停用選單項目並保留既有關聯。":"承攬內容管理尚未就緒，請重新載入或確認資料庫更新已完成。";
 }
 function contractServiceCatalogFields(id){
  const r=byId(state.contractServiceTypes,id)||{};
@@ -46,15 +46,17 @@ function previewContractServiceCatalog(operation,payload){
  if(action==="CREATE"){const id=uid(),r={id,code:"custom_"+id.replaceAll("-",""),name,sortOrder:payload.sort_order,active:true,rowVersion:1};state.contractServiceTypes.push(r);return r;}
  if(action==="UPDATE"){Object.assign(row,{name,sortOrder:payload.sort_order,rowVersion:row.rowVersion+1});return row;}
  const reason=contractServiceDeleteReason(row);
- if(reason||state.customerContractServices.some(r=>r.serviceTypeId===row.id)||state.sites.some(r=>r.contractServiceTypeId===row.id)||state.equipmentRegistry.some(r=>r.serviceId===row.id)||state.maintenanceEvents.some(r=>r.serviceId===row.id))throw new Error(reason||"此承攬內容已有設備或歷史紀錄使用，不能刪除。");
- state.contractServiceTypes=state.contractServiceTypes.filter(r=>r.id!==row.id);return row;
+ if(reason)throw new Error(reason);
+ row.active=false;
+ row.rowVersion++;
+ return row;
 }
 document.addEventListener("input",event=>{if(event.target.id==="contractServiceSearch")renderContractServiceCatalog();});
 document.addEventListener("click",async event=>{
  const edit=event.target.closest("[data-edit-contract-service]");
  if(edit){if(!edit.disabled&&state.contractServicesReady&&canModule("customers","UPDATE"))openModal("contractServiceModal",edit.dataset.editContractService);return;}
  const button=event.target.closest("[data-delete-contract-service]");if(!button||button.disabled||!state.contractServicesReady||!canModule("customers","DELETE"))return;
- const row=byId(state.contractServiceTypes,button.dataset.deleteContractService);if(!row||!confirm(`確定刪除「${row.name}」？已有客戶、設備或歷史紀錄使用時會阻止刪除。`))return;
+ const row=byId(state.contractServiceTypes,button.dataset.deleteContractService);if(!row||!confirm(`確定刪除「${row.name}」？此承攬將從可用選單移除，既有客戶、設備及歷史關聯會保留。`))return;
  button.disabled=true;
- try{await mutate("delete_contract_service_type",{id:row.id,row_version:row.rowVersion},"承攬內容已刪除並移出共用選單",{reloadScope:"crm"});}catch(error){showToast(error.message,"刪除失敗");}finally{button.disabled=false;}
+ try{await mutate("delete_contract_service_type",{id:row.id,row_version:row.rowVersion},"承攬內容已停用並移出共用選單",{reloadScope:"crm"});}catch(error){showToast(error.message,"刪除失敗");}finally{button.disabled=false;}
 });
