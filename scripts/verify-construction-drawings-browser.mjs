@@ -35,9 +35,7 @@ try{
  }
  async function open(plan=plans[0],target=page){
   await target.locator('#constructionPlanningTab').click();
-  const card=target.locator(`[data-planning-plan="${plan.id}"]`);
-  if(!(await card.evaluate(node=>node.open)))await card.locator('summary').first().click();
-  await target.locator(`[data-open-construction-drawings="${plan.id}"]`).click();
+  await target.locator(`#constructionPlanningList [data-project-drawings="${plan.project_id}"]`).click();
   await target.locator('#constructionDrawingList').waitFor();
  }
  const form=page.locator('#modalForm'),list=page.locator('#constructionDrawingList');

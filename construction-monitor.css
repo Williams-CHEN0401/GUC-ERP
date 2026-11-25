@@ -66,3 +66,26 @@
 .construction-matrix [data-cell-status="working"] { background: #fff2ce; color: #66470b; }
 [data-equipment-entry] { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem; margin-block: .5rem; }
 [data-equipment-entry] label { flex: 1 1 10rem; min-width: 0; }
+
+#drawingAnnotationViewer {margin-block:1rem;padding:1rem;border:1px solid var(--line,#cbd2c5);border-radius:8px}
+.drawing-canvas {position:relative;margin-block:.75rem}
+.drawing-stage {position:relative}
+.drawing-stage img {display:block;width:100%;height:auto}
+.drawing-markers {position:absolute;inset:0;pointer-events:none}
+.drawing-stage .drawing-marker {position:absolute;transform:translate(-50%,-50%);padding:0;min-width:0;min-height:0;width:clamp(16px,3%,30px);aspect-ratio:1;border:2px solid #126445;background:rgba(41,139,90,.16);border-radius:50%;box-shadow:0 0 0 1px white;pointer-events:auto}
+.drawing-marker:focus-visible {outline:3px solid #0055aa}
+.drawing-note {position:absolute;z-index:2;width:max-content;max-width:min(34%,24rem);max-height:17rem;overflow:auto;background:#fffdf7;color:#26352a;border:1px solid #83947f;border-radius:6px;box-shadow:0 3px 14px #0003;padding:.6rem;overflow-wrap:anywhere}
+.drawing-note.above {transform:translateY(-100%)}
+.drawing-note div {display:flex;align-items:center;justify-content:space-between;gap:.4rem}
+.drawing-note ul {margin:.2em 0 .6em;padding-left:1.2em}
+@media(max-width:650px){.drawing-canvas .drawing-note{position:relative;left:auto!important;top:auto!important;width:auto;max-width:none;transform:none}}
+.drawing-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(5.8rem,100%),1fr));gap:.45rem;padding:.6rem;background:#f5f7ef}
+.drawing-grid .drawing-grid-point {display:grid;justify-items:center;gap:.25rem;align-content:start;padding:.45rem .2rem;min-width:0;background:transparent;color:#263e35;border:1px solid transparent;overflow-wrap:anywhere}
+.drawing-grid-point:hover,.drawing-grid-point:focus-visible {border-color:#527359;background:#fff}
+.drawing-grid-point img {height:1.75rem;width:1.75rem;object-fit:contain}
+.drawing-locator {display:flex;align-items:end;flex-wrap:wrap;gap:.65rem;margin-block:.75rem}
+.drawing-locator small {flex-basis:100%}
+.drawing-stage .drawing-marker[data-anchor="label"] {width:clamp(20px,3.2%,48px);aspect-ratio:1.5;border-radius:4px;background:transparent}
+@media(max-width:650px){.drawing-grid > .drawing-note{grid-column:1/-1;max-height:40vh}}
+.drawing-scroll {overflow:auto;max-width:100%}
+@media(max-width:650px){.drawing-scroll .drawing-stage {min-width:46rem}}

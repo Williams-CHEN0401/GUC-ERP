@@ -51,7 +51,7 @@ export async function createWorklogTestServer({workflow=false,titlePicker=false,
   }
   if(![...additionalRpcs,'upsert_work_log_sections_v1','upsert_customer_project_work_log_department_v1','upsert_erp_project_department_v1','upsert_repair_item_department_v1','manage_customer_department_v1','create_stock_receipts_department_v1','update_stock_receipt_department_v1',...(formSync?['create_product_category_v1','create_inventory_items_batch_v1','close_work_content_from_log_v1']:[]),...(independent?['update_pickup_record','update_pickup_record_v2','create_pickup_records_batch_v2','delete_project_record']:[]),...(contractCatalog?['manage_contract_service_type_v1','update_customer_with_contracts_v1']:[]),...(assignments?['create_work_assignment_v1','create_work_assignment_with_project_v1','complete_work_assignment_v1','acknowledge_work_assignment_v1','work_log_scope_v1']:[])].includes(name))throw Error('Test denies unrelated RPC: '+name);
   const payload=Object.fromEntries(Object.entries(args).map(([k,v])=>[k.slice(2),v]));
-  const keys=Object.keys(args);if(keys.some(key=>!/^p_[a-z_]+$/.test(key)))throw Error('Invalid test argument');
+  const keys=Object.keys(args);if(keys.some(key=>!/^p_[a-z][a-z0-9_]*$/.test(key)))throw Error('Invalid test argument');
   await db.exec('set role service_role');
   let result;try{result=(await db.query('select to_jsonb('+name+'('+keys.map((key,i)=>key+'=>$'+(i+1)).join(',')+')) result',keys.map(key=>Array.isArray(args[key])&&['p_maintenance_events','p_rows','p_existing','p_customer_departments'].includes(key)?JSON.stringify(args[key]):args[key]))).rows[0].result;}catch(error){failures.push({name,message:error.message});throw error;}finally{await db.exec('reset role');}
   calls.push({name,payload,result});return result;

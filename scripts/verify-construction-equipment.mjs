@@ -77,14 +77,17 @@ try {
     });
     await db.exec("alter table customers add column if not exists deleted_at timestamptz; alter table contract_service_types add column if not exists equipment_import_template jsonb");
     await db.query("update customers set name='土庫國小（示範）' where id=(select customer_id from projects where id=$1)",[plan.project_id]);
-    await db.query("update construction_plans set content='一樓攝影機安裝' where id=$1",[plan.id]);
+    await db.query("update construction_plans set content='配管作業' where id=$1",[plan.id]);
     await db.query("update construction_plan_items set title=case when id=$1 then '配管作業' else '設備安裝' end where construction_plan_id=$2",[one,plan.id]);
     const demoPoints=Array.from({length:61},(_,i)=>({code:'暫編-CAM-'+String(i+1).padStart(3,'0'),location:'1F'}));
     const latest=(await db.query('select * from construction_plans where id=$1',[plan.id])).rows[0];
+    await db.query("update projects set name='一樓攝影機工程（隔離示範）' where id=$1",[plan.project_id]);
     const columns=(await db.query('select * from construction_plan_items where construction_plan_id=$1 order by sort_order',[plan.id])).rows;
     await rpc('save_construction_plan_v1',planUsers.owner,JSON.stringify({...latest,items:columns,assignee_user_ids:[planUsers.A,planUsers.B],drawing_points:demoPoints}),false);
     const {constructionDrawingsServer}=await import('./construction-drawings-fixture.mjs');
     await constructionDrawingsServer(f,[latest]);
+    await db.exec(await sql('20261124151410_construction_drawing_markers.sql'));
+    f.additionalRpcs.push('save_construction_drawing_marker_v1');
     f.server.listen(Number(process.env.PROGRESS_PORT||4635),'127.0.0.1',()=>console.log('Isolated preview listening'));
     await new Promise(resolve=>f.server.once('close',resolve));
   }
