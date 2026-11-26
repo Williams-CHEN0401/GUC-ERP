@@ -1154,6 +1154,11 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!uuid(payload.id))throw new Error("施工規劃編號不正確。");
     return rpc("save_construction_plan_v1",{p_actor_user_id:user!.id,p_payload:payload,p_delete:operation==="delete_construction_plan"});
   }
+  if(operation==="save_construction_roster"){
+    if(!user || !hasConstructionPermission(user,'construction_plans','UPDATE'))throw Error("沒有管理設備清冊的權限。");
+    if(!uuid(payload.plan_id)||!Array.isArray(payload.points)||!payload.versions)throw Error("請重新核對清冊資料。");
+    return rpc("save_construction_roster_v1",{p_actor_user_id:user.id,p_plan_id:payload.plan_id,p_payload:payload});
+  }
   if(operation==="import_construction_matrix"){
     if(!uuid(payload.plan_id)||!uuid(payload.request_id)||!Number.isInteger(payload.row_version))throw new Error("請重新核對施工規劃與匯入版本。");
     return rpc("import_construction_matrix_v1",{p_actor_user_id:user!.id,p_plan_id:payload.plan_id,p_payload:payload});

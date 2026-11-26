@@ -22,13 +22,14 @@ async function equipmentSheetName(plan){
   return '施工_'+plan.id.slice(0,8)+'_'+digest.slice(0,16);
 }
 
-async function freshEquipmentPlan(id){
+async function loadEquipmentImportContext(id){
   const known=constructionPlanById(id);
   if(!known)throw Error('請重新開啟施工規劃。');
   const scope=await apiRequest({method:'GET',scope:'construction_plans',projectId:known.project_id});
   const plan=scope.construction_plans?.find(p=>p.id===id);
   if(!plan)throw Error('找不到可查看的施工規劃。');
-  return plan;
+  const versions=Object.fromEntries(scope.construction_plans.map(p=>[p.id,p.row_version]));
+  return {plan,versions};
 }
 
 async function exportEquipmentWorkbook(id){
@@ -106,16 +107,16 @@ function importEquipmentWorkbook(id){
   const end=()=>dialog.close();
   window.addEventListener('guc:session-changed',end);
   dialog.onclose=()=>{generation++;window.removeEventListener('guc:session-changed',end);dialog.remove();};
-  dialog.oncancel=e=>{if(busy)e.preventDefault();};close.onclick=end;
+  dialog.oncancel=e=>{if(busy)e.preventDefault();};close.onclick=event=>{event.stopPropagation();end();};
   date.value=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   file.onchange=async()=>{
     const seq=++generation, selected=file.files[0];
     prepared=null;save.disabled=true;table.replaceChildren();date.parentElement.hidden=true;out.textContent='';
     if(!selected)return;
     try {
-      const plan=await freshEquipmentPlan(id),diff=await equipmentWorkbookDiff(selected,plan);
+      const {plan,versions}=await loadEquipmentImportContext(id),diff=await equipmentWorkbookDiff(selected,plan);
       if(seq!==generation||!dialog.open)return;
-      prepared={plan,diff,request:uid()};
+      prepared={plan,versions,diff,request:uid()};
       out.textContent=diff.preview.length?`設備清冊 ${diff.names.length} 筆，工項進度 ${diff.changes.length} 格。${diff.changes.length?'確認後會以目前登入人員新增一篇施工日誌。':''}`:'資料與系統相同，沒有需要匯入的變更。';
       if(diff.preview.length)table.innerHTML='<table><thead><tr><th>設備編號</th><th>欄位</th><th>原值</th><th>匯入值</th></tr></thead><tbody>'+diff.preview.map(r=>'<tr>'+r.map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
       date.parentElement.hidden=!diff.changes.length;save.disabled=!diff.preview.length;
@@ -123,11 +124,11 @@ function importEquipmentWorkbook(id){
   };
   save.onclick=async()=>{
     if(!prepared||busy)return;
-    const {plan,diff,request}=prepared;
+    const {plan,versions,diff,request}=prepared;
     if(diff.changes.length&&!date.value){out.textContent='請選擇施工日誌日期。';return;}
     busy=true;save.disabled=file.disabled=close.disabled=true;
     try {
-      const result=await apiRequest({operation:'import_construction_matrix',payload:{plan_id:id,row_version:plan.row_version,request_id:request,log_date:date.value,names:diff.names,changes:diff.changes}});
+      const result=await apiRequest({operation:'import_construction_matrix',payload:{plan_id:id,row_version:plan.row_version,versions,request_id:request,log_date:date.value,names:diff.names,changes:diff.changes}});
       if(!dialog.open)return;
       dialog.close();showToast(`已匯入 ${result.result.point_count} 筆清冊、${result.result.cell_count} 格進度。`);
       await refreshConstructionProgressViews();await openConstructionPlans(plan.project_id);

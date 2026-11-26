@@ -99,3 +99,32 @@
 .matrix-import-dialog [data-diff] {max-height:32vh;overflow:auto}
 .matrix-import-dialog .construction-plan-actions {margin-top:1rem}
 .matrix-import-dialog [hidden] {display:none}
+
+.drawing-pager,.drawing-legend,.roster-list li {display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
+.drawing-pager label {flex:1;min-width:0}
+.drawing-pager select {width:100%;max-width:100%}
+.drawing-legend {margin:.6rem 0}
+[data-point-state="pending"] {--point-color:#646963}
+[data-point-state="working"] {--point-color:#a85f09}
+[data-point-state="done"] {--point-color:#286247}
+[data-point-state="na"] {--point-color:#695c80}
+.drawing-legend span::before,.drawing-grid-point small::before {content:"";display:inline-block;width:.7em;height:.7em;margin-right:.35em;border-radius:50%;background:var(--point-color)}
+.drawing-stage .drawing-marker[data-point-state] {border:3px solid var(--point-color);background:color-mix(in srgb,var(--point-color) 20%,transparent);box-shadow:0 0 0 2px white}
+.drawing-grid .drawing-grid-point {border-bottom:3px solid var(--point-color)}
+.drawing-grid-point small {color:#343d35}
+.drawing-locator-settings summary,.gallery-point-list summary,.roster-import summary {cursor:pointer;padding:.6rem 0}
+.roster-editor {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem;margin:1rem 0}
+.roster-editor .construction-plan-actions {grid-column:1/-1}
+.roster-list {list-style:none;padding:0}
+.roster-list li {justify-content:space-between;border-bottom:1px solid var(--line,#cbd2c5);padding:.55rem 0}
+.roster-list li>span {min-width:0;overflow-wrap:anywhere}
+.roster-list small {display:block}
+@media(max-width:650px){
+  .drawing-scroll .drawing-stage {min-width:0}
+  #drawingAnnotationViewer {padding:.5rem}
+  .drawing-pager label {flex-basis:100%;order:-1}
+  .roster-editor {grid-template-columns:1fr}
+  .construction-plan-section .panel-head {flex-wrap:wrap}
+}
+
+.drawing-scroll.enlarged .drawing-stage {width:160%;min-width:46rem}

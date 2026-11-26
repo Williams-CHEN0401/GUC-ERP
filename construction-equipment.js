@@ -27,27 +27,25 @@ function parseDrawingPoints(text) {
 function pointsText(points) {
   return points.map(p=>[p.code,p.location,...(p.name===undefined?[]:[p.name])].map(s=>'"'+s.replaceAll('"','""')+'"').join(',')).join('\n');
 }
-function drawingPointEditor(plan) {
-  return `<fieldset class="span-2"><legend>設備施工進度表</legend>
-    <p>施工子項目會成為表格的工項欄。貼上設備編號與位置，或匯入 UTF-8 CSV、TSV，第三欄可填設備名稱。儲存規劃後生效。</p>
-    <label>設備清冊（每列一台）<textarea name="drawingPoints" rows="5" placeholder="設備編號,位置">${esc(pointsText(plan.drawing_points||[]))}</textarea></label>
-    <label>加入清冊檔案<input type="file" data-import-points accept=".csv,.tsv,.txt"></label>
-    <output data-point-import-status aria-live="polite"></output></fieldset>`;
+function mergeImportedPoints(points, imported) {
+  const merged=new Map(points.map(p=>[p.code.toLowerCase(),p]));
+  for(const point of imported){
+    const key=point.code.toLowerCase(),existing=merged.get(key);
+    if(existing && (existing.location!==point.location || existing.code!==point.code || (point.name!==undefined && existing.name && existing.name!==point.name)))
+      throw Error('編號 '+point.code+' 已存在，請先核對資料。');
+    merged.set(key,{...existing,...point});
+  }
+  if(merged.size>1000)throw Error('每筆施工規劃最多 1000 個點位。');
+  return [...merged.values()];
 }
 async function appendDrawingPoints(target, file) {
   const field = target.closest('fieldset'), editor = field.querySelector('[name=drawingPoints]'), message = field.querySelector('output');
   try {
     if (file?.size>1024*1024) throw Error('清冊檔案請小於 1 MB。');
     const imported = parseDrawingPoints(await file.text());
-    const merged = new Map(parseDrawingPoints(editor.value).map(p=>[p.code.toLowerCase(),p]));
-    for (const point of imported) {
-      const key=point.code.toLowerCase(), existing=merged.get(key);
-      if (existing && (existing.location!==point.location || existing.code!==point.code || (point.name!==undefined && existing.name && existing.name!==point.name))) throw Error(`編號 ${point.code} 已存在，請核對兩筆資料。`);
-      merged.set(key,{...existing,...point});
-    }
-    if (merged.size>1000) throw Error('每筆施工規劃最多 1000 個點位。');
-    editor.value=pointsText([...merged.values()]);
-    message.textContent=`清冊共 ${merged.size} 個點位，請核對後儲存。`;
+    const merged=mergeImportedPoints(parseDrawingPoints(editor.value),imported);
+    editor.value=pointsText(merged);
+    message.textContent=`清冊共 ${merged.length} 個點位，請核對後儲存。`;
   } catch (error) { message.textContent=error.message; }
   finally { if (file) target.value=''; }
 }
@@ -77,7 +75,7 @@ function equipmentEntriesEditor(plan) {
     <p data-equipment-hint></p><label data-equipment-picker hidden>填報工項<select data-equipment-item></select></label>
     <div class="equipment-device-list" data-equipment-devices></div></section>`;
 }
-function initEquipmentEditor(host, plan, entries, editable) {
+function initEquipmentEditor(host, plan, entries, editable, preferredItem) {
   const editor=host.querySelector('[data-equipment-editor]');
   if (!editor) return;
   const byItem=new Map(plan.items.map(item=>[item.id,new Map()]));
@@ -89,7 +87,7 @@ function initEquipmentEditor(host, plan, entries, editable) {
       if (byItem.get(box.value)?.size) box.disabled=true;
     }
   }
-  renderEquipmentChecklist(editor);
+  renderEquipmentChecklist(editor,preferredItem);
 }
 function renderEquipmentChecklist(editor, preferredItem) {
   const {plan,byItem,allowed}=equipmentDrafts.get(editor);
@@ -159,4 +157,88 @@ document.addEventListener('change',event=>{
   status.disabled=!box.checked;
   if (box.checked) records.set(box.value,status.value);
   else records.delete(box.value);
+});
+
+async function openConstructionRoster(projectId) {
+  const dialog=document.createElement('dialog');
+  dialog.className='matrix-import-dialog project-roster';
+  dialog.setAttribute('aria-label','施工規劃清冊');
+  dialog.innerHTML='<div class="construction-drawing-toolbar"><h2>施工規劃清冊</h2><button type="button" class="outline" data-roster-close>關閉</button></div><label>施工規劃<select data-roster-plan></select></label><div data-roster-body></div><output role="status"></output>';
+  document.body.append(dialog);
+  dialog.showModal();
+  const status=dialog.querySelector('output'),picker=dialog.querySelector('[data-roster-plan]'),body=dialog.querySelector('[data-roster-body]');
+  let plans=[],busy=false,editing=null;
+  const plan=()=>plans.find(p=>p.id===picker.value);
+  function render(){
+    editing=null;
+    const current=plan();
+    if(!current){body.textContent='請先新增施工規劃，再建立設備清冊。';return;}
+    const points=current.drawing_points||[],editable=current.can_manage;
+    body.innerHTML=(editable?`<form class="roster-editor"><label>設備編號<input name="code" required maxlength="80"></label><label>設備名稱<input name="name" maxlength="160"></label><label>位置<input name="location" maxlength="160"></label><div class="construction-plan-actions"><button class="primary" data-roster-save>新增設備</button><button type="button" class="outline" data-roster-reset hidden>取消修改</button></div></form><p>修改名稱會同步此案各規劃的同編號設備。位置依各規劃保存。</p>
+    <details class="roster-import"><summary>批次加入設備</summary><fieldset><label>設備編號、位置、名稱<textarea name="drawingPoints" rows="3"></textarea></label><label>載入 CSV／TSV<input type="file" data-import-points accept=".csv,.tsv,.txt"></label><output></output><button type="button" class="outline" data-roster-import>加入清冊</button></fieldset></details>`:'')+
+    `<p>設備共 ${points.length} 筆</p><ul class="roster-list">${points.map((p,index)=>`<li><span><b>${esc(p.code)}</b>　${esc(p.name||'')}<small>${esc(p.location||'')}</small></span>${editable?`<div class="construction-plan-actions"><button type="button" class="outline" data-roster-edit="${index}">修改</button><button type="button" class="outline danger" data-roster-delete="${index}">刪除</button></div>`:''}</li>`).join('')}</ul>`;
+  }
+  async function load(preferred){
+    const data=await apiRequest({method:'GET',scope:'construction_plans',projectId});
+    if(!dialog.open)return;
+    mergeConstructionContext(data);
+    plans=(data.construction_plans||[]).filter(p=>p.project_id===projectId);
+    picker.innerHTML=plans.map(p=>`<option value="${esc(p.id)}">${esc(p.content)}</option>`).join('');
+    if(plans.some(p=>p.id===preferred))picker.value=preferred;
+    render();
+  }
+  async function save(points){
+    if(busy)return;
+    busy=true;body.inert=true;picker.disabled=true;
+    const current=plan(),versions=Object.fromEntries(plans.map(p=>[p.id,p.row_version]));
+    let saved=false;
+    try{
+      const result=await apiRequest({operation:'save_construction_roster',payload:{plan_id:current.id,versions,points}});
+      saved=true;await load(current.id);await refreshConstructionProgressViews();
+      status.textContent='已儲存，更新 '+result.result.plan_count+' 筆規劃。';
+    }catch(error){status.textContent=saved?'清冊已儲存，請重新開啟以讀取最新資料。':error.message;}
+    finally{busy=false;body.inert=false;picker.disabled=false;}
+  }
+  picker.onchange=()=>{status.textContent='';render();};
+  dialog.onsubmit=event=>{
+    event.preventDefault();if(busy||!plan()?.can_manage)return;
+    const form=event.target,point=Object.fromEntries(['code','name','location'].map(k=>[k,form.elements.namedItem(k).value.trim()]));
+    if(!point.code){status.textContent='請輸入設備編號。';return;}
+    const points=[...plan().drawing_points];
+    if(editing===null){
+      if(points.some(p=>p.code.toLowerCase()===point.code.toLowerCase())){status.textContent='設備編號已存在。';return;}
+      points.push(point);
+    }else points[editing]=point;
+    void save(points);
+  };
+  dialog.onclick=event=>{
+    const target=event.target.closest('button');if(!target||busy)return;
+    if(target.hasAttribute('data-roster-close')){dialog.close();return;}
+    if(!plan()?.can_manage)return;
+    if(target.hasAttribute('data-roster-edit')){
+      editing=Number(target.dataset.rosterEdit);
+      const point=plan().drawing_points[editing],form=body.querySelector('form');
+      for(const key of ['code','name','location'])form.elements.namedItem(key).value=point[key]||'';
+      form.elements.code.readOnly=true;form.querySelector('[data-roster-save]').textContent='儲存修改';
+      form.querySelector('[data-roster-reset]').hidden=false;form.elements.namedItem('name').focus();
+    }else if(target.hasAttribute('data-roster-reset'))render();
+    else if(target.hasAttribute('data-roster-delete')){
+      const index=Number(target.dataset.rosterDelete),points=plan().drawing_points;
+      if(confirm('從本規劃清冊刪除 '+points[index].code+'？'))void save(points.filter((_,i)=>i!==index));
+    }else if(target.hasAttribute('data-roster-import')){
+      try{const rows=parseDrawingPoints(body.querySelector('[name=drawingPoints]').value);if(!rows.length)throw Error('請先輸入或載入清冊。');void save(mergeImportedPoints(plan().drawing_points,rows));}
+      catch(error){status.textContent=error.message;}
+    }
+  };
+  const endSession=()=>dialog.close();
+  window.addEventListener('guc:session-changed',endSession);
+  dialog.oncancel=event=>{if(busy)event.preventDefault();};
+  dialog.onclose=()=>{window.removeEventListener('guc:session-changed',endSession);dialog.remove();
+    if(document.querySelector('#simpleModal.open') && document.querySelector('#modalForm [data-open-roster]')?.dataset.openRoster===projectId && state.currentUser)openConstructionPlans(projectId).catch(e=>showToast(e.message));
+  };
+  try{await load();}catch(error){status.textContent=error.message;}
+}
+document.addEventListener('click',event=>{
+  const button=event.target.closest('[data-open-roster]');
+  if(button)openConstructionRoster(button.dataset.openRoster).catch(error=>showToast(error.message));
 });
