@@ -19,6 +19,13 @@ const logPayload=async(plan,user='A',log=null)=>{
  return {request_id:randomUUID(),construction_plan_id:plan.id,id:log?.id||null,row_version:log?.row_version||null,project_id:p.id,customer_id:p.customer_id,department_id:p.department_id,project_name:p.name,log_date:'2026-10-10',work_type:'工程施工',time_period:'上午',status:'completed',summary:plan.content,completed_content:plan.content,pending_content:'',worker_user_ids:[planUsers[user]],maintenance_events:[]};
 };
 try{
+ // The current Dashboard reads assignment metadata added after the October planning fixture.
+ await db.exec(`alter table work_assignments
+   add column if not exists assignment_request_id uuid,
+   add column if not exists construction_plan_id uuid,
+   add column if not exists construction_item_id uuid,
+   add column if not exists construction_plan_title text,
+   add column if not exists construction_item_title text`);
  let plan=good(await request('owner','save_construction_plan',planPayload()));
  good(await request('owner','save_construction_plan',{...planPayload(f.planProjects.tender),construction_date:'2026-10-09'}));
  denied(await request('owner','save_construction_plan',planPayload(f.planProjects.repair)));

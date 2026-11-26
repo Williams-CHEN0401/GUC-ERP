@@ -55,6 +55,7 @@ try{
  const stage=page.locator('.drawing-stage');await stage.waitFor();await page.waitForFunction(()=>document.querySelector('.drawing-stage img')?.naturalWidth===1000);
  const asset=(await api(page,{method:'GET',scope:'construction_drawings',planId:id})).drawings.find(d=>d.original_name===name);
  const marker=(user,code,position,expected=null,sha=asset.sha256)=>api(user,{operation:'save_construction_drawing_marker',payload:{asset_id:asset.id,code,position,expected,sha256:sha}});
+ await page.locator('.drawing-locator-settings summary').click();
  if(!asset.drawing_markers[first]){
   await page.locator('[data-marker-select]').selectOption(first);
   await page.locator('[data-marker-kind]').selectOption('icon');
@@ -102,7 +103,8 @@ try{
  await assert.rejects(marker(worker,first,{x:.5,y:.5},current.drawing_markers[first]),/權限|負責人|管理員/);
  const stranger=await load('C');
  await assert.rejects(api(stranger,{method:'GET',scope:'construction_drawings',planId:id}),/權限|找不到/);
- await page.locator('[data-drawing-reload]').click();await page.waitForFunction(()=>document.querySelector('#drawingAnnotationViewer')?.hidden);
+ await page.locator('[data-drawing-reload]').click();
+ await page.waitForFunction(()=>!document.querySelector('#constructionDrawingList').inert && document.querySelector('.drawing-stage img')?.naturalWidth>0);
  await row.locator('[data-drawing-default]').click();
  await page.locator('[data-marker-code="'+first+'"][data-anchor=icon]').click();
  const note=page.locator('.drawing-note');
