@@ -1,9 +1,9 @@
 /* New masters and their document are saved atomically by the existing gateway. */
 function transactionInlineItemsAllowed(){
  const modal=document.querySelector('#simpleModal'),type=modal?.dataset.type;
- // The work-log pickup dialog keeps the log ID in dataset.id, but always creates a new pickup document.
- const creating=type==='workLogPickupModal'||!modal?.dataset.id;
- return creating&&['receiptModal','pickupModal','workLogPickupModal'].includes(type)&&canModule('inventory','CREATE');
+ // Creating and editing receipt/pickup documents, plus work-log pickups, may add a missing item.
+ // The gateway saves the item and the document in one transaction.
+ return ['receiptModal','pickupModal','workLogPickupModal'].includes(type)&&canModule('inventory','CREATE');
 }
 
 function transactionNewItemButton(){
