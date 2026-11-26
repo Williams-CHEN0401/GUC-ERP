@@ -43,3 +43,6 @@ jobs:
         run: node --experimental-vm-modules scripts/verify-mixed-private-attachments.mjs
         env:
           PGLITE_MODULE: ${{ github.workspace }}/.github/db-tests/node_modules/@electric-sql/pglite/dist/index.js
+
+      - name: Verify inline items when editing receipt and pickup documents
+        run: node scripts/verify-edit-inline-items-postgres.mjs

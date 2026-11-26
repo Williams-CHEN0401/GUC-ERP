@@ -20,7 +20,28 @@ test('inline item keeps existing rows untouched and requires existing inventory 
  const values={'[data-batch-item]':'__new__','[data-batch-category]':'c','[data-batch-item-search]':' 新品項 ','[name=newItemBrand]':'品牌','[name=newItemModel]':'','[name=newItemUnit]':'台'};
  const row={querySelector:s=>({value:values[s]})};assert.equal(c.collectTransactionNewItem(row).item_name,'新品項');
  permit=false;assert.throws(()=>c.collectTransactionNewItem(row),/權限/);values['[data-batch-item]']='existing';assert.equal(c.collectTransactionNewItem(row),null);
- permit=true;modal.dataset.id='edit';assert.equal(c.transactionInlineItemsAllowed(),false);
+ permit=true;modal.dataset.id='edit';assert.equal(c.transactionInlineItemsAllowed(),true);
+ for(const type of ['receiptModal','pickupModal']){modal.dataset.type=type;assert.equal(c.transactionInlineItemsAllowed(),true,type);}
+ permit=false;assert.equal(c.transactionInlineItemsAllowed(),false);
+});
+test('edited pickup and receipt documents send the new item and keep existing line IDs',async()=>{
+ const newItem={category_id:'c',item_name:'新品項',brand:'品牌',model:null,unit:'台'};
+ const rows=[{itemId:'item-1',quantity:2,note:'原列',quantityUnit:'package'},{itemId:'__new__',newItem,quantity:3,note:'',quantityUnit:'package'}];
+ const elements=[{dataset:{pickupId:'line-1',receiptId:'line-1'}},{dataset:{}}];
+ const calls=[];
+ const c=vm.createContext({document:{addEventListener(){}},esc:String,canModule:()=>true,collectTransactionBatchRows:()=>rows,uid:()=>'request',
+  FormData:class{getAll(){return []}},receiptMutation:async(operation,payload)=>{calls.push([operation,payload]);return {};},mutate:async()=>({})});
+ vm.runInContext(readFileSync(new URL('../receipt-documents.js',import.meta.url),'utf8'),c);
+ // Unrelated receipt header/price helpers are covered by their own tests.
+ Object.assign(c,{collectReceiptCustomerDepartments:()=>[],receiptMetadataPayload:()=>({}),receiptPricePayload:()=>({})});
+ const form={querySelectorAll:()=>elements,_pickupDocument:{id:'doc-p',existing:[{id:'line-1',row_version:4}]},
+  _receiptDocument:{kind:'receipt',id:'doc-r',existing:[{id:'line-1',row_version:2}]}};
+ const pickup=c.pickupDocumentPayload(form,{date:'2026-11-26',projectId:'p',customerId:'cu'});
+ assert.equal(pickup.rows[0].id,'line-1');assert.equal(pickup.rows[0].inventory_item_id,'item-1');assert.equal(Object.hasOwn(pickup.rows[0],'new_item'),false);
+ assert.equal(pickup.rows[1].id,null);assert.equal(pickup.rows[1].inventory_item_id,null);assert.deepEqual(JSON.parse(JSON.stringify(pickup.rows[1].new_item)),newItem);
+ await c.saveReceiptDocument(form,'doc-r',{date:'2026-11-26',supplierId:'s',documentNo:'A1'});
+ const [operation,receipt]=calls[0];assert.equal(operation,'update_stock_receipt_document');
+ assert.equal(receipt.rows[0].id,'line-1');assert.equal(receipt.rows[1].inventory_item_id,null);assert.equal(receipt.rows[1].new_item.item_name,'新品項');
 });
 test('work-log pickup dialog allows inline items although dataset.id holds the work log ID',()=>{
  let permit=true;const modal={dataset:{type:'workLogPickupModal',id:'log-1'}},c=vm.createContext({canModule:(module,action)=>permit&&module==='inventory'&&action==='CREATE',searchValue:e=>e.value,document:{addEventListener(){},querySelector:()=>modal}});
