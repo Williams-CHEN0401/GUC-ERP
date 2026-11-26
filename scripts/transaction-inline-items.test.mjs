@@ -22,3 +22,11 @@ test('inline item keeps existing rows untouched and requires existing inventory 
  permit=false;assert.throws(()=>c.collectTransactionNewItem(row),/權限/);values['[data-batch-item]']='existing';assert.equal(c.collectTransactionNewItem(row),null);
  permit=true;modal.dataset.id='edit';assert.equal(c.transactionInlineItemsAllowed(),false);
 });
+test('work-log pickup dialog allows inline items although dataset.id holds the work log ID',()=>{
+ let permit=true;const modal={dataset:{type:'workLogPickupModal',id:'log-1'}},c=vm.createContext({canModule:(module,action)=>permit&&module==='inventory'&&action==='CREATE',searchValue:e=>e.value,document:{addEventListener(){},querySelector:()=>modal}});
+ vm.runInContext(readFileSync(new URL('../transaction-inline-items.js',import.meta.url),'utf8'),c);
+ assert.equal(c.transactionInlineItemsAllowed(),true);
+ assert.match(c.transactionNewItemButton(),/新增此品項/);
+ permit=false;assert.equal(c.transactionInlineItemsAllowed(),false);assert.equal(c.transactionNewItemButton(),'');
+ permit=true;for(const type of ['supplierReturnModal','workLogModal']){modal.dataset.type=type;modal.dataset.id='';assert.equal(c.transactionInlineItemsAllowed(),false,type);}
+});
