@@ -89,12 +89,12 @@ function planSchedule(plan){
 
 /* ---------- 甘特圖：日／週／月時間尺度、主項目展開收合、今日標示、狀態與進度 ---------- */
 const ganttState={scale:'day',collapsed:new Set()};
-const GANTT_SCALES={day:{width:34,label:'日'},week:{width:12,label:'週'},month:{width:4,label:'月'}};
+const GANTT_SCALES={day:{width:40,label:'日'},week:{width:14,label:'週'},month:{width:4,label:'月'}};
 function ganttTicks(start,days,scale){
   const ticks=[];
   for(let i=0;i<days;i++){
     const date=addScheduleDays(start,i),d=scheduleDate(date),weekday=d.getUTCDay();
-    if(scale==='day')ticks.push({i,label:`${d.getUTCMonth()+1}/${d.getUTCDate()}`,sub:'日一二三四五六'[weekday],weekend:weekday===0||weekday===6});
+    if(scale==='day')ticks.push({i,label:i===0||d.getUTCDate()===1?`${d.getUTCMonth()+1}/${d.getUTCDate()}`:String(d.getUTCDate()),sub:'日一二三四五六'[weekday],weekend:weekday===0||weekday===6});
     else if(scale==='week'&&(weekday===1||i===0))ticks.push({i,label:`${d.getUTCMonth()+1}/${d.getUTCDate()}`,sub:'週'});
     else if(scale==='month'&&(d.getUTCDate()===1||i===0))ticks.push({i,label:`${d.getUTCFullYear()}/${d.getUTCMonth()+1}`,sub:''});
   }
@@ -102,7 +102,7 @@ function ganttTicks(start,days,scale){
 }
 function ganttBar(range,origin,width,status,progress,title,kind){
   const left=scheduleDiff(origin,range.start)*width,size=(scheduleDiff(range.start,range.end)+1)*width;
-  return `<div class="v2-gantt-bar is-${kind}" data-status="${status}" style="left:${left}px;width:${Math.max(size,4)}px" title="${esc(title)}"><span class="v2-gantt-fill" style="width:${Math.max(0,Math.min(100,progress))}%"></span><span class="v2-gantt-text">${progress}%</span></div>`;
+  return `<div class="v2-gantt-bar is-${kind}" data-status="${status}" data-gx="${left}" data-gw="${Math.max(size,4)}" title="${esc(title)}"><span class="v2-gantt-fill" data-gp="${Math.max(0,Math.min(100,progress))}"></span><span class="v2-gantt-text">${progress}%</span></div>`;
 }
 function constructionScheduleGantt(plans,{key,title='工程排程甘特圖',open=true}={}){
   const rows=plans.map(plan=>({plan,schedule:planSchedule(plan)}));
@@ -114,19 +114,19 @@ function constructionScheduleGantt(plans,{key,title='工程排程甘特圖',open
   const days=scheduleDiff(origin,last)+1,scale=ganttState.scale,width=GANTT_SCALES[scale].width,total=days*width;
   const todayOffset=scheduleDiff(origin,today);
   const ticks=ganttTicks(origin,days,scale);
-  const header=`<div class="v2-gantt-row v2-gantt-head"><div class="v2-gantt-label">施工項目</div><div class="v2-gantt-track" style="width:${total}px">${ticks.map(t=>`<span class="v2-gantt-tick${t.weekend?' is-weekend':''}" style="left:${t.i*width}px;${scale==='day'?`width:${width}px`:''}"><b>${esc(t.label)}</b>${t.sub?`<small>${esc(t.sub)}</small>`:''}</span>`).join('')}</div></div>`;
+  const todayMark=todayOffset>=0&&todayOffset<days?`<i class="v2-gantt-today" data-gx="${todayOffset*width+width/2}" title="今日 ${today}"></i>`:'';
+  const header=`<div class="v2-gantt-row v2-gantt-head"><div class="v2-gantt-label">施工項目</div><div class="v2-gantt-track" data-gw="${total}">${todayMark}${ticks.map(t=>`<span class="v2-gantt-tick${t.weekend?' is-weekend':''}" data-gx="${t.i*width}" ${scale==='day'?`data-gw="${width}"`:''}><b>${esc(t.label)}</b>${t.sub?`<small>${esc(t.sub)}</small>`:''}</span>`).join('')}</div></div>`;
   const body=rows.map(({plan,schedule})=>{
     const collapsed=ganttState.collapsed.has(plan.id);
-    const planRow=`<div class="v2-gantt-row is-plan" data-status="${schedule.status}"><div class="v2-gantt-label"><button type="button" class="v2-gantt-toggle" data-gantt-toggle="${esc(plan.id)}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展開':'收合'} ${esc(plan.content)}">${collapsed?'▸':'▾'}</button><span><b>${esc(plan.content)}</b><small>${shortDate(schedule.start)}～${shortDate(schedule.end)}・${SCHEDULE_STATUS[schedule.status]}</small></span></div><div class="v2-gantt-track" style="width:${total}px">${ganttBar(schedule,origin,width,schedule.status,schedule.progress,`${plan.content}：${schedule.start}～${schedule.end}，進度 ${schedule.progress}%`,'plan')}</div></div>`;
-    const itemRows=collapsed?'':schedule.items.map(s=>`<div class="v2-gantt-row is-item" data-status="${s.status}"><div class="v2-gantt-label"><span><b>${esc(s.item.title)}</b><small>預計 ${shortDate(s.start)}～${shortDate(s.end)}（${s.days} 天）・實際 ${shortDate(s.actualStart)}～${s.actualEnd?shortDate(s.actualEnd):'—'}・${SCHEDULE_STATUS[s.status]}</small></span></div><div class="v2-gantt-track" style="width:${total}px">${ganttBar(s,origin,width,s.status,s.progress,`${s.item.title}：預計 ${s.start}～${s.end}（${s.days} 天），實際 ${s.actualStart||'未開始'}～${s.actualEnd||'—'}，${SCHEDULE_STATUS[s.status]}，進度 ${s.progress}%${s.equipment.applicable?`，設備完成 ${s.equipment.done}／${s.equipment.applicable}`:''}`,'item')}${(s.item.log_dates||[]).map(date=>`<i class="v2-gantt-log" style="left:${scheduleDiff(origin,date)*width+width/2}px" title="${esc(s.item.title)}：${esc(date)} 有施工日誌"></i>`).join('')}</div></div>`).join('');
+    const planRow=`<div class="v2-gantt-row is-plan" data-status="${schedule.status}"><div class="v2-gantt-label"><button type="button" class="v2-gantt-toggle" data-gantt-toggle="${esc(plan.id)}" aria-expanded="${!collapsed}" aria-label="${collapsed?'展開':'收合'} ${esc(plan.content)}">${collapsed?'▸':'▾'}</button><span><b>${esc(plan.content)}</b><small>${shortDate(schedule.start)}～${shortDate(schedule.end)}・${SCHEDULE_STATUS[schedule.status]}</small></span></div><div class="v2-gantt-track" data-gw="${total}">${todayMark}${ganttBar(schedule,origin,width,schedule.status,schedule.progress,`${plan.content}：${schedule.start}～${schedule.end}，進度 ${schedule.progress}%`,'plan')}</div></div>`;
+    const itemRows=collapsed?'':schedule.items.map(s=>`<div class="v2-gantt-row is-item" data-status="${s.status}"><div class="v2-gantt-label"><span><b>${esc(s.item.title)}</b><small>預計 ${shortDate(s.start)}～${shortDate(s.end)}（${s.days} 天）・實際 ${shortDate(s.actualStart)}～${s.actualEnd?shortDate(s.actualEnd):'—'}・${SCHEDULE_STATUS[s.status]}</small></span></div><div class="v2-gantt-track" data-gw="${total}">${todayMark}${ganttBar(s,origin,width,s.status,s.progress,`${s.item.title}：預計 ${s.start}～${s.end}（${s.days} 天），實際 ${s.actualStart||'未開始'}～${s.actualEnd||'—'}，${SCHEDULE_STATUS[s.status]}，進度 ${s.progress}%${s.equipment.applicable?`，設備完成 ${s.equipment.done}／${s.equipment.applicable}`:''}`,'item')}${(s.item.log_dates||[]).map(date=>`<i class="v2-gantt-log" data-gx="${scheduleDiff(origin,date)*width+width/2}" title="${esc(s.item.title)}：${esc(date)} 有施工日誌"></i>`).join('')}</div></div>`).join('');
     return planRow+itemRows;
   }).join('');
-  const todayLine=todayOffset>=0&&todayOffset<days?`<i class="v2-gantt-today" style="left:calc(var(--v2-gantt-label) + ${todayOffset*width+width/2}px)" title="今日 ${today}"></i>`:'';
   return `<details class="v2-gantt" data-v2-gantt="${esc(key||'')}" ${open?'open':''}><summary>${esc(title)}</summary>
     <div class="v2-gantt-toolbar"><div role="group" aria-label="時間尺度">${Object.entries(GANTT_SCALES).map(([value,{label}])=>`<button type="button" class="outline" data-gantt-scale="${value}" aria-pressed="${value===scale}">${label}</button>`).join('')}</div><button type="button" class="outline" data-gantt-today>跳到今日</button>
     <div class="v2-gantt-legend">${Object.entries(SCHEDULE_STATUS).map(([value,label])=>`<span data-status="${value}">${label}</span>`).join('')}<span class="is-log">施工日誌</span></div></div>
     <p class="form-sync-hint">預計完成日期＝預計開始日期＋施工天數−1（日曆天，含開工當日；週末與國定假日照常計入）。長條內深色為完成進度：有指派設備時依設備完成比例，否則依子項目完成或已施工天數估算。</p>
-    <div class="v2-gantt-scroll" tabindex="0" aria-label="可左右捲動的工程排程甘特圖" data-gantt-scroll><div class="v2-gantt-grid" style="--v2-gantt-width:${total}px">${header}${body}${todayLine}</div></div></details>`;
+    <div class="v2-gantt-scroll" tabindex="0" aria-label="可左右捲動的工程排程甘特圖" data-gantt-scroll><div class="v2-gantt-grid">${header}${body}</div></div></details>`;
 }
 function rerenderGantt(host){
   const key=host.dataset.v2Gantt,plans=(state.constructionPlans||[]).filter(p=>key.startsWith('plan:')?p.id===key.slice(5):p.project_id===key);
@@ -140,7 +140,7 @@ function rerenderGantt(host){
 }
 function scrollGanttToToday(host){
   const scroll=host.querySelector('[data-gantt-scroll]'),line=host.querySelector('.v2-gantt-today');
-  if(scroll&&line)scroll.scrollLeft=Math.max(0,line.offsetLeft-scroll.clientWidth/2);
+  if(scroll&&line)scroll.scrollLeft=Math.max(0,Number(line.dataset.gx)-scroll.clientWidth/2+(host.querySelector('.v2-gantt-label')?.offsetWidth||0));
 }
 document.addEventListener('click',event=>{
   const host=event.target.closest('[data-v2-gantt]');if(!host)return;
@@ -149,3 +149,15 @@ document.addEventListener('click',event=>{
   else if(toggle){const id=toggle.dataset.ganttToggle;ganttState.collapsed.has(id)?ganttState.collapsed.delete(id):ganttState.collapsed.add(id);rerenderGantt(host);}
   else if(event.target.closest('[data-gantt-today]'))scrollGanttToToday(host);
 });
+// 網站 CSP 不允許 HTML 內的 style 屬性，甘特圖位置以 data 屬性輸出，加入頁面後再由程式設定。
+function applyGanttLayout(root){
+  for(const el of root.querySelectorAll('[data-gx]:not([data-laid]),[data-gw]:not([data-laid]),[data-gp]:not([data-laid])')){
+    if(el.dataset.gx!==undefined)el.style.left=el.dataset.gx+'px';
+    if(el.dataset.gw!==undefined)el.style.width=el.dataset.gw+'px';
+    if(el.dataset.gp!==undefined)el.style.width=el.dataset.gp+'%';
+    el.dataset.laid='1';
+  }
+}
+if(typeof MutationObserver!=='undefined'&&document.documentElement)new MutationObserver(records=>{
+  for(const record of records)for(const node of record.addedNodes)if(node.nodeType===1&&(node.matches?.('.v2-gantt')||node.querySelector?.('.v2-gantt')))applyGanttLayout(node);
+}).observe(document.documentElement,{childList:true,subtree:true});

@@ -122,6 +122,12 @@ begin
       where not exists(select from jsonb_array_elements(plan.drawing_points) p where p->>'code'=c);
     if blocked is not null then raise exception '設備不在本施工規劃清冊內：%',blocked; end if;
     codes:=array(select jsonb_array_elements_text(p_payload->'codes'));
+    -- 由「適用全部」改為指定設備時，自動保留已有施工紀錄（含已封存日誌）的設備，避免歷史進度失去對應。
+    if item.equipment_codes is null then
+      codes:=codes||array(select distinct e->>'code' from public.site_work_logs l cross join lateral jsonb_array_elements(l.equipment_progress) e
+        where l.construction_plan_id=plan.id and e->>'item'=item.id::text and not (e->>'code'=any(codes))
+          and exists(select from jsonb_array_elements(plan.drawing_points) p where p->>'code'=e->>'code'));
+    end if;
   end if;
   select string_agg(distinct e->>'code','、') into blocked from public.site_work_logs l cross join lateral jsonb_array_elements(l.equipment_progress) e
     where l.construction_plan_id=plan.id and e->>'item'=item.id::text and codes is not null and not (e->>'code'=any(codes));

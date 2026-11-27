@@ -190,8 +190,12 @@ document.addEventListener('click',async event=>{
   try{
     if(locate){await locateDevice(locate.dataset.locateDevice);return;}
     if(waiting){showDrawingGrid(null,{waiting:true});return;}
-    const row=constructionDrawingContext?.drawings?.find(r=>r.id===(save||archive).dataset[save?'drawingSave':'drawingArchive']);
-    if(!row)throw Error('工程圖已變更，請重新讀取。');
+    const known=constructionDrawingContext?.drawings?.find(r=>r.id===(save||archive).dataset[save?'drawingSave':'drawingArchive']);
+    if(!known)throw Error('工程圖已變更，請重新讀取。');
+    // 設定點位會更新工程圖版本；操作前重新讀取，確認仍存在並取得最新版本與點位數。
+    const latest=await apiRequest({method:'GET',scope:'construction_drawings',planId:known.construction_plan_id});
+    const row=latest.drawings?.find(r=>r.id===known.id);
+    if(!row){await refreshConstructionDrawings();throw Error('工程圖已被刪除或變更，清單已重新讀取。');}
     if(save){
       const box=save.closest('[data-drawing-edit]'),value=key=>String(box.querySelector(`[data-field="${key}"]`)?.value||'').trim();
       if(!value('title'))throw Error('請填寫工程圖名稱。');
@@ -671,7 +675,7 @@ document.addEventListener('click',async event=>{
       if(view.pending||!confirm('移除這張工程圖上 '+code+' 的定位？'))return;
       view.pending=true;
       try{const data=await apiRequest({operation:'save_construction_drawing_marker',payload:{asset_id:view.row.id,code,sha256:view.row.sha256,expected,position:null}});
-        view.row.drawing_markers=data.result;if(activeDrawingAnnotation===view){view.draftLabel=null;select.value='';paintDrawingMarkers(view);view.host.querySelector('[data-marker-status]').textContent=code+' 已移除定位。';}
+        view.row.drawing_markers=data.result;if(activeDrawingAnnotation===view){view.draftLabel=null;select.value='';paintDrawingMarkers(view);renderConstructionDrawings();view.host.querySelector('[data-marker-status]').textContent=code+' 已移除定位。';}
       }finally{view.pending=false;}
       return;
     }
@@ -726,7 +730,7 @@ document.addEventListener('click',async event=>{
     try{
       const data=await apiRequest({operation:'save_construction_drawing_marker',payload:{asset_id:view.row.id,sha256:view.row.sha256,code,expected:previous,position}});
       if(view!==activeDrawingAnnotation)return;
-      view.row.drawing_markers=data.result;view.draftLabel=null;select.value='';view.highlight=code;paintDrawingMarkers(view);
+      view.row.drawing_markers=data.result;view.draftLabel=null;select.value='';view.highlight=code;paintDrawingMarkers(view);renderConstructionDrawings();
       view.host.querySelector('[data-marker-status]').textContent=code+' 已定位。';
       view.viewport.closest('.drawing-canvas').append(note);
       await openMarkerNote(view,code,anchor);

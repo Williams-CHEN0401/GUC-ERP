@@ -58,6 +58,11 @@ begin
   failed:=false; begin perform public.assign_construction_item_equipment_v1(admin,office.id,jsonb_build_object('row_version',office.row_version,'codes','["CAM11"]'::jsonb)); exception when others then failed:=true; message:=sqlerrm; end;
   if not failed or message not like '%CAM10%' then raise exception 'recorded equipment removed: %',message; end if;
 
+  -- 「適用全部」改為指定設備時，自動保留已有紀錄的設備（停車場指定 CAM12 時保留 CAM30）。
+  select * into parking from public.construction_plan_items where id=parking.id;
+  result:=public.assign_construction_item_equipment_v1(admin,parking.id,jsonb_build_object('row_version',parking.row_version,'codes','["CAM12"]'::jsonb));
+  if not (result->'equipment_codes' ? 'CAM30' and result->'equipment_codes' ? 'CAM12') then raise exception 'recorded equipment not retained: %',result->'equipment_codes'; end if;
+
   -- 設備欄位擴充（類型、型號、建築物、備註）並依編號同步其他規劃，位置各自保留。
   select jsonb_object_agg(id::text,row_version) into versions from public.construction_plans where project_id=project.id and deleted_at is null;
   select * into pipe from public.construction_plans where id=pipe.id;
@@ -86,8 +91,8 @@ begin
     'assign_item_id',parking.id,'points',(select jsonb_agg(jsonb_build_object('code',format('ZZ%s',lpad(i::text,2,'0')),'name','監視攝影機','type','監視攝影機','location','') order by i) from generate_series(1,79) i)));
   if (result->>'point_count')::int<>79 or (result->>'plan_count')::int<>2 then raise exception 'batch result %',result; end if;
   if (select count(*) from public.construction_plans p cross join lateral jsonb_array_elements(p.drawing_points) pt where p.id in (pipe.id,wire.id) and pt->>'code' like 'ZZ%')<>158 then raise exception 'batch rows missing'; end if;
-  -- 停車場原本「適用全部」且 CAM30 已有紀錄：改為指定設備時保留 CAM30，再加上 79 筆新設備。
-  if (select cardinality(equipment_codes) from public.construction_plan_items where id=parking.id)<>80
+  -- 停車場已指定 CAM12、CAM30，批次再加上 79 筆新設備。
+  if (select cardinality(equipment_codes) from public.construction_plan_items where id=parking.id)<>81
     or not (select 'CAM30'=any(equipment_codes) from public.construction_plan_items where id=parking.id) then raise exception 'batch assignment missing'; end if;
   select jsonb_object_agg(id::text,row_version) into versions from public.construction_plans where project_id=project.id and deleted_at is null;
   failed:=false; begin perform public.batch_construction_roster_v1(admin,project.id,jsonb_build_object('versions',versions,'plans',jsonb_build_array(pipe.id),'points','[{"code":"zz05","location":""}]'::jsonb)); exception when others then failed:=true; message:=sqlerrm; end;

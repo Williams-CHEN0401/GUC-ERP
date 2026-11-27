@@ -58,6 +58,8 @@ test('roster import validates headers, duplicate codes, unknown plans and sub-it
   const result=c.validateRosterImport(rows,{plans,current:plans[0]});
   assert.equal(result[0].action,'更新');assert.equal(result[0].point.location,'1F');assert.equal(result[0].items[0].id,'o');
   assert.equal(result[1].action,'新增');
+  const partial=c.validateRosterImport([['設備編號','設備類型'],['CAM10','監視攝影機']],{plans,current:plans[0]});
+  assert.equal(partial[0].point.name,'舊名');assert.equal(partial[0].point.type,'監視攝影機');
   const bad=c.validateRosterImport([...rows,['cam80','dup'],['X1','','','不存在的主項目',''],['X2','','','配管作業','不存在的子項目']],{plans,current:plans[0]});
   assert.match(bad[2].errors.join(),/重複/);assert.match(bad[3].errors.join(),/找不到施工主項目/);assert.match(bad[4].errors.join(),/找不到施工子項目/);
   assert.throws(()=>c.validateRosterImport([['名稱'],['x']],{plans,current:plans[0]}),/設備編號/);

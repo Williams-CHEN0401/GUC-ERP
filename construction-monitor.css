@@ -269,3 +269,5 @@
   .drawing-side-panel { max-height:calc(100dvh - 90px); }
 }
 .construction-matrix [data-cell-status="unassigned"] { color:#9aa59d; background:#f6f7f4; }
+.roster-v2 :is(.roster-top,.roster-editor,.roster-selection) label:not(.construction-item-check), .drawing-filter-bar label, .drawing-device-search label, .drawing-side-panel label, .drawing-edit label { display:grid; gap:4px; }
+.roster-v2 .roster-editor { grid-template-columns:repeat(auto-fill,minmax(12rem,1fr)); }

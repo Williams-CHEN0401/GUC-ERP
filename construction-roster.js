@@ -81,7 +81,8 @@ function validateRosterImport(rows,{plans,current}){
     else if(!plan.can_manage)errors.push(`沒有「${plan.content}」的清冊管理權限`);
     const existing=plan?.drawing_points?.find(p=>p.code.toLowerCase()===cell('code').toLowerCase());
     let point=null;
-    try{point=rosterPointFrom(Object.fromEntries(ROSTER_FIELDS.map(([key])=>[key,key==='location'&&index.location===undefined&&existing?existing.location:cell(key)])),existing||{});}
+    // 檔案沒有的欄位保留清冊原值；有欄位但留空則視為清除。
+    try{point=rosterPointFrom(Object.fromEntries(ROSTER_FIELDS.map(([key])=>[key,key!=='code'&&index[key]===undefined&&existing?existing[key]:cell(key)])),existing||{});}
     catch(error){errors.push(error.message);}
     if(existing&&point&&existing.code!==point.code)errors.push('設備編號大小寫與清冊不同');
     const key=(plan?.id||'')+'\0'+cell('code').toLowerCase();
@@ -291,7 +292,11 @@ async function openConstructionRoster(projectId){
         const note=!Array.isArray(item.equipment_codes)&&target.hasAttribute('data-assign-add')?'\n此子項目目前適用全部設備，指派後填寫日誌只會列出指派的設備（已有紀錄的設備會保留）。':'';
         if(!confirm(`${target.hasAttribute('data-assign-add')?'指派':'移出'} ${selected.size} 台設備${target.hasAttribute('data-assign-add')?'至':'自'}「${item.title}」？指派後共 ${codes.length} 台。${note}`))return;
       }
-      void run(async()=>{await assign(item,codes);if(codes)selected.clear();itemFilter=item.id;return codes?`「${item.title}」已指派 ${codes.length} 台設備。`:`「${item.title}」已改為適用全部設備。`;});
+      void run(async()=>{
+        const saved=(await assign(item,codes)).result;if(codes)selected.clear();itemFilter=item.id;
+        const count=saved?.equipment_codes?.length??codes?.length;
+        return codes?`「${item.title}」已指派 ${count} 台設備${count>codes.length?`（含 ${count-codes.length} 台已有施工紀錄的設備，自動保留）`:''}。`:`「${item.title}」已改為適用全部設備。`;
+      });
       return;
     }
     if(target.hasAttribute('data-roster-template')){
