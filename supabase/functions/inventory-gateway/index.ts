@@ -1159,6 +1159,20 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!uuid(payload.plan_id)||!Array.isArray(payload.points)||!payload.versions)throw Error("請重新核對清冊資料。");
     return rpc("save_construction_roster_v1",{p_actor_user_id:user.id,p_plan_id:payload.plan_id,p_payload:payload});
   }
+  if(operation==="batch_construction_roster"){
+    if(!user || !hasConstructionPermission(user,'construction_plans','UPDATE'))throw Error("沒有管理設備清冊的權限。");
+    if(!uuid(payload.project_id)||!Array.isArray(payload.plans)||!payload.plans.every(uuid)||!Array.isArray(payload.points)||!payload.versions||(payload.assign_item_id&&!uuid(payload.assign_item_id)))throw Error("請重新核對批次建立的設備資料。");
+    return rpc("batch_construction_roster_v1",{p_actor_user_id:user.id,p_project_id:payload.project_id,p_payload:payload});
+  }
+  if(operation==="assign_construction_item_equipment"){
+    if(!user || !hasConstructionPermission(user,'construction_plans','UPDATE'))throw Error("沒有管理設備清冊的權限。");
+    if(!uuid(payload.item_id)||!Number.isInteger(payload.row_version)||!(payload.codes===null||Array.isArray(payload.codes)&&payload.codes.every((code:unknown)=>typeof code==="string")))throw Error("請重新核對子項目與設備。");
+    return rpc("assign_construction_item_equipment_v1",{p_actor_user_id:user.id,p_item_id:payload.item_id,p_payload:{row_version:payload.row_version,codes:payload.codes}});
+  }
+  if(operation==="manage_construction_drawing"){
+    if(!uuid(payload.asset_id)||!Number.isInteger(payload.row_version)||!(payload.action==="update"||payload.action==="archive"))throw new Error("請重新讀取工程圖。");
+    return rpc("manage_construction_drawing_v1",{p_actor_user_id:user!.id,p_asset_id:payload.asset_id,p_payload:payload});
+  }
   if(operation==="import_construction_matrix"){
     if(!uuid(payload.plan_id)||!uuid(payload.request_id)||!Number.isInteger(payload.row_version))throw new Error("請重新核對施工規劃與匯入版本。");
     return rpc("import_construction_matrix_v1",{p_actor_user_id:user!.id,p_plan_id:payload.plan_id,p_payload:payload});

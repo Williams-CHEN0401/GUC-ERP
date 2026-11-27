@@ -60,6 +60,8 @@ function equipmentMatrix(plan) {
   const totals=plan.items.map(()=>({done:0,applicable:0}));
   const rows=(plan.drawing_points||[]).map(p=>`<tr><th scope="row">${esc(p.code)}</th><td>${esc(p.name||"")}</td><td>${esc(p.location)}</td>${plan.items.map((item,index)=>{
     const record=cells.get(JSON.stringify([p.code,item.id]));
+    // 子項目已指定設備時，未指派的設備不計入該工項（保留已存在的歷史紀錄）。
+    if(!record && Array.isArray(item.equipment_codes) && !item.equipment_codes.includes(p.code))return '<td data-cell-status="unassigned" title="未指派至此子項目">—</td>';
     const status=record?.status||'pending';
     if (status!=='na') totals[index].applicable++;
     if (status==='done') totals[index].done++;
@@ -73,6 +75,7 @@ function equipmentEntriesEditor(plan) {
   if (!plan?.drawing_points?.length || !plan.items?.length) return '';
   return `<section class="span-2 equipment-log-editor" data-equipment-editor><h3>本篇日誌的設備施工進度</h3>
     <p data-equipment-hint></p><label data-equipment-picker hidden>填報工項<select data-equipment-item></select></label>
+    <label hidden>搜尋設備<input type="search" data-equipment-filter placeholder="編號、名稱、類型、區域"></label>
     <div class="equipment-device-list" data-equipment-devices></div></section>`;
 }
 function initEquipmentEditor(host, plan, entries, editable, preferredItem) {
@@ -107,11 +110,16 @@ function renderEquipmentChecklist(editor, preferredItem) {
     list.replaceChildren();
     return;
   }
-  hint.textContent=allowed?'勾選本工項施作的設備，再分別選擇本次進度。':'設備進度僅供檢視。';
+  // 依「工程案場 → 主項目 → 子項目 → 對應設備」篩選：子項目已指派設備時只列出指派的設備。
+  const activeItem=plan.items.find(item=>item.id===active),assigned=Array.isArray(activeItem?.equipment_codes)?new Set(activeItem.equipment_codes):null;
+  hint.textContent=allowed?(assigned?`此子項目已指派 ${assigned.size} 台設備；勾選本次施作的設備，再分別選擇進度。`:'此子項目未指定設備，列出本規劃清冊全部設備；勾選本次施作的設備，再分別選擇進度。'):'設備進度僅供檢視。';
   // Older logs can refer to equipment that no longer appears in the active roster.
-  const points=new Map(plan.drawing_points.map(point=>[point.code,point]));
+  const points=new Map(plan.drawing_points.filter(point=>!assigned||assigned.has(point.code)||records.has(point.code)).map(point=>[point.code,point]));
   for (const code of records.keys()) if (!points.has(code)) points.set(code,{code});
-  list.innerHTML=[...points.values()].filter(point=>allowed || records.has(point.code)).map(point=>{
+  const filter=editor.querySelector('[data-equipment-filter]');
+  if(filter)filter.closest('label').hidden=points.size<=12;
+  const keyword=(filter?.value||'').trim().toLowerCase();
+  list.innerHTML=[...points.values()].filter(point=>allowed || records.has(point.code)).filter(point=>!keyword||[point.code,point.name,point.type,point.location,point.building].some(v=>String(v||'').toLowerCase().includes(keyword))).map(point=>{
     const checked=records.has(point.code),status=records.get(point.code)||'working';
     const label=[point.code,point.name,point.location].filter(Boolean).join(' · ');
     return `<div class="equipment-device-row"><label class="construction-item-check"><input type="checkbox" data-device-code value="${esc(point.code)}" ${checked?'checked':''} ${allowed?'':'disabled'}>${esc(label)}</label>
@@ -159,85 +167,13 @@ document.addEventListener('change',event=>{
   else records.delete(box.value);
 });
 
-async function openConstructionRoster(projectId) {
-  const dialog=document.createElement('dialog');
-  dialog.className='matrix-import-dialog project-roster';
-  dialog.setAttribute('aria-label','施工規劃清冊');
-  dialog.innerHTML='<div class="construction-drawing-toolbar"><h2>施工規劃清冊</h2><button type="button" class="outline" data-roster-close>關閉</button></div><label>施工規劃<select data-roster-plan></select></label><div data-roster-body></div><output role="status"></output>';
-  document.body.append(dialog);
-  dialog.showModal();
-  const status=dialog.querySelector('output'),picker=dialog.querySelector('[data-roster-plan]'),body=dialog.querySelector('[data-roster-body]');
-  let plans=[],busy=false,editing=null;
-  const plan=()=>plans.find(p=>p.id===picker.value);
-  function render(){
-    editing=null;
-    const current=plan();
-    if(!current){body.textContent='請先新增施工規劃，再建立設備清冊。';return;}
-    const points=current.drawing_points||[],editable=current.can_manage;
-    body.innerHTML=(editable?`<form class="roster-editor"><label>設備編號<input name="code" required maxlength="80"></label><label>設備名稱<input name="name" maxlength="160"></label><label>位置<input name="location" maxlength="160"></label><div class="construction-plan-actions"><button class="primary" data-roster-save>新增設備</button><button type="button" class="outline" data-roster-reset hidden>取消修改</button></div></form><p>修改名稱會同步此案各規劃的同編號設備。位置依各規劃保存。</p>
-    <details class="roster-import"><summary>批次加入設備</summary><fieldset><label>設備編號、位置、名稱<textarea name="drawingPoints" rows="3"></textarea></label><label>載入 CSV／TSV<input type="file" data-import-points accept=".csv,.tsv,.txt"></label><output></output><button type="button" class="outline" data-roster-import>加入清冊</button></fieldset></details>`:'')+
-    `<p>設備共 ${points.length} 筆</p><ul class="roster-list">${points.map((p,index)=>`<li><span><b>${esc(p.code)}</b>　${esc(p.name||'')}<small>${esc(p.location||'')}</small></span>${editable?`<div class="construction-plan-actions"><button type="button" class="outline" data-roster-edit="${index}">修改</button><button type="button" class="outline danger" data-roster-delete="${index}">刪除</button></div>`:''}</li>`).join('')}</ul>`;
-  }
-  async function load(preferred){
-    const data=await apiRequest({method:'GET',scope:'construction_plans',projectId});
-    if(!dialog.open)return;
-    mergeConstructionContext(data);
-    plans=(data.construction_plans||[]).filter(p=>p.project_id===projectId);
-    picker.innerHTML=plans.map(p=>`<option value="${esc(p.id)}">${esc(p.content)}</option>`).join('');
-    if(plans.some(p=>p.id===preferred))picker.value=preferred;
-    render();
-  }
-  async function save(points){
-    if(busy)return;
-    busy=true;body.inert=true;picker.disabled=true;
-    const current=plan(),versions=Object.fromEntries(plans.map(p=>[p.id,p.row_version]));
-    let saved=false;
-    try{
-      const result=await apiRequest({operation:'save_construction_roster',payload:{plan_id:current.id,versions,points}});
-      saved=true;await load(current.id);await refreshConstructionProgressViews();
-      status.textContent='已儲存，更新 '+result.result.plan_count+' 筆規劃。';
-    }catch(error){status.textContent=saved?'清冊已儲存，請重新開啟以讀取最新資料。':error.message;}
-    finally{busy=false;body.inert=false;picker.disabled=false;}
-  }
-  picker.onchange=()=>{status.textContent='';render();};
-  dialog.onsubmit=event=>{
-    event.preventDefault();if(busy||!plan()?.can_manage)return;
-    const form=event.target,point=Object.fromEntries(['code','name','location'].map(k=>[k,form.elements.namedItem(k).value.trim()]));
-    if(!point.code){status.textContent='請輸入設備編號。';return;}
-    const points=[...plan().drawing_points];
-    if(editing===null){
-      if(points.some(p=>p.code.toLowerCase()===point.code.toLowerCase())){status.textContent='設備編號已存在。';return;}
-      points.push(point);
-    }else points[editing]=point;
-    void save(points);
-  };
-  dialog.onclick=event=>{
-    const target=event.target.closest('button');if(!target||busy)return;
-    if(target.hasAttribute('data-roster-close')){dialog.close();return;}
-    if(!plan()?.can_manage)return;
-    if(target.hasAttribute('data-roster-edit')){
-      editing=Number(target.dataset.rosterEdit);
-      const point=plan().drawing_points[editing],form=body.querySelector('form');
-      for(const key of ['code','name','location'])form.elements.namedItem(key).value=point[key]||'';
-      form.elements.code.readOnly=true;form.querySelector('[data-roster-save]').textContent='儲存修改';
-      form.querySelector('[data-roster-reset]').hidden=false;form.elements.namedItem('name').focus();
-    }else if(target.hasAttribute('data-roster-reset'))render();
-    else if(target.hasAttribute('data-roster-delete')){
-      const index=Number(target.dataset.rosterDelete),points=plan().drawing_points;
-      if(confirm('從本規劃清冊刪除 '+points[index].code+'？'))void save(points.filter((_,i)=>i!==index));
-    }else if(target.hasAttribute('data-roster-import')){
-      try{const rows=parseDrawingPoints(body.querySelector('[name=drawingPoints]').value);if(!rows.length)throw Error('請先輸入或載入清冊。');void save(mergeImportedPoints(plan().drawing_points,rows));}
-      catch(error){status.textContent=error.message;}
-    }
-  };
-  const endSession=()=>dialog.close();
-  window.addEventListener('guc:session-changed',endSession);
-  dialog.oncancel=event=>{if(busy)event.preventDefault();};
-  dialog.onclose=()=>{window.removeEventListener('guc:session-changed',endSession);dialog.remove();
-    if(document.querySelector('#simpleModal.open') && document.querySelector('#modalForm [data-open-roster]')?.dataset.openRoster===projectId && state.currentUser)openConstructionPlans(projectId).catch(e=>showToast(e.message));
-  };
-  try{await load();}catch(error){status.textContent=error.message;}
-}
+document.addEventListener('input',event=>{
+  if(!event.target.matches('[data-equipment-filter]'))return;
+  const editor=event.target.closest('[data-equipment-editor]');
+  if(editor&&equipmentDrafts.has(editor))renderEquipmentChecklist(editor,editor.querySelector('[data-equipment-item]').value);
+});
+
+// 施工規劃清冊對話框（第二版）在 construction-roster.js。
 document.addEventListener('click',event=>{
   const button=event.target.closest('[data-open-roster]');
   if(button)openConstructionRoster(button.dataset.openRoster).catch(error=>showToast(error.message));
