@@ -128,3 +128,146 @@
 }
 
 .drawing-scroll.enlarged .drawing-stage {width:160%;min-width:46rem}
+
+/* ===== 工作管理第二版：子項目日期排程、甘特圖、施工規劃清冊、工程圖檢視 ===== */
+.construction-item-editor { grid-template-columns:minmax(160px,1fr) 150px 110px 120px auto; }
+.construction-item-editor output { display:block; padding:8px 0; font-weight:700; color:#285244; }
+.construction-checklist li[data-schedule-status="overdue"] { border-color:#c9802a; background:#fff6e8; }
+@media(max-width:640px){ .construction-item-editor { grid-template-columns:1fr 1fr; } }
+
+.v2-gantt { --v2-gantt-label:240px; margin:16px 0; padding:12px; border:1px solid var(--line,#cbd2c5); border-radius:8px; min-width:0; background:#fff; }
+.v2-gantt > summary { cursor:pointer; font-weight:700; }
+.v2-gantt-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0; }
+.v2-gantt-toolbar [role="group"] { display:inline-flex; gap:4px; }
+.v2-gantt-toolbar [aria-pressed="true"] { background:#285244; color:#fff; border-color:#285244; }
+.v2-gantt-toolbar button { min-height:40px; min-width:44px; }
+.v2-gantt-legend { display:flex; flex-wrap:wrap; gap:10px; font-size:.9em; }
+.v2-gantt-legend span::before { content:""; display:inline-block; width:.9em; height:.9em; margin-right:.3em; border-radius:3px; vertical-align:-1px; background:var(--gantt-color); }
+.v2-gantt-legend .is-log::before { width:.5em; height:.5em; border-radius:50%; background:#1d3b2f; }
+[data-status="done"] { --gantt-color:#2f7d55; } [data-status="working"] { --gantt-color:#d08a1a; }
+[data-status="pending"] { --gantt-color:#8b9aa3; } [data-status="overdue"] { --gantt-color:#c0392b; }
+.v2-gantt-scroll { position:relative; overflow:auto; max-width:100%; max-height:70vh; border:1px solid #e2e9e7; border-radius:6px; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; }
+.v2-gantt-grid { position:relative; width:max-content; min-width:100%; }
+.v2-gantt-row { display:flex; min-height:44px; border-bottom:1px solid #eef2ef; }
+.v2-gantt-label { position:sticky; left:0; z-index:2; flex:0 0 var(--v2-gantt-label); width:var(--v2-gantt-label); box-sizing:border-box; display:flex; align-items:center; gap:6px; padding:4px 8px; background:#fff; border-right:1px solid #e2e9e7; }
+.v2-gantt-label span { min-width:0; } .v2-gantt-label b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.v2-gantt-label small { display:block; color:#58685f; font-size:.78em; line-height:1.3; }
+.v2-gantt-row.is-item .v2-gantt-label { padding-left:34px; }
+.v2-gantt-row.is-plan { background:#f6f9f7; } .v2-gantt-row.is-plan .v2-gantt-label { background:#f6f9f7; }
+.v2-gantt-toggle { min-width:32px; min-height:32px; padding:0; border:1px solid #c5d0c9; background:#fff; border-radius:4px; }
+.v2-gantt-track { position:relative; flex:0 0 auto; }
+.v2-gantt-head { position:sticky; top:0; z-index:3; background:#fff; min-height:42px; }
+.v2-gantt-head .v2-gantt-label { font-weight:700; z-index:4; }
+.v2-gantt-tick { position:absolute; top:0; bottom:0; padding:3px 2px; border-left:1px solid #e2e9e7; font-size:11px; line-height:1.2; white-space:nowrap; box-sizing:border-box; }
+.v2-gantt-tick b { display:block; font-weight:600; } .v2-gantt-tick small { color:#6b7a72; }
+.v2-gantt-tick.is-weekend { background:#f3f5f1; }
+.v2-gantt-bar { position:absolute; top:9px; height:26px; border-radius:5px; overflow:hidden; background:color-mix(in srgb,var(--gantt-color) 28%,white); border:1px solid var(--gantt-color); box-sizing:border-box; }
+.v2-gantt-bar.is-plan { top:12px; height:20px; }
+.v2-gantt-fill { position:absolute; inset:0 auto 0 0; background:var(--gantt-color); opacity:.85; }
+.v2-gantt-text { position:relative; padding:0 6px; font-size:11px; line-height:24px; color:#14231b; font-weight:700; text-shadow:0 0 2px #fff; }
+.v2-gantt-log { position:absolute; bottom:4px; width:6px; height:6px; margin-left:-3px; border-radius:50%; background:#1d3b2f; }
+.v2-gantt-today { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:#c0392b; z-index:1; pointer-events:none; }
+@media(max-width:650px){ .v2-gantt { --v2-gantt-label:132px; padding:8px; } .v2-gantt-label small { display:none; } .v2-gantt-row.is-item .v2-gantt-label { padding-left:14px; } }
+
+/* 施工規劃清冊 */
+.roster-v2 { width:min(72rem,96vw); }
+.roster-top { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:8px 0; }
+.roster-item-chips { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.roster-item-chips button { display:inline-flex; flex-direction:column; align-items:flex-start; min-height:44px; text-align:left; }
+.roster-item-chips button small { font-size:.78em; color:#58685f; }
+.roster-item-chips [aria-pressed="true"] { background:#285244; color:#fff; border-color:#285244; }
+.roster-item-chips [aria-pressed="true"] small { color:#e3f0ea; }
+.roster-panel { border:1px solid var(--line,#cbd2c5); border-radius:8px; padding:0 12px; margin:8px 0; background:#fbfcf8; }
+.roster-panel > summary { cursor:pointer; padding:.7rem 0; font-weight:700; }
+.roster-editor .span-all, .roster-editor fieldset { grid-column:1/-1; }
+.roster-editor fieldset { display:flex; flex-wrap:wrap; gap:6px 16px; border:1px solid #dfe5dc; border-radius:6px; }
+.roster-selection { display:flex; flex-wrap:wrap; align-items:end; gap:8px; margin:8px 0; padding:8px; background:#f3f7f1; border-radius:6px; }
+.roster-selection input { width:7.5rem; }
+.roster-selection button, .roster-panel button, .drawing-zoom-controls button { min-height:40px; }
+.roster-table-scroll { overflow:auto; max-height:55vh; }
+.roster-table { width:100%; border-collapse:collapse; }
+.roster-table th, .roster-table td { padding:.45rem; border-bottom:1px solid #e3e8e1; text-align:left; vertical-align:middle; }
+.roster-table thead th { position:sticky; top:0; background:#fffdf7; z-index:1; }
+.roster-table tr.is-selected { background:#eaf4ee; }
+.roster-table small { display:block; color:#5d6b62; }
+.roster-icon { width:32px; height:32px; object-fit:contain; }
+.roster-chip { display:inline-block; margin:2px 4px 2px 0; padding:1px 8px; border-radius:999px; background:#e4efe8; color:#244d39; font-size:.85em; }
+.roster-preview .is-error { background:#fdecea; }
+.danger-text { color:#b3261e; }
+.outline-file { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid #8a9a8e; border-radius:6px; cursor:pointer; }
+.visually-hidden { position:absolute!important; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+@media(max-width:650px){
+  .roster-top { grid-template-columns:1fr; }
+  .roster-table thead { display:none; }
+  .roster-table, .roster-table tbody, .roster-table tr, .roster-table td, .roster-table th { display:block; width:auto; }
+  .roster-table tr { display:grid; grid-template-columns:auto 40px 1fr; gap:2px 8px; padding:8px 0; border-bottom:1px solid #dfe5dc; }
+  .roster-table td, .roster-table th { border:0; padding:2px 0; }
+  .roster-table td:not([data-label="選取"]):not([data-label="圖示"]) { grid-column:1/-1; }
+  .roster-table th[data-label="設備編號"] { grid-column:3; font-size:1.05em; }
+  .roster-table td[data-label]:not([data-label="選取"]):not([data-label="圖示"]):not([data-label="操作"])::before { content:attr(data-label) "："; color:#5d6b62; font-size:.85em; }
+  .roster-selection input { width:6rem; }
+}
+
+/* 工程圖檢視：工程圖為主要操作核心，設備清單為可收合的輔助面板 */
+.drawing-device-search { position:relative; margin:8px 0; max-width:40rem; }
+.drawing-device-search input { width:100%; }
+.device-search-results { position:absolute; z-index:20; left:0; right:0; top:100%; max-height:50vh; overflow:auto; margin:4px 0 0; padding:4px; list-style:none; background:#fff; border:1px solid #9aa99e; border-radius:6px; box-shadow:0 6px 20px #0002; }
+.device-search-results button { display:flex; align-items:center; gap:8px; width:100%; min-height:44px; padding:6px; text-align:left; background:transparent; border:0; border-bottom:1px solid #eef2ee; }
+.device-search-results button:hover, .device-search-results button:focus-visible { background:#eef5f0; }
+.device-search-results img { width:28px; height:28px; object-fit:contain; flex:none; }
+.device-search-results span { flex:1; min-width:0; } .device-search-results small { display:block; color:#5d6b62; }
+.device-search-results em { font-style:normal; font-size:.85em; color:#285244; white-space:nowrap; }
+.drawing-filter-bar { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:end; margin:8px 0; }
+.drawing-filter-bar label { min-width:9rem; }
+.drawing-edit { margin-top:8px; } .drawing-edit > summary { cursor:pointer; color:#285244; }
+.drawing-viewer-toolbar h3 small { display:block; font-size:.75em; font-weight:400; color:#5d6b62; }
+.drawing-zoom-controls { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+.drawing-zoom-controls output { min-width:3.5em; text-align:center; font-variant-numeric:tabular-nums; }
+.drawing-workspace { display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,300px); gap:12px; align-items:start; }
+#drawingAnnotationViewer.is-panel-hidden .drawing-workspace { grid-template-columns:minmax(0,1fr); }
+#drawingAnnotationViewer.is-panel-hidden .drawing-side-panel { display:none; }
+.drawing-viewport { position:relative; height:min(72vh,820px); min-height:320px; overflow:hidden; background:#eef1ec; border:1px solid #cbd2c5; border-radius:6px; touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none; }
+.drawing-viewport.is-dragging { cursor:grabbing; }
+.drawing-viewport:focus-visible { outline:3px solid #0055aa; }
+.drawing-viewport .drawing-stage { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
+.drawing-viewport .drawing-stage img { width:100%; height:100%; pointer-events:none; -webkit-user-drag:none; }
+.drawing-viewport .drawing-marker, .drawing-stage .drawing-marker[data-point-state] { width:40px; height:40px; min-width:0; min-height:0; padding:0; display:grid; place-items:center; border-radius:50%; border:3px solid var(--point-color,#126445); background:rgba(255,255,255,.92); box-shadow:0 1px 4px #0005; transform:translate(-50%,-50%) scale(var(--marker-scale,1)); transform-origin:center; pointer-events:auto; overflow:visible; }
+.drawing-viewport .drawing-marker img { width:28px; height:28px; object-fit:contain; pointer-events:none; }
+.drawing-viewport .drawing-marker span { position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:2px; padding:0 4px; border-radius:3px; background:var(--point-color,#126445); color:#fff; font-size:11px; font-weight:700; line-height:16px; white-space:nowrap; pointer-events:none; }
+.drawing-viewport .drawing-marker[data-anchor="label"] { width:30px; height:20px; border-radius:4px; background:transparent; border-style:dashed; }
+.drawing-viewport .drawing-marker[data-anchor="label"] span { display:none; }
+.drawing-marker.is-highlight { z-index:5; animation:drawing-pulse 1.2s ease-in-out 4; box-shadow:0 0 0 4px #ffd24a, 0 0 0 7px #c0392b; }
+@keyframes drawing-pulse { 50% { box-shadow:0 0 0 8px #ffd24a, 0 0 0 12px #c0392b88; } }
+@media (prefers-reduced-motion:reduce){ .drawing-marker.is-highlight { animation:none; } }
+.drawing-note.is-docked { left:auto!important; right:10px; top:10px!important; transform:none; max-width:min(22rem,80%); }
+.drawing-side-panel { border:1px solid #cbd2c5; border-radius:6px; padding:8px; max-height:min(72vh,820px); overflow:auto; background:#fbfcf8; }
+.drawing-side-panel .drawing-grid { grid-template-columns:repeat(auto-fill,minmax(4.6rem,1fr)); padding:4px; }
+.drawing-panel-head b, .drawing-panel-head small { display:block; }
+.drawing-side-panel label input { width:100%; }
+#drawingAnnotationViewer:fullscreen, #drawingAnnotationViewer.is-pseudo-fullscreen { position:fixed; inset:0; z-index:1000; margin:0; border-radius:0; background:#fffdf7; overflow:auto; padding:8px; box-sizing:border-box; display:flex; flex-direction:column; }
+#drawingAnnotationViewer:fullscreen .drawing-workspace, #drawingAnnotationViewer.is-pseudo-fullscreen .drawing-workspace { flex:1; min-height:0; }
+#drawingAnnotationViewer:fullscreen .drawing-viewport, #drawingAnnotationViewer.is-pseudo-fullscreen .drawing-viewport { height:calc(100dvh - 150px); }
+#drawingAnnotationViewer:fullscreen .drawing-side-panel, #drawingAnnotationViewer.is-pseudo-fullscreen .drawing-side-panel { max-height:calc(100dvh - 150px); }
+#drawingAnnotationViewer:fullscreen .drawing-legend, #drawingAnnotationViewer.is-pseudo-fullscreen .drawing-legend { margin:4px 0; }
+@media(max-width:900px){
+  .drawing-workspace { grid-template-columns:1fr; }
+  .drawing-side-panel { max-height:40vh; }
+  .drawing-viewport { height:min(62vh,640px); }
+  #drawingAnnotationViewer:fullscreen .drawing-side-panel, #drawingAnnotationViewer.is-pseudo-fullscreen .drawing-side-panel { position:fixed; left:0; right:0; bottom:0; max-height:38dvh; z-index:2; border-radius:12px 12px 0 0; box-shadow:0 -6px 20px #0003; }
+  #drawingAnnotationViewer:fullscreen .drawing-viewport, #drawingAnnotationViewer.is-pseudo-fullscreen .drawing-viewport { height:calc(100dvh - 130px); }
+}
+@media(max-width:650px){
+  .drawing-zoom-controls { width:100%; }
+  .drawing-zoom-controls button { flex:1 1 auto; min-width:44px; min-height:44px; }
+  .drawing-viewport { height:58dvh; min-height:260px; }
+  .drawing-viewport .drawing-marker, .drawing-stage .drawing-marker[data-point-state] { width:36px; height:36px; }
+  .drawing-viewport .drawing-marker img { width:24px; height:24px; }
+}
+@media (orientation:landscape) and (max-height:500px){
+  .drawing-viewport { height:calc(100dvh - 90px); }
+  .drawing-workspace { grid-template-columns:minmax(0,1fr) 200px; }
+  .drawing-side-panel { max-height:calc(100dvh - 90px); }
+}
+.construction-matrix [data-cell-status="unassigned"] { color:#9aa59d; background:#f6f7f4; }
+.roster-v2 :is(.roster-top,.roster-editor,.roster-selection) label:not(.construction-item-check), .drawing-filter-bar label, .drawing-device-search label, .drawing-side-panel label, .drawing-edit label { display:grid; gap:4px; }
+.roster-v2 .roster-editor { grid-template-columns:repeat(auto-fill,minmax(12rem,1fr)); }

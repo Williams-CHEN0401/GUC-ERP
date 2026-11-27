@@ -113,6 +113,9 @@ try {
     await db.exec(await sql('20261124151410_construction_drawing_markers.sql'));
     await db.exec(await sql('20261126022719_construction_project_roster.sql'));
     f.additionalRpcs.push('save_construction_drawing_marker_v1','save_construction_roster_v1');
+    // 工作管理第二版：子項目指派、批次建立與工程圖管理。
+    await db.exec(await sql('20261127140000_construction_equipment_v2.sql'));
+    f.additionalRpcs.push('assign_construction_item_equipment_v1','batch_construction_roster_v1','manage_construction_drawing_v1');
     f.server.listen(Number(process.env.PROGRESS_PORT||4635),'127.0.0.1',()=>console.log('Isolated preview listening'));
     await new Promise(resolve=>f.server.once('close',resolve));
   }

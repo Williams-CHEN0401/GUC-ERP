@@ -18,28 +18,47 @@ function constructionMonitorBadges(plan){
  const status=CONSTRUCTION_PLAN_STATUSES.find(([value])=>value===plan.status)?.[1]||plan.status||'進行中';
  return `<div class="construction-monitor-badges"><span>${esc(status)}</span>${plan.progress_alert?'<span class="is-warning">施工進度落後</span>':''}${plan.contract_overdue?'<span class="is-warning">履約逾期</span>':''}</div>`;
 }
-function constructionItemEditorRow(item={},index=0){
- return `<div class="construction-item-editor" data-item-id="${esc(item.id||uid())}"><label class="construction-item-title">子項目名稱<input data-item-title maxlength="200" required value="${esc(item.title||"")}" placeholder="例如：A 棟配管施工" aria-label="子項目 ${index+1} 名稱"></label><label>起始工作日<input data-item-start type="number" min="1" max="3650" required value="${Number(item.start_day)||1}" aria-label="子項目 ${index+1} 起始工作日"></label><label>預計施工天數<input data-item-days type="number" min="1" max="3650" required value="${Number(item.planned_days)||1}" aria-label="子項目 ${index+1} 預計天數"></label><button type="button" class="outline danger" data-remove-construction-item ${item.is_completed||item.worked_days?'disabled title="已有日誌或已完成的子項目須保留"':""}>移除</button></div>`;
+// 子項目以日期排程：預計開始日期＝施工日期＋(start_day−1)。施工天數以日曆天且含開工當日計算。
+function constructionItemEditorRow(item={},index=0,planStart=today()){
+ const start=addScheduleDays(planStart,Number(item.start_day||1)-1)||planStart,days=Number(item.planned_days)||1;
+ return `<div class="construction-item-editor" data-item-id="${esc(item.id||uid())}"><label class="construction-item-title">子項目名稱<input data-item-title maxlength="200" required value="${esc(item.title||"")}" placeholder="例如：總務處大樓配管施工" aria-label="子項目 ${index+1} 名稱"></label><label>預計開始日期<input data-item-date type="date" required value="${esc(start)}" aria-label="子項目 ${index+1} 預計開始日期"></label><label>預計施工天數<input data-item-days type="number" min="1" max="3650" required value="${days}" aria-label="子項目 ${index+1} 預計施工天數"></label><label>預計完成日期<output data-item-end>${esc(addScheduleDays(start,days-1))}</output></label><button type="button" class="outline danger" data-remove-construction-item ${item.is_completed||item.worked_days?'disabled title="已有日誌或已完成的子項目須保留"':""}>移除</button></div>`;
 }
 function constructionChecklistEditor(plan){
- return `<section class="span-2 construction-checklist-editor"><div class="panel-head"><h3>施工子項目清單</h3><button type="button" class="outline" data-add-construction-item>＋ 新增子項目</button></div><p class="form-sync-hint">每項可分別填寫日誌、勾選完成。起始工作日是第幾個工作日；預計安排須在總工期內，最多 100 項。</p><div data-construction-items>${(plan.items||[]).map(constructionItemEditorRow).join("")}</div></section>`;
+ const planStart=plan.construction_date||today();
+ return `<section class="span-2 construction-checklist-editor"><div class="panel-head"><h3>施工子項目清單</h3><button type="button" class="outline" data-add-construction-item>＋ 新增子項目</button></div><p class="form-sync-hint">每項可分別填寫日誌、勾選完成。預計完成日期由系統依「預計開始日期＋施工天數−1」計算（日曆天，含開工當日）；子項目須在施工日期起的預計施工天數內，最多 100 項。實際開始／完成日期依工作日誌與完成勾選自動帶出。</p><div data-construction-items>${(plan.items||[]).map((item,index)=>constructionItemEditorRow(item,index,planStart)).join("")}</div></section>`;
 }
 function collectConstructionItems(form){
- const rows=[...form.querySelectorAll('[data-construction-items] [data-item-id]')],planned=Number(form.elements.plannedDays.value);
+ const rows=[...form.querySelectorAll('[data-construction-items] [data-item-id]')],planned=Number(form.elements.plannedDays.value),planStart=form.elements.constructionDate.value;
  if(rows.length>100)throw new Error("子項目最多 100 項。");
  if(rows.length&&(!Number.isInteger(planned)||planned<1||planned>3650))throw new Error("請設定 1 至 3650 天的總工期。");
  return rows.map(row=>{
-  const item={id:row.dataset.itemId,title:row.querySelector('[data-item-title]').value.trim(),start_day:Number(row.querySelector('[data-item-start]').value),planned_days:Number(row.querySelector('[data-item-days]').value)};
-  if(!item.title||item.title.length>200)throw new Error("請填寫子項目名稱（最多 200 字）。");
-  if(!Number.isInteger(item.start_day)||!Number.isInteger(item.planned_days)||item.start_day<1||item.planned_days<1||item.start_day+item.planned_days-1>planned)throw new Error(`「${item.title}」的安排超出總工期，請調整起始日或天數。`);
+  const title=row.querySelector('[data-item-title]').value.trim(),date=row.querySelector('[data-item-date]').value,days=Number(row.querySelector('[data-item-days]').value);
+  if(!title||title.length>200)throw new Error("請填寫子項目名稱（最多 200 字）。");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!planStart)throw new Error(`請填寫「${title}」的預計開始日期。`);
+  const item={id:row.dataset.itemId,title,start_day:scheduleDiff(planStart,date)+1,planned_days:days};
+  if(item.start_day<1)throw new Error(`「${title}」的預計開始日期不可早於施工日期 ${planStart}。`);
+  if(!Number.isInteger(days)||days<1||item.start_day+days-1>planned)throw new Error(`「${title}」預計 ${date} 起 ${days} 天，超出施工規劃期間（${planStart} 起 ${planned} 天，至 ${addScheduleDays(planStart,planned-1)}），請調整日期、天數或預計施工天數。`);
   return item;
  });
 }
+document.addEventListener('input',event=>{
+ const row=event.target.closest('#modalForm .construction-item-editor');
+ if(!row||!event.target.matches('[data-item-date],[data-item-days]'))return;
+ const date=row.querySelector('[data-item-date]').value,days=Number(row.querySelector('[data-item-days]').value);
+ row.querySelector('[data-item-end]').textContent=date&&days>0?addScheduleDays(date,days-1):'—';
+});
 function constructionChecklist(plan){
  if(!plan.items?.length)return "";
- return `<ul class="construction-checklist" aria-label="施工子項目">${plan.items.map(item=>`<li class="${item.is_completed?"is-complete":""}"><div><label class="construction-item-check"><input type="checkbox" data-complete-construction-item="${esc(item.id)}" data-plan-id="${esc(plan.id)}" ${item.is_completed?"checked":""} ${plan.can_complete_items?"":"disabled"}><strong>${esc(item.title)}</strong></label><small>${item.is_completed?"已完成":item.worked_days?"施工中":"未開始"} · 已執行 ${Number(item.worked_days||0)} 天 · 預計第 ${Number(item.start_day)}～${Number(item.start_day)+Number(item.planned_days)-1} 工作日</small></div>${plan.can_create_log?`<button type="button" class="outline" data-construction-log="${esc(plan.id)}" data-construction-item="${esc(item.id)}" aria-label="填寫 ${esc(item.title)} 工作日誌">填寫日誌</button>`:""}</li>`).join("")}</ul>`;
+ return `<ul class="construction-checklist" aria-label="施工子項目">${plan.items.map(item=>{
+  const s=itemSchedule(plan,item),assigned=Array.isArray(item.equipment_codes)?`指派設備 ${item.equipment_codes.length} 台`:(plan.drawing_points?.length?'適用本規劃全部設備':'');
+  return `<li class="${item.is_completed?"is-complete":""}" data-schedule-status="${s.status}"><div><label class="construction-item-check"><input type="checkbox" data-complete-construction-item="${esc(item.id)}" data-plan-id="${esc(plan.id)}" ${item.is_completed?"checked":""} ${plan.can_complete_items?"":"disabled"}><strong>${esc(item.title)}</strong></label><small>${SCHEDULE_STATUS[s.status]} · 預計 ${esc(s.start)}～${esc(s.end)}（${s.days} 天）· 實際 ${esc(s.actualStart||'未開始')}～${esc(s.actualEnd||'—')} · 已執行 ${Number(item.worked_days||0)} 天 · 進度 ${s.progress}%${s.equipment.applicable?`（設備 ${s.equipment.done}／${s.equipment.applicable}）`:''}${assigned?` · ${assigned}`:''}</small></div>${plan.can_create_log?`<button type="button" class="outline" data-construction-log="${esc(plan.id)}" data-construction-item="${esc(item.id)}" aria-label="填寫 ${esc(item.title)} 工作日誌">填寫日誌</button>`:""}</li>`;
+ }).join("")}</ul>`;
 }
+// 施工規劃卡片內的甘特圖改為日期排程；保留舊工作日序版本供報表比對使用。
 function constructionGantt(plan){
+ return constructionScheduleGantt([plan],{key:'plan:'+plan.id,title:'工期甘特圖（日期）',open:false});
+}
+function constructionWorkdayGantt(plan){
  const items=plan.items||[],dates=plan.work_dates||[];
  if(!items.length)return "";
  const days=Math.max(Number(plan.planned_days)||1,dates.length),left=240,width=700,rowHeight=38,top=42,height=top+items.length*rowHeight+8,step=Math.max(1,Math.ceil(days/14)),cell=width/days;
@@ -55,7 +74,8 @@ document.addEventListener("click",event=>{
  if(add){
   const host=document.querySelector('#modalForm [data-construction-items]');if(!host)return;
   if(host.children.length>=100){showToast("子項目最多 100 項。");return;}
-  host.insertAdjacentHTML('beforeend',constructionItemEditorRow({},host.children.length));host.lastElementChild.querySelector('input').focus();
+  const planStart=document.querySelector('#modalForm')?.elements.constructionDate?.value||today();
+  host.insertAdjacentHTML('beforeend',constructionItemEditorRow({},host.children.length,planStart));host.lastElementChild.querySelector('input').focus();
   host.dispatchEvent(new Event('input',{bubbles:true}));
  }
  if(remove&&!remove.disabled){const row=remove.closest('[data-item-id]'),host=row.parentElement;row.remove();host.dispatchEvent(new Event('input',{bubbles:true}));}
