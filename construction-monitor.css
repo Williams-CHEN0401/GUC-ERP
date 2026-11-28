@@ -169,10 +169,12 @@
 .v2-gantt-head .v2-gantt-tick:not([data-gw]) { padding:0 4px; text-align:left; }
 .v2-gantt-tick.is-weekend { background:#f3f5f1; color:#b0563f; }
 .v2-gantt-bar { position:absolute; top:14px; height:24px; border-radius:5px; overflow:hidden; background:color-mix(in srgb,var(--gantt-color) 25%,white); border:1px solid var(--gantt-color); box-sizing:border-box; }
-.v2-gantt-bar.is-plan { top:16px; height:20px; border-radius:4px; }
+.v2-gantt-bar.is-plan { top:15px; height:22px; border-radius:4px; }
 .v2-gantt-fill { position:absolute; inset:0 auto 0 0; background:var(--gantt-color); opacity:.85; }
-.v2-gantt-text { position:relative; padding:0 6px; line-height:22px; color:#14231b; font-weight:700; text-shadow:0 0 2px #fff; white-space:nowrap; }
-.v2-gantt-bar.is-plan .v2-gantt-text { line-height:18px; }
+/* 全站行高（1.6）會讓長條內的行盒高於長條本身而把百分比往下擠出；長條與文字都固定行高並以區塊顯示。 */
+.v2-gantt-bar, .v2-gantt-text { line-height:22px; }
+.v2-gantt-text { position:relative; display:block; padding:0 6px; color:#14231b; font-weight:700; text-shadow:0 0 2px #fff; white-space:nowrap; }
+.v2-gantt-bar.is-plan, .v2-gantt-bar.is-plan .v2-gantt-text { line-height:20px; }
 .v2-gantt-log { position:absolute; top:42px; width:6px; height:6px; margin-left:-3px; border-radius:50%; background:#1d3b2f; }
 .v2-gantt-today { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:#c0392b; z-index:1; pointer-events:none; }
 @media(max-width:650px){ .v2-gantt { --v2-gantt-label:150px; padding:8px; } .v2-gantt-legend { margin-left:0; } .v2-gantt-label { padding:2px 6px; } .v2-gantt-row.is-item .v2-gantt-label { padding-left:14px; } }
