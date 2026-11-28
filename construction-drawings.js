@@ -28,7 +28,7 @@ function constructionDrawingFields() {
   const context = constructionDrawingContext;
   const project = byId(state.projects, context?.project_id);
   return `<section class="span-2 construction-drawing-heading"><h3>${esc(project?.code || '')}｜${esc(project?.name || '')}</h3>${globalThis.GUC_PUBLIC_CONFIG?.constructionDrawingsIsolated ? '<p class="nas-upload-guard"><b>隔離測試：上傳檔案只保留在測試服務，不會寫入正式 NAS。</b></p>' : ''}</section>
-    <section class="span-2"><div class="construction-drawing-toolbar"><h3>已上傳工程圖</h3><button type="button" class="outline" data-drawing-reload>重新讀取</button></div>${drawingDeviceSearchField()}<p id="constructionDrawingStatus" role="status" aria-live="polite"></p><div id="drawingPager"></div><div id="drawingAnnotationViewer" hidden></div><div id="constructionDrawingList"></div></section>
+    <section class="span-2"><div class="construction-drawing-toolbar"><h3>已上傳工程圖</h3><button type="button" class="outline" data-drawing-reload>重新讀取</button></div>${drawingDeviceSearchField()}<p id="constructionDrawingStatus" role="status" aria-live="polite"></p><div id="drawingServiceTabs"></div><div id="drawingPager"></div><div id="drawingAnnotationViewer" hidden></div><div id="constructionDrawingList"></div></section>
     ${context?.can_upload ? `<section class="span-2 construction-drawing-upload"><h3>上傳工程圖</h3>${drawingUploadPlanField()}${constructionDrawingContextFields()}<label class="attachment-dropzone"><span>選擇工程圖（可多選）</span><input name="drawingFiles" type="file" multiple required accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.dwg,.dxf"><small>每次最多 ${MAX_WORKLOG_ATTACHMENT_FILES} 個檔案，每個最多 ${formatBytes(MAX_ATTACHMENT_BYTES)}，合計最多 ${formatBytes(MAX_WORKLOG_ATTACHMENT_FILES * MAX_ATTACHMENT_BYTES)}。同名檔案會詢問覆蓋、另存或取消。</small><output id="constructionDrawingFileSummary">尚未選擇檔案</output></label><label>工程圖說明<textarea name="drawingDescription" maxlength="1000" rows="2"></textarea></label><div id="attachmentUploadProgress" class="attachment-upload-progress" role="status" aria-live="polite" hidden></div><div class="construction-drawing-toolbar"><button type="submit" class="primary">檢查並上傳工程圖</button><button type="button" class="outline" data-drawing-new-batch hidden>選擇其他檔案</button></div></section>` : '<p class="span-2 form-sync-hint">您可查看與下載此施工規劃的工程圖；上傳由具管理權限的人員操作。</p>'}
     <div class="span-2"><button type="button" class="outline" data-construction-project="${esc(context?.project_id || '')}">返回施工規劃</button></div>`;
 }
@@ -70,12 +70,50 @@ function drawingPoint(code){
   return {point:{code},plan:null};
 }
 function drawingIcon(code,row){const {point,plan}=drawingPoint(code);return equipmentIconFor(point,drawingService(row),drawingPlan(row)?.content||plan?.content);}
-// 設備已配置的工程圖：工程圖上有定位，且設備在該工程圖所屬規劃的清冊內。
+// 工程圖顯示的設備：有指定（drawing_codes）時只顯示指定的設備與圖上已定位的設備；
+// 未指定（null，舊資料）時沿用所屬規劃的全部設備。
+function drawingCodes(row){
+  const roster=(drawingPlan(row)?.drawing_points||[]).map(p=>p.code);
+  if(!Array.isArray(row?.drawing_codes))return roster;
+  const shown=new Set([...row.drawing_codes,...Object.keys(row.drawing_markers||{})]);
+  return roster.filter(code=>shown.has(code));
+}
+function drawingAssigned(row,code){
+  if(!drawingPlan(row)?.drawing_points?.some(p=>p.code===code))return false;
+  return Object.hasOwn(row.drawing_markers||{},code)||Array.isArray(row.drawing_codes)&&row.drawing_codes.includes(code);
+}
+// 設備已配置的工程圖：圖上有定位，或工程圖已指定顯示此設備（不受承攬類型篩選影響）。
 function drawingPlacements(code){
-  return drawingPages().filter(row=>Object.hasOwn(row.drawing_markers||{},code)&&drawingPlan(row)?.drawing_points?.some(p=>p.code===code));
+  return drawingImageRows().filter(row=>drawingAssigned(row,code));
 }
 function unplacedCodes(plans){
   return [...new Set(plans.flatMap(plan=>(plan.drawing_points||[]).map(p=>p.code)))].filter(code=>!drawingPlacements(code).length);
+}
+// 承攬類型：設備所在工程圖的承攬類型；尚未配置時依設備類型對應承攬項目圖示（與案場系統相同規則）。
+function drawingServiceList(){
+  return constructionDrawingContext?.contract_service_types||[];
+}
+function deviceServiceIds(code){
+  const ids=new Set(drawingPlacements(code).map(row=>row.contract_service_type_id).filter(Boolean));
+  if(ids.size)return ids;
+  const key=equipmentIconKey(drawingPoint(code).point.type);
+  if(key)for(const s of drawingServiceList())if(equipmentIconKey(`${s.code||''} ${s.name||''}`)===key)ids.add(s.id);
+  return ids;
+}
+function serviceMatchesCode(code){
+  const service=constructionDrawingFilter.service;return !service||deviceServiceIds(code).has(service);
+}
+function projectCodes(){
+  return [...new Set((constructionDrawingContext?.plans||[]).flatMap(plan=>(plan.drawing_points||[]).map(p=>p.code)))];
+}
+// 同一案有多種承攬類型（例如監視、廣播）時，以頁籤分開查看工程圖與點位示意圖。
+function drawingServiceTabs(){
+  const rows=drawingImageRows(),codes=projectCodes(),ids=new Set([...rows.map(r=>r.contract_service_type_id).filter(Boolean),...codes.flatMap(c=>[...deviceServiceIds(c)])]);
+  const services=drawingServiceList().filter(s=>ids.has(s.id));
+  if(services.length<2)return '';
+  const current=constructionDrawingFilter.service;
+  const tab=(id,label,pages,devices)=>`<button type="button" class="outline" role="tab" data-drawing-service="${esc(id)}" aria-selected="${current===id}">${esc(label)}<small>${pages} 張圖・${devices} 台</small></button>`;
+  return `<div class="drawing-service-tabs" role="tablist" aria-label="依承攬類型查看">${tab('','全部承攬類型',rows.length,codes.length)}${services.map(s=>tab(s.id,s.name,rows.filter(r=>r.contract_service_type_id===s.id).length,codes.filter(c=>deviceServiceIds(c).has(s.id)).length)).join('')}</div>`;
 }
 function drawingDeviceSearchField(){
   return `<div class="drawing-device-search"><label>搜尋設備並定位<input type="search" data-device-search placeholder="設備編號、名稱、類型、施工區域、施工項目" autocomplete="off"></label><ul class="device-search-results" data-device-results hidden></ul></div>`;
@@ -102,14 +140,18 @@ async function locateDevice(code){
   const status=document.querySelector('#constructionDrawingStatus'),places=drawingPlacements(code);
   const list=document.querySelector('[data-device-results]');if(list)list.hidden=true;
   if(!places.length){
-    if(status)status.textContent=`${code} 尚未配置於任何工程圖，已列在「待配置設備」。開啟工程圖後可在圖上設定位置。`;
+    if(status)status.textContent=`${code} 尚未配置於任何工程圖，列在點位示意圖的「待配置」。開啟工程圖後可指定設備並在圖上設定位置。`;
     showToast(`${code} 尚未配置於工程圖。`,'設備定位');
     return false;
   }
-  const row=places.find(r=>r.id===activeDrawingAnnotation?.row?.id)||places[0];
+  const marked=places.filter(r=>Object.hasOwn(r.drawing_markers||{},code));
+  const row=marked.find(r=>r.id===activeDrawingAnnotation?.row?.id)||marked[0]||places.find(r=>r.id===activeDrawingAnnotation?.row?.id)||places[0];
   if(activeDrawingAnnotation?.row?.id!==row.id)await showDrawingAnnotation(row.id);
   const view=activeDrawingAnnotation;
-  if(view?.row?.id===row.id){focusDrawingMarker(view,code);if(status)status.textContent=`${code} 位於「${drawingTitle(row)}」。`;}
+  if(view?.row?.id===row.id){
+    if(marked.includes(row)){focusDrawingMarker(view,code);if(status)status.textContent=`${code} 位於「${drawingTitle(row)}」。`;}
+    else if(status)status.textContent=`${code} 已指定在「${drawingTitle(row)}」，尚未在圖上標示位置。`;
+  }
   return true;
 }
 function drawingCategoryText(row){
@@ -117,10 +159,10 @@ function drawingCategoryText(row){
 }
 function drawingFilterBar(rows){
   const values=key=>[...new Set(rows.map(r=>r.drawing_category?.[key]).filter(Boolean))].sort();
-  const services=[...new Map(rows.map(r=>drawingService(r)).filter(Boolean).map(s=>[s.id,s])).values()];
   const filter=constructionDrawingFilter;
+  // 承攬類型改由上方頁籤切換（同時套用工程圖與點位示意圖）。
   const select=(key,label,options)=>options.length?`<label>${label}<select data-drawing-filter="${key}"><option value="">全部</option>${options.map(([v,t])=>`<option value="${esc(v)}" ${filter[key]===v?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`:'';
-  return `<div class="drawing-filter-bar"><label>搜尋工程圖<input type="search" data-drawing-filter="text" value="${esc(filter.text)}" placeholder="名稱、說明、建築物、樓層"></label>${select('building','建築物',values('building').map(v=>[v,v]))}${select('floor','樓層',values('floor').map(v=>[v,v]))}${select('service','工程類型',services.map(s=>[s.id,s.name]))}</div>`;
+  return `<div class="drawing-filter-bar"><label>搜尋工程圖<input type="search" data-drawing-filter="text" value="${esc(filter.text)}" placeholder="名稱、說明、建築物、樓層"></label>${select('building','建築物',values('building').map(v=>[v,v]))}${select('floor','樓層',values('floor').map(v=>[v,v]))}</div>`;
 }
 const constructionDrawingFilter={text:'',building:'',floor:'',service:''};
 function drawingFilterMatches(row){
@@ -141,8 +183,13 @@ function drawingPointGrid(codes,progress,row){
     return `<button type="button" class="drawing-grid-point" data-grid-code="${esc(code)}" data-point-state="${key}"><img alt="" src="${esc(drawingIcon(code,row))}"><span>${esc(code)}</span><small>${drawingProgressLabels[key]}</small></button>`;
   }).join('')+'</div>';
 }
-function drawingPages(){
+function drawingImageRows(){
   return (constructionDrawingContext?.drawings||[]).filter(row=>/\.(jpe?g|png|webp)$/i.test(constructionDrawingStoredName(row)));
+}
+// 翻頁只在目前承攬類型的工程圖之間切換。
+function drawingPages(){
+  const service=constructionDrawingFilter.service;
+  return drawingImageRows().filter(row=>!service||row.contract_service_type_id===service);
 }
 function drawPager(id){
   const host=document.querySelector('#drawingPager');if(!host)return;
@@ -154,21 +201,26 @@ function startDrawingGallery(preferred){
   const row=pages.find(r=>r.id===preferred)||pages[0];
   if(row)showDrawingAnnotation(row.id).catch(error=>showToast(error.message,'工程圖讀取失敗'));
   else if(constructionDrawingContext.plans.some(p=>p.drawing_points?.length))showDrawingGrid();
+  else closeDrawingAnnotations();
 }
 function renderConstructionDrawings() {
   const host = document.querySelector('#constructionDrawingList');
   if (!host) return;
   const rows = constructionDrawingContext?.drawings || [];
   const plans=constructionDrawingContext?.plans||[],hasPoints=plans.some(plan=>plan.drawing_points?.length);
-  const waiting=hasPoints?unplacedCodes(plans):[];
-  const gridButton=hasPoints ? `<div class="construction-plan-actions"><button type="button" class="outline" data-drawing-grid>點位示意圖（無編號）</button>${waiting.length?`<button type="button" class="outline" data-drawing-waiting>待配置設備（${waiting.length}）</button>`:''}</div>` : '';
+  // 點位示意圖與待配置設備整合為同一個入口；數量依目前承攬類型計算。
+  const codes=hasPoints?projectCodes().filter(serviceMatchesCode):[],waiting=codes.filter(code=>!drawingPlacements(code).length);
+  const gridButton=hasPoints ? `<div class="construction-plan-actions"><button type="button" class="outline" data-drawing-grid>點位示意圖（${codes.length} 台${waiting.length?`・待配置 ${waiting.length}`:''}）</button></div>` : '';
   const visible=rows.filter(drawingFilterMatches);
-  host.innerHTML = gridButton + (rows.length ? drawingFilterBar(rows)+`<p class="form-sync-hint">共 ${rows.length} 份工程圖${visible.length!==rows.length?`，符合篩選 ${visible.length} 份`:''}。</p><ul class="construction-drawing-list">${visible.map(row => {
+  // 承攬類型頁籤與點位示意圖入口放在工程圖檢視上方。
+  const tabs=document.querySelector('#drawingServiceTabs');if(tabs)tabs.innerHTML=drawingServiceTabs()+gridButton;
+  host.innerHTML = (tabs?'':gridButton) + (rows.length ? drawingFilterBar(rows)+`<p class="form-sync-hint">共 ${rows.length} 份工程圖${visible.length!==rows.length?`，符合篩選 ${visible.length} 份`:''}。</p><ul class="construction-drawing-list">${visible.map(row => {
     const name = constructionDrawingStoredName(row),title=drawingTitle(row);
     const preview = /\.(pdf|jpe?g|png|webp)$/i.test(name);
     const date = row.uploaded_at ? new Date(row.uploaded_at).toLocaleString('zh-TW') : '';
     const markers=Object.keys(row.drawing_markers||{}).length,category=drawingCategoryText(row),service=drawingService(row);
-    return `<li><div><strong>${esc(title)}</strong><small>${title!==name?esc(name)+' · ':''}${esc(formatBytes(Number(row.file_size || 0)))}${date ? ' · ' + esc(date) : ''}${row.uploaded_by ? ' · ' + esc(row.uploaded_by) : ''}</small><small>${esc([drawingPlan(row)?.content,service?.name,category,markers?`已定位 ${markers} 台設備`:''].filter(Boolean).join(' · '))}</small>${row.description ? `<p>${esc(row.description)}</p>` : ''}${canManageDrawing(row)?drawingEditForm(row):''}</div><div class="construction-plan-actions">${/\.(jpe?g|png|webp)$/i.test(name) ? `<button type="button" class="outline" data-drawing-default="${esc(row.id)}">設備點位</button>` : ''}${preview ? `<button type="button" class="outline" data-drawing-view="${esc(row.id)}">查看</button>` : ''}<button type="button" class="outline" data-drawing-download="${esc(row.id)}">下載原檔</button>${canManageDrawing(row)?`<button type="button" class="outline danger" data-drawing-archive="${esc(row.id)}">刪除</button>`:''}</div></li>`;
+    const assigned=Array.isArray(row.drawing_codes)?`指定 ${drawingCodes(row).length} 台設備`:'';
+    return `<li><div><strong>${esc(title)}</strong><small>${title!==name?esc(name)+' · ':''}${esc(formatBytes(Number(row.file_size || 0)))}${date ? ' · ' + esc(date) : ''}${row.uploaded_by ? ' · ' + esc(row.uploaded_by) : ''}</small><small>${esc([drawingPlan(row)?.content,service?.name,category,assigned,markers?`已定位 ${markers} 台設備`:''].filter(Boolean).join(' · '))}</small>${row.description ? `<p>${esc(row.description)}</p>` : ''}${canManageDrawing(row)?drawingEditForm(row):''}</div><div class="construction-plan-actions">${/\.(jpe?g|png|webp)$/i.test(name) ? `<button type="button" class="outline" data-drawing-default="${esc(row.id)}">設備點位</button>` : ''}${preview ? `<button type="button" class="outline" data-drawing-view="${esc(row.id)}">查看</button>` : ''}<button type="button" class="outline" data-drawing-download="${esc(row.id)}">下載原檔</button>${canManageDrawing(row)?`<button type="button" class="outline danger" data-drawing-archive="${esc(row.id)}">刪除</button>`:''}</div></li>`;
   }).join('')||'<li class="dashboard-empty">沒有符合篩選的工程圖。</li>'}</ul>` : '<p class="dashboard-empty">這筆施工規劃尚未上傳工程圖。</p>');
 }
 document.addEventListener('input',event=>{
@@ -184,12 +236,19 @@ document.addEventListener('change',event=>{
 });
 document.addEventListener('click',async event=>{
   const save=event.target.closest('[data-drawing-save]'),archive=event.target.closest('[data-drawing-archive]');
-  const waiting=event.target.closest('[data-drawing-waiting]'),locate=event.target.closest('[data-locate-device]');
-  if(!save&&!archive&&!waiting&&!locate)return;
+  const tab=event.target.closest('[data-drawing-service]'),locate=event.target.closest('[data-locate-device]');
+  if(!save&&!archive&&!tab&&!locate)return;
   event.preventDefault();
   try{
     if(locate){await locateDevice(locate.dataset.locateDevice);return;}
-    if(waiting){showDrawingGrid(null,{waiting:true});return;}
+    if(tab){
+      constructionDrawingFilter.service=tab.dataset.drawingService;
+      const showingGrid=activeDrawingAnnotation&&!activeDrawingAnnotation.row,current=activeDrawingAnnotation?.row?.id;
+      renderConstructionDrawings();
+      if(showingGrid)showDrawingGrid(null,{waiting:activeDrawingAnnotation?.waiting});
+      else startDrawingGallery(drawingPages().some(r=>r.id===current)?current:undefined);
+      return;
+    }
     const known=constructionDrawingContext?.drawings?.find(r=>r.id===(save||archive).dataset[save?'drawingSave':'drawingArchive']);
     if(!known)throw Error('工程圖已變更，請重新讀取。');
     // 設定點位會更新工程圖版本；操作前重新讀取，確認仍存在並取得最新版本與點位數。
@@ -435,32 +494,58 @@ function closeDrawingAnnotations(){
   if(document.fullscreenElement?.id==='drawingAnnotationViewer')document.exitFullscreen?.().catch(()=>{});
 }
 
-function showDrawingGrid(row,{waiting=false}={}) {
+// 點位示意圖（整合原「待配置設備」）：顯示本案全部設備（依承攬類型篩選），依工程圖分組，
+// 未指定工程圖的設備列在「待配置」；可切換只看待配置設備。
+function showDrawingGrid(_row,{waiting=false}={}) {
   closeDrawingAnnotations();
   const host=document.querySelector('#drawingAnnotationViewer');
-  const plans=row?constructionDrawingContext.plans.filter(plan=>plan.id===row.construction_plan_id):constructionDrawingContext.plans;
-  const all=[...new Set(plans.flatMap(plan=>(plan.drawing_points||[]).map(p=>p.code)))];
-  const codes=waiting?unplacedCodes(plans):all;
-  const view={host,abort:new AbortController(),lookup:0};
+  const codes=projectCodes().filter(serviceMatchesCode),progress=drawingProgressByCode(constructionDrawingContext.plans);
+  const unplaced=codes.filter(code=>!drawingPlacements(code).length);
+  const view={host,abort:new AbortController(),lookup:0,waiting};
   activeDrawingAnnotation=view;
-  drawPager(row?.id);
+  drawPager(null);
   host.hidden=false;
-  host.innerHTML=`<div class="construction-drawing-toolbar"><h3>${waiting?'待配置設備':'點位示意圖'}</h3>${row?`<button type="button" class="outline" data-drawing-annotate="${esc(row.id)}">圖上有編號，使用原圖</button>`:''}<button type="button" class="outline" data-marker-close>收合${waiting?'清單':'示意圖'}</button></div>
-    <p>${waiting?`以下 ${codes.length} 台設備尚未設定在任何工程圖上。開啟工程圖後，在「設定原圖點位」選擇設備並點選圖上位置即可配置。`:`依設備清冊排列，共 ${codes.length} 台。點選圖示或編號可查看工項進度。`}</p>
-    ${drawingLegend()}<div class="drawing-canvas">${drawingPointGrid(codes,drawingProgressByCode(constructionDrawingContext.plans),row)}<aside class="drawing-note" hidden role="status"></aside></div>`;
+  const groups=waiting?[]:drawingPages().map(row=>({row,codes:codes.filter(code=>drawingAssigned(row,code))})).filter(g=>g.codes.length)
+    .sort((a,b)=>drawingTitle(a.row).localeCompare(drawingTitle(b.row),'zh-Hant',{numeric:true}));
+  const section=(title,meta,list,action)=>`<section class="drawing-overview-group"><div class="drawing-overview-head"><h4>${esc(title)}<small>${esc(meta)}</small></h4>${action}</div>${drawingPointGrid(list,progress,null)}</section>`;
+  host.innerHTML=`<div class="construction-drawing-toolbar"><h3>點位示意圖</h3><div class="drawing-overview-filter" role="group" aria-label="顯示範圍"><button type="button" class="outline" data-overview-mode="all" aria-pressed="${!waiting}">全部設備（${codes.length}）</button><button type="button" class="outline" data-overview-mode="waiting" aria-pressed="${waiting}">待配置（${unplaced.length}）</button></div><button type="button" class="outline" data-marker-close>收合示意圖</button></div>
+    <p class="form-sync-hint">${waiting?'以下設備尚未指定到任何工程圖。開啟工程圖後，可在「指定本圖設備」加入，或在圖上設定位置。':'依工程圖分組；同一台設備可出現在多張工程圖。點選圖示或編號可查看工項進度。'}</p>
+    ${drawingLegend()}<div class="drawing-canvas">${groups.map(g=>section(drawingTitle(g.row),[drawingCategoryText(g.row),drawingService(g.row)?.name,`${g.codes.length} 台`].filter(Boolean).join('・'),g.codes,`<button type="button" class="outline" data-drawing-default="${esc(g.row.id)}">開啟工程圖</button>`)).join('')}
+    ${unplaced.length?section('待配置（尚未指定工程圖）',`${unplaced.length} 台`,unplaced,''):(waiting?'<p class="dashboard-empty">所有設備都已指定工程圖。</p>':'')}
+    ${!codes.length?'<p class="dashboard-empty">此承攬類型尚無設備。</p>':''}<aside class="drawing-note" hidden role="status"></aside></div>`;
 }
 
-// 設備清單面板：本圖已定位／本規劃待配置，可搜尋；點選即定位或選為待配置對象。
+// 設備清單面板：只列本圖顯示的設備（已定位／未定位），可搜尋；點選即定位或選為設定點位的對象。
 function updateGalleryPointList(view){
   const list=view.host.querySelector('.gallery-point-list');
   if(!list)return;
   const located=view.codes.filter(code=>Object.hasOwn(view.row.drawing_markers||{},code));
-  const waiting=view.codes.filter(code=>!drawingPlacements(code).length);
+  const waiting=view.codes.filter(code=>!Object.hasOwn(view.row.drawing_markers||{},code));
   const keyword=(list.querySelector('[data-panel-search]')?.value||'').trim().toLowerCase();
   const match=code=>{if(!keyword)return true;const {point}=drawingPoint(code);return [point.code,point.name,point.type,point.location,point.building].some(v=>String(v||'').toLowerCase().includes(keyword));};
-  list.querySelector('[data-panel-count]').textContent=`本圖 ${located.length}／清冊 ${view.codes.length}・待配置 ${waiting.length}`;
+  const roster=(drawingPlan(view.row)?.drawing_points||[]).length;
+  list.querySelector('[data-panel-count]').textContent=`本圖 ${view.codes.length} 台${Array.isArray(view.row.drawing_codes)?`（清冊 ${roster} 台）`:'（未指定，顯示清冊全部）'}・已定位 ${located.length}`;
   list.querySelector('[data-panel-located]').innerHTML=located.filter(match).length?drawingPointGrid(located.filter(match),view.progress,view.row):'<p class="form-sync-hint">本圖尚未定位設備。</p>';
-  list.querySelector('[data-panel-waiting]').innerHTML=waiting.filter(match).length?drawingPointGrid(waiting.filter(match),view.progress,view.row):'<p class="form-sync-hint">沒有待配置的設備。</p>';
+  list.querySelector('[data-panel-waiting]').innerHTML=waiting.filter(match).length?drawingPointGrid(waiting.filter(match),view.progress,view.row):'<p class="form-sync-hint">本圖設備都已定位。</p>';
+  const assign=view.host.querySelector('[data-drawing-assign-summary]');
+  if(assign)assign.textContent=Array.isArray(view.row.drawing_codes)?`已指定 ${view.codes.length} 台設備顯示在本圖。`:`尚未指定：本圖顯示「${drawingPlan(view.row)?.content||''}」清冊全部 ${roster} 台。`;
+}
+// 依工程圖分類（建築物／樓層）建議本圖設備：設備的建築物、設置區域含相同文字。
+function suggestDrawingCodes(row){
+  const c=row.drawing_category||{},words=[c.floor,c.area].filter(Boolean).map(w=>String(w).toLowerCase());
+  if(!words.length)return [];
+  return (drawingPlan(row)?.drawing_points||[]).filter(p=>{
+    const place=[p.location,p.name].map(v=>String(v||'').toLowerCase()).join(' ');
+    return words.every(w=>place.includes(w))&&(!c.building||!p.building||String(p.building).toLowerCase().includes(String(c.building).toLowerCase()));
+  }).map(p=>p.code);
+}
+function drawingAssignPanel(row){
+  const suggestion=suggestDrawingCodes(row);
+  return `<details class="drawing-locator-settings drawing-assign"><summary>指定本圖設備</summary><div class="drawing-assign-body">
+    <p data-drawing-assign-summary></p>
+    <label>設備編號區間<span class="roster-range"><input data-assign-from placeholder="CAM10" maxlength="80" aria-label="起始編號"><span aria-hidden="true">～</span><input data-assign-to placeholder="CAM50" maxlength="80" aria-label="結束編號"></span></label>
+    <div class="construction-plan-actions"><button type="button" class="primary" data-drawing-assign="add">加入本圖</button><button type="button" class="outline" data-drawing-assign="remove">自本圖移出</button>${suggestion.length?`<button type="button" class="outline" data-drawing-assign="suggest">依樓層帶入（${suggestion.length} 台）</button>`:''}<button type="button" class="outline" data-drawing-assign="reset">改為顯示清冊全部</button></div>
+    <small>例如 1F 平面圖指定 CAM10～CAM50，2F 平面圖指定 CAM60～CAM88；其他樓層的設備不會顯示在本圖，可翻頁到對應工程圖查看。圖上已定位的設備會保留。</small></div></details>`;
 }
 function paintDrawingMarkers(view) {
   updateGalleryPointList(view);
@@ -574,7 +659,7 @@ async function showDrawingAnnotation(id) {
   activeDrawingAnnotation?.abort.abort();activeDrawingAnnotation?.cleanup?.();activeDrawingAnnotation=null;
   const host=document.querySelector('#drawingAnnotationViewer'), plan=ctx.plans.find(p=>p.id===row.construction_plan_id);
   if(!keepFullscreen){host.classList.remove('is-pseudo-fullscreen');}
-  const codes=(plan?.drawing_points||[]).map(p=>p.code);
+  const codes=drawingCodes(row);
   const editable=ctx.contexts.some(c=>c.construction_plan_id===plan?.id && c.can_upload);
   drawPager(id);
   const view={host,row,codes,progress:drawingProgressByCode(ctx.plans),abort:new AbortController(),pending:false,lookup:0};
@@ -589,10 +674,11 @@ async function showDrawingAnnotation(id) {
     host.innerHTML=`<div class="construction-drawing-toolbar drawing-viewer-toolbar"><h3>${esc(drawingTitle(row))}${drawingCategoryText(row)?`<small>${esc(drawingCategoryText(row))}</small>`:''}</h3>
         <div class="drawing-zoom-controls" role="group" aria-label="工程圖檢視"><button type="button" class="outline" data-drawing-zoom-out aria-label="縮小">－</button><output data-zoom-level>100%</output><button type="button" class="outline" data-drawing-zoom-in aria-label="放大">＋</button><button type="button" class="outline" data-drawing-fit>適應視窗</button><button type="button" class="outline" data-drawing-reset>重設視角</button><button type="button" class="outline" data-drawing-fullscreen>全螢幕</button><button type="button" class="outline" data-drawing-panel aria-expanded="true">設備清單</button><button type="button" class="outline" data-marker-close>收合工程圖</button></div></div>
       ${drawingLegend()}
+      ${editable&&plan?.drawing_points?.length?drawingAssignPanel(row):''}
       ${editable&&codes.length?`<details class="drawing-locator-settings"><summary>設定原圖點位</summary><fieldset class="drawing-locator"><legend>設定原圖點位</legend><label>設備編號<select data-marker-select><option value="">請選擇編號</option>${codes.map(c=>`<option value="${esc(c)}">${esc(equipmentLabel(drawingPoint(c).point))}</option>`).join('')}</select></label><label>定位對象<select data-marker-kind><option value="pair">編號 → 設備圖示</option><option value="icon">設備圖示</option><option value="label">圖上的編號</option></select></label>
         <small>選擇設備後，先點圖上的編號，再點同一台設備的圖示。若圖上只有其中一種標記，可切換定位對象。拖曳可移動工程圖，不會誤設點位。</small><button type="button" class="outline danger" data-marker-remove>移除所選定位</button></fieldset></details>`:''}
       <div class="drawing-workspace"><div class="drawing-canvas"><div class="drawing-viewport" tabindex="0" aria-label="工程圖：滾輪或雙指縮放，拖曳移動"><div class="drawing-stage"><img alt="工程圖" draggable="false"><div class="drawing-markers"></div></div></div><aside class="drawing-note" hidden role="status"></aside></div>
-      <aside class="gallery-point-list drawing-side-panel"><div class="drawing-panel-head"><b>設備清單</b><small data-panel-count></small></div><label>搜尋<input type="search" data-panel-search placeholder="編號、名稱、類型"></label><details open><summary>本圖已定位</summary><div data-panel-located></div></details><details open><summary>待配置設備</summary><div data-panel-waiting></div></details></aside></div>
+      <aside class="gallery-point-list drawing-side-panel"><div class="drawing-panel-head"><b>設備清單</b><small data-panel-count></small></div><label>搜尋<input type="search" data-panel-search placeholder="編號、名稱、類型"></label><details open><summary>本圖已定位</summary><div data-panel-located></div></details><details open><summary>本圖未定位</summary><div data-panel-waiting></div></details></aside></div>
       <output aria-live="polite" data-marker-status></output>`;
     view.viewport=host.querySelector('.drawing-viewport');view.stage=host.querySelector('.drawing-stage');
     initDrawingViewport(view);
@@ -623,7 +709,10 @@ async function openMarkerNote(view,code,pos){
     view.progress=latestProgress;
     const visible=(data.construction_plans||[]).filter(p=>p.drawing_points?.some(pt=>pt.code===code));
     const point=visible[0]?.drawing_points.find(pt=>pt.code===code)||{code};
-    note.innerHTML=`<div><strong>${esc(code)}</strong> <button type="button" class="outline" data-note-close aria-label="關閉註解">×</button></div>${[point.name,point.type,point.model,point.location,point.building].filter(Boolean).length?`<p>${esc([point.name,point.type,point.model,point.location,point.building].filter(Boolean).join(' · '))}</p>`:''}`+
+    const places=drawingPlacements(code).filter(r=>r.id!==view.row?.id);
+    const placeLine=view.row?(places.length?`<p class="drawing-note-places">也在：${places.map(r=>`<button type="button" class="link-button" data-drawing-default="${esc(r.id)}">${esc(drawingTitle(r))}</button>`).join('、')}</p>`:'')
+      :`<p class="drawing-note-places">${places.length?`工程圖：${places.map(r=>`<button type="button" class="link-button" data-drawing-default="${esc(r.id)}">${esc(drawingTitle(r))}</button>`).join('、')}`:'尚未指定工程圖（待配置）'}</p>`;
+    note.innerHTML=`<div><strong>${esc(code)}</strong> <button type="button" class="outline" data-note-close aria-label="關閉註解">×</button></div>${[point.name,point.type,point.model,point.location,point.building].filter(Boolean).length?`<p>${esc([point.name,point.type,point.model,point.location,point.building].filter(Boolean).join(' · '))}</p>`:''}${placeLine}`+
       visible.map(p=>`<strong>${esc(p.content)}</strong><ul>${(p.items||[]).filter(i=>itemAppliesTo(i,code,p)||(p.equipment_state||[]).some(e=>e.code===code&&e.item===i.id)).map(i=>{
         const record=(p.equipment_state||[]).find(e=>e.code===code&&e.item===i.id);
         return `<li>${esc(i.title)}　${esc(equipmentStates[record?.status]||'未填報')}${record?.log_date?`（${esc(record.log_date)}）`:''}</li>`;
@@ -668,6 +757,39 @@ document.addEventListener('click',async event=>{
       if(panel){const hidden=view.host.classList.toggle('is-panel-hidden');panel.setAttribute('aria-expanded',String(!hidden));requestAnimationFrame(()=>{if(view.autoFit!==false)drawingFit(view);});return;}
     }
     if(event.target.closest('[data-marker-close]')){closeDrawingAnnotations();return;}
+    const overview=event.target.closest('[data-overview-mode]');
+    if(overview){showDrawingGrid(null,{waiting:overview.dataset.overviewMode==='waiting'});return;}
+    const assignButton=event.target.closest('[data-drawing-assign]');
+    if(assignButton&&view.row){
+      if(view.pending)return;
+      const mode=assignButton.dataset.drawingAssign,roster=(drawingPlan(view.row)?.drawing_points||[]).map(p=>p.code);
+      const explicit=Array.isArray(view.row.drawing_codes),current=explicit?view.row.drawing_codes:[];
+      let picked=[];
+      if(mode==='add'||mode==='remove'){
+        const from=view.host.querySelector('[data-assign-from]').value.trim(),to=view.host.querySelector('[data-assign-to]').value.trim()||from;
+        if(!from){showToast('請輸入設備編號或區間。');return;}
+        picked=equipmentCodeRange(roster,from,to);
+        if(!picked.length){showToast('區間內沒有清冊設備。');return;}
+      }else if(mode==='suggest')picked=suggestDrawingCodes(view.row);
+      const codes=mode==='reset'?null:mode==='remove'?(explicit?current:roster).filter(c=>!picked.includes(c)):[...new Set([...current,...picked])];
+      const title=drawingTitle(view.row);
+      const message=mode==='reset'?`「${title}」改為顯示「${drawingPlan(view.row)?.content}」清冊全部 ${roster.length} 台設備？`
+        :mode==='remove'?`自「${title}」移出 ${picked.length} 台設備（${picked.slice(0,6).join('、')}${picked.length>6?' 等':''}）？圖上已定位的設備會保留。`
+        :`將 ${picked.length} 台設備（${picked.slice(0,6).join('、')}${picked.length>6?' 等':''}）指定顯示在「${title}」？${explicit?'':`\n目前本圖顯示清冊全部 ${roster.length} 台；指定後只顯示指定的設備與圖上已定位的設備。`}`;
+      if(!confirm(message))return;
+      view.pending=true;
+      try{
+        const latest=(await apiRequest({method:'GET',scope:'construction_drawings',planId:view.row.construction_plan_id})).drawings?.find(d=>d.id===view.row.id);
+        if(!latest){await refreshConstructionDrawings();throw Error('工程圖已被刪除或變更，清單已重新讀取。');}
+        const saved=(await apiRequest({operation:'assign_construction_drawing_equipment',payload:{asset_id:view.row.id,row_version:latest.row_version,codes}})).result;
+        Object.assign(view.row,saved);
+      }finally{view.pending=false;}
+      renderConstructionDrawings();await showDrawingAnnotation(view.row.id);
+      const status=document.querySelector('#constructionDrawingStatus');
+      if(status)status.textContent=`「${title}」目前顯示 ${drawingCodes(view.row).length} 台設備。`;
+      showToast(`「${title}」顯示設備已更新。`);
+      return;
+    }
     if(event.target.closest('[data-marker-remove]')){
       const select=view.host.querySelector('[data-marker-select]'),code=select.value;
       const expected=view.row.drawing_markers?.[code];

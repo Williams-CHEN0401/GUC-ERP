@@ -2,9 +2,19 @@
 // 同一案件內「設備編號」即同一台設備；名稱、類型、型號、建築物、備註由伺服器依編號同步各施工規劃，設置區域依規劃保存。
 const ROSTER_FIELDS=[['code','設備編號',80],['name','設備名稱',160],['type','設備類型',160],['model','設備型號',160],['location','設置區域',160],['building','所屬建築物',160],['note','備註',500]];
 const ROSTER_HEADERS={
-  code:['設備編號','編號'],name:['設備名稱','名稱'],type:['設備類型','類型'],model:['設備型號','型號'],location:['設置區域','位置','區域'],
-  building:['所屬建築物','建築物'],plan:['對應施工主項目','施工主項目','施工規劃'],item:['對應施工子項目','施工子項目','子項目'],drawing:['對應工程圖','工程圖'],note:['備註']
+  code:['設備編號','編號','設備代號'],name:['設備名稱','名稱'],type:['設備類型','類型'],model:['設備型號','型號'],location:['設置區域','位置','區域','設置位置','施工區域'],
+  building:['所屬建築物','建築物','大樓'],plan:['對應施工主項目','施工主項目','主項目','施工規劃','施工主項目名稱','施工項目'],item:['對應施工子項目','施工子項目','子項目','施工子項目名稱'],
+  drawing:['對應工程圖','工程圖','工程圖名稱','圖檔'],note:['備註','說明']
 };
+const ROSTER_HEADER_LABELS={code:'設備編號',name:'設備名稱',type:'設備類型',model:'設備型號',location:'設置區域',building:'所屬建築物',plan:'施工主項目',item:'施工子項目',drawing:'對應工程圖',note:'備註'};
+// 欄名與主項目名稱比對時忽略空白、全形／半形符號與「（選填）」等附註，避免欄位沒被辨識而整批落到下拉選單的主項目。
+function rosterNormalize(value){
+  return String(value??'').normalize('NFKC').replace(/[（(【\[][^）)】\]]*[）)】\]]/g,'').replace(/[\s*:：]/g,'').toLowerCase();
+}
+// 名稱（主項目、子項目、工程圖）只忽略空白與全形／半形差異，保留括號內容（例如「設備安裝（一樓）」與「（二樓）」不同）。
+function rosterNameKey(value){
+  return String(value??'').normalize('NFKC').replace(/\s+/g,'').toLowerCase();
+}
 const ROSTER_TEMPLATE_HEADERS=['設備編號','設備名稱','設備類型','設備型號','設置區域','所屬建築物','對應施工主項目','對應施工子項目','對應工程圖','備註'];
 
 function rosterPointFrom(values,existing={}){
@@ -36,12 +46,27 @@ function rosterMatches(point,keyword,plan){
 
 /* ---------- Excel／CSV 匯入解析與驗證（寫入前完整預覽） ---------- */
 function rosterHeaderIndex(headers){
-  const index={};
+  const index={},names=headers.map(rosterNormalize),used=new Set();
   for(const [key,aliases] of Object.entries(ROSTER_HEADERS)){
-    const at=headers.findIndex(h=>aliases.includes(h));
-    if(at>=0)index[key]=at;
+    const at=names.findIndex((h,i)=>!used.has(i)&&aliases.map(rosterNormalize).includes(h));
+    if(at>=0){index[key]=at;used.add(at);}
+  }
+  // 欄名含「主項目」「子項目」但不在別名清單時，仍視為對應欄位。
+  for(const [key,word] of [['plan','主項目'],['item','子項目']]){
+    if(index[key]!==undefined)continue;
+    const at=names.findIndex((h,i)=>!used.has(i)&&h.includes(word));
+    if(at>=0){index[key]=at;used.add(at);}
   }
   return index;
+}
+function findRosterPlan(plans,name){
+  const key=rosterNameKey(name);
+  return plans.find(p=>rosterNameKey(p.content)===key);
+}
+// Excel 第一列常是標題（例如「土庫國小設備清冊」），在前 10 列中找出含「設備編號」的標題列。
+function rosterHeaderRow(rows){
+  const at=rows.slice(0,10).findIndex(row=>rosterHeaderIndex((row||[]).map(h=>String(h??'').trim())).code!==undefined);
+  return at<0?0:at;
 }
 async function readRosterFile(file){
   if(file.size>5*1024*1024)throw Error('清冊檔案請小於 5 MB。');
@@ -50,8 +75,8 @@ async function readRosterFile(file){
     return rows.map(row=>Array.from(row||[],v=>String(v??'').trim()));
   }
   const text=(await file.text()).replace(/^﻿/,'');
-  const first=text.split(/\r?\n/,1)[0]||'';
-  if(!/設備編號|編號/.test(first)){
+  const lines=text.split(/\r?\n/,10),first=lines.find(line=>/設備編號|編號|設備代號/.test(line))||lines[0]||'';
+  if(!/設備編號|編號|設備代號/.test(first)){
     // 舊格式（無標題的「設備編號,位置,設備名稱」）沿用既有解析規則。
     return [['設備編號','設置區域','設備名稱'],...parseDrawingPoints(text).map(p=>[p.code,p.location,p.name||''])];
   }
@@ -68,15 +93,16 @@ async function readRosterFile(file){
   if(cell||row.length){row.push(cell.trim());rows.push(row);}
   return rows;
 }
-function validateRosterImport(rows,{plans,current}){
-  const headers=(rows[0]||[]).map(h=>String(h).trim()),index=rosterHeaderIndex(headers);
-  if(index.code===undefined)throw Error('第一列須包含「設備編號」欄。可下載範本參考欄位。');
+function validateRosterImport(rows,{plans,current,drawings=null}){
+  const start=rosterHeaderRow(rows),headers=(rows[start]||[]).map(h=>String(h??'').trim()),index=rosterHeaderIndex(headers);
+  if(index.code===undefined)throw Error('找不到「設備編號」欄（前 10 列內）。可下載範本參考欄位。');
   const seen=new Set(),result=[];
-  for(const [i,raw] of rows.slice(1).entries()){
+  for(const [i,raw] of rows.slice(start+1).entries()){
     if(!raw.some(v=>String(v||'').trim()))continue;
     if(result.length>=1000)throw Error('每次最多匯入 1000 筆設備。');
-    const line=i+2,cell=key=>index[key]===undefined?'':String(raw[index[key]]??'').trim(),errors=[];
-    const planName=cell('plan'),plan=planName?plans.find(p=>p.content===planName):current;
+    const line=start+i+2,cell=key=>index[key]===undefined?'':String(raw[index[key]]??'').trim(),errors=[];
+    // 檔案有主項目時一律依檔案內容；只有欄位不存在或該列空白才加入目前選取的主項目。
+    const planName=cell('plan'),plan=planName?findRosterPlan(plans,planName):current;
     if(!plan)errors.push(`找不到施工主項目「${planName}」`);
     else if(!plan.can_manage)errors.push(`沒有「${plan.content}」的清冊管理權限`);
     const existing=plan?.drawing_points?.find(p=>p.code.toLowerCase()===cell('code').toLowerCase());
@@ -89,11 +115,26 @@ function validateRosterImport(rows,{plans,current}){
     if(cell('code')&&seen.has(key))errors.push('檔案內設備編號重複');
     seen.add(key);
     const itemNames=cell('item').split(/[、,，;；\n]/).map(s=>s.trim()).filter(Boolean),items=[];
-    for(const name of itemNames){const item=plan?.items?.find(it=>it.title===name);if(item)items.push(item);else errors.push(`找不到施工子項目「${name}」`);}
+    for(const name of itemNames){const item=plan?.items?.find(it=>rosterNameKey(it.title)===rosterNameKey(name));if(item)items.push(item);else errors.push(`找不到施工子項目「${name}」`);}
+    // 對應工程圖：依工程圖名稱（或檔名）比對本案工程圖；設備須在工程圖所屬規劃的清冊內（同列的主項目或已存在）。
+    const drawingNames=cell('drawing').split(/[、,，;；\n]/).map(s=>s.trim()).filter(Boolean),drawingRows=[];
+    if(drawingNames.length&&drawings){
+      for(const name of drawingNames){
+        const row=drawings.find(d=>[d.title,d.original_name,d.stored_name].some(v=>v&&rosterNameKey(v)===rosterNameKey(name)));
+        if(!row){errors.push(`找不到工程圖「${name}」`);continue;}
+        const owner=plans.find(p=>p.id===row.construction_plan_id);
+        if(owner?.id!==plan?.id&&!owner?.drawing_points?.some(p=>p.code===cell('code')))errors.push(`工程圖「${name}」屬於「${owner?.content||'其他規劃'}」，此設備不在該清冊內`);
+        else drawingRows.push(row);
+      }
+    }
     const changed=existing&&point?ROSTER_FIELDS.some(([k])=>(existing[k]||'')!==(point[k]||'')):true;
-    result.push({line,plan,point,existing,items,drawing:cell('drawing'),errors,action:errors.length?'錯誤':existing?(changed?'更新':'不變'):'新增'});
+    result.push({line,plan,point,existing,items,drawing:cell('drawing'),drawings:drawingRows,errors,action:errors.length?'錯誤':existing?(changed?'更新':'不變'):'新增'});
   }
   if(!result.length)throw Error('檔案沒有設備資料。');
+  // 讓使用者在預覽確認哪些欄位被辨識，特別是施工主項目。
+  result.columns=Object.entries(index).map(([key,at])=>({key,label:ROSTER_HEADER_LABELS[key],header:headers[at]}));
+  result.ignored=headers.filter((h,i)=>h&&!Object.values(index).includes(i));
+  result.planColumn=index.plan!==undefined;result.headerRow=start+1;
   return result;
 }
 
@@ -101,14 +142,14 @@ async function openConstructionRoster(projectId){
   const dialog=document.createElement('dialog');
   dialog.className='matrix-import-dialog project-roster roster-v2';
   dialog.setAttribute('aria-label','施工規劃清冊');
-  dialog.innerHTML=`<div class="construction-drawing-toolbar"><h2>施工規劃清冊</h2><button type="button" class="outline" data-roster-close>關閉</button></div>
-    <div class="roster-top"><label>施工規劃（施工主項目）<select data-roster-plan></select></label><label>搜尋設備<input type="search" data-roster-search placeholder="編號、名稱、類型、區域、建築物、子項目"></label></div>
+  dialog.innerHTML=`<header class="roster-head"><div><h2>施工規劃設備清冊</h2><p>依施工主項目管理設備，並指派到施工子項目與工程圖。</p></div><button type="button" class="roster-close" data-roster-close aria-label="關閉">×</button></header>
+    <div class="roster-scroll"><div class="roster-top"><label>施工主項目<select data-roster-plan></select></label><label>搜尋設備<input type="search" data-roster-search placeholder="編號、名稱、類型、區域、建築物、子項目"></label></div>
     <datalist id="rosterTypeOptions">${EQUIPMENT_TYPE_SUGGESTIONS.map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
-    <div data-roster-body></div><output role="status" aria-live="polite"></output>`;
+    <div data-roster-body></div></div><output class="roster-status" role="status" aria-live="polite"></output>`;
   document.body.append(dialog);
   dialog.showModal();
   const status=dialog.querySelector('output'),picker=dialog.querySelector('[data-roster-plan]'),body=dialog.querySelector('[data-roster-body]'),search=dialog.querySelector('[data-roster-search]');
-  let plans=[],busy=false,editing=null,selected=new Set(),itemFilter='',importRows=null,openPanels=new Set();
+  let plans=[],busy=false,editing=null,selected=new Set(),itemFilter='',importRows=null,openPanels=new Set(),transferPlan='',transferItem='';
   const plan=()=>plans.find(p=>p.id===picker.value);
   const versions=()=>Object.fromEntries(plans.map(p=>[p.id,p.row_version]));
   const visiblePoints=()=>{
@@ -145,32 +186,52 @@ async function openConstructionRoster(projectId){
   }
   function importPanel(){
     return `<details class="roster-panel" data-panel="import" ${openPanels.has('import')?'open':''}><summary>Excel／CSV 匯入設備清冊</summary>
-      <p class="form-sync-hint">欄位：${ROSTER_TEMPLATE_HEADERS.join('、')}。只有「設備編號」必填；「對應施工主項目」空白時加入目前規劃，「對應施工子項目」可用「、」分隔多個。舊版「設備編號,位置,設備名稱」CSV 仍可使用。</p>
+      <p class="form-sync-hint">欄位：${ROSTER_TEMPLATE_HEADERS.join('、')}。只有「設備編號」必填。每列依「對應施工主項目」匯入到該主項目，空白時才加入目前選取的主項目；「對應施工子項目」「對應工程圖」可用「、」分隔多個。舊版「設備編號,位置,設備名稱」CSV 仍可使用。</p>
       <div class="construction-plan-actions"><label class="outline-file">選擇檔案<input type="file" data-roster-file accept=".xlsx,.csv,.tsv,.txt"></label><button type="button" class="outline" data-roster-template>下載範本（含目前清冊）</button></div>
       <div data-roster-preview></div></details>`;
   }
   function previewTable(){
     if(!importRows)return '';
     const errors=importRows.filter(r=>r.errors.length).length,adds=importRows.filter(r=>r.action==='新增').length,updates=importRows.filter(r=>r.action==='更新').length;
-    const assigns=importRows.reduce((n,r)=>n+r.items.length,0),drawings=importRows.filter(r=>r.drawing).length;
-    return `<p role="status">共 ${importRows.length} 列：新增 ${adds}、更新 ${updates}、子項目指派 ${assigns}${errors?`，<b class="danger-text">${errors} 列有錯誤，請修正後重新選擇檔案</b>`:''}。${drawings?'「對應工程圖」僅供核對，點位請在工程圖上設定。':''}</p>
-      <div class="construction-gantt-scroll"><table class="roster-preview"><thead><tr><th>列</th><th>設備編號</th><th>設備名稱</th><th>施工主項目</th><th>子項目</th><th>動作</th><th>檢查結果</th></tr></thead><tbody>${importRows.map(r=>`<tr class="${r.errors.length?'is-error':''}"><td>${r.line}</td><td>${esc(r.point?.code||'')}</td><td>${esc(r.point?.name||'')}</td><td>${esc(r.plan?.content||'')}</td><td>${esc(r.items.map(i=>i.title).join('、'))}</td><td>${r.action}</td><td>${esc(r.errors.join('；')||'✓')}</td></tr>`).join('')}</tbody></table></div>
-      <div class="construction-plan-actions"><button type="button" class="primary" data-roster-import-confirm ${errors||!importRows.some(r=>r.action!=='不變'||r.items.length)?'disabled':''}>確認匯入</button><button type="button" class="outline" data-roster-import-cancel>取消</button></div>`;
+    const assigns=importRows.reduce((n,r)=>n+r.items.length,0),drawingLinks=importRows.reduce((n,r)=>n+(r.drawings?.length||0),0);
+    const byPlan=[...importRows.reduce((m,r)=>m.set(r.plan?.content||'（無法對應）',(m.get(r.plan?.content||'（無法對應）')||0)+1),new Map())];
+    const columns=importRows.columns||[];
+    return `<div class="roster-import-summary"><p><b>已辨識欄位</b>（第 ${importRows.headerRow||1} 列）：${columns.map(c=>`${esc(c.label)}${c.header!==c.label?`＝「${esc(c.header)}」`:''}`).join('、')}${importRows.ignored?.length?`<br><small>未使用的欄位：${esc(importRows.ignored.join('、'))}</small>`:''}</p>
+      <p><b>匯入到的施工主項目</b>：${byPlan.map(([name,n])=>`${esc(name)} ${n} 筆`).join('、')}${importRows.planColumn?'':`<br><b class="danger-text">檔案沒有「施工主項目」欄，全部加入目前選取的「${esc(plan()?.content||'')}」。</b>`}</p>
+      <p role="status">共 ${importRows.length} 列：新增 ${adds}、更新 ${updates}、子項目指派 ${assigns}、工程圖指定 ${drawingLinks}${errors?`，<b class="danger-text">${errors} 列有錯誤，請修正後重新選擇檔案</b>`:''}。</p></div>
+      <div class="roster-table-scroll is-preview"><table class="roster-preview"><thead><tr><th>列</th><th>設備編號</th><th>設備名稱</th><th>施工主項目</th><th>子項目</th><th>工程圖</th><th>動作</th><th>檢查結果</th></tr></thead><tbody>${importRows.map(r=>`<tr class="${r.errors.length?'is-error':''}"><td>${r.line}</td><td>${esc(r.point?.code||'')}</td><td>${esc(r.point?.name||'')}</td><td>${esc(r.plan?.content||'')}</td><td>${esc(r.items.map(i=>i.title).join('、'))}</td><td>${esc((r.drawings||[]).map(d=>d.title||d.original_name).join('、'))}</td><td>${r.action}</td><td>${esc(r.errors.join('；')||'✓')}</td></tr>`).join('')}</tbody></table></div>
+      <div class="construction-plan-actions"><button type="button" class="primary" data-roster-import-confirm ${errors||!importRows.some(r=>r.action!=='不變'||r.items.length||r.drawings?.length)?'disabled':''}>確認匯入</button><button type="button" class="outline" data-roster-import-cancel>取消</button></div>`;
+  }
+  function transferTargets(current){
+    const targets=plans.filter(p=>p.can_manage),planId=targets.some(p=>p.id===transferPlan)?transferPlan:current.id,target=plans.find(p=>p.id===planId);
+    if(!target?.items?.some(i=>i.id===transferItem))transferItem='';
+    return {targets,planId,target};
   }
   function selectionBar(current){
     if(!current.can_manage)return '';
-    return `<div class="roster-selection"><span>已選 <b>${selected.size}</b> 台</span><button type="button" class="outline" data-roster-select-visible>全選目前列表</button><button type="button" class="outline" data-roster-select-clear>清除選取</button>
-      <label>區間<input data-range-from placeholder="CAM10" maxlength="80"></label><label>至<input data-range-to placeholder="CAM20" maxlength="80"></label><button type="button" class="outline" data-roster-select-range>依編號區間選取</button></div>
-      ${(current.items||[]).length?`<div class="roster-selection"><label>施工子項目<select data-assign-item>${current.items.map(i=>`<option value="${esc(i.id)}" ${i.id===itemFilter?'selected':''}>${esc(i.title)}</option>`).join('')}</select></label><button type="button" class="primary" data-assign-add>指派選取設備</button><button type="button" class="outline" data-assign-remove>移出選取設備</button><button type="button" class="outline" data-assign-all>改為適用全部設備</button></div>`:''}`;
+    const {targets,planId,target}=transferTargets(current);
+    return `<section class="roster-actions" aria-label="設備批次操作">
+      <div class="roster-action-group"><h3>選取設備<span class="roster-count">已選 <b data-selected-count>${selected.size}</b> 台</span></h3>
+        <div class="roster-action-row"><button type="button" class="outline" data-roster-select-visible>全選目前列表</button><button type="button" class="outline" data-roster-select-clear>清除選取</button></div>
+        <div class="roster-action-row"><label>編號區間<span class="roster-range"><input data-range-from placeholder="CAM10" maxlength="80" aria-label="起始編號"><span aria-hidden="true">～</span><input data-range-to placeholder="CAM20" maxlength="80" aria-label="結束編號"></span></label><button type="button" class="outline" data-roster-select-range>依區間選取</button></div></div>
+      ${(current.items||[]).length?`<div class="roster-action-group"><h3>指派到施工子項目</h3>
+        <div class="roster-action-row"><label>施工子項目<select data-assign-item>${current.items.map(i=>`<option value="${esc(i.id)}" ${i.id===itemFilter?'selected':''}>${esc(i.title)}</option>`).join('')}</select></label></div>
+        <div class="roster-action-row"><button type="button" class="primary" data-assign-add>指派選取設備</button><button type="button" class="outline" data-assign-remove>移出選取設備</button><button type="button" class="outline" data-assign-all>改為適用全部設備</button></div></div>`:''}
+      <div class="roster-action-group"><h3>轉移設備</h3>
+        <div class="roster-action-row"><label>目標主項目<select data-transfer-plan>${targets.map(p=>`<option value="${esc(p.id)}" ${p.id===planId?'selected':''}>${esc(p.content)}${p.id===current.id?'（目前）':''}</option>`).join('')}</select></label>
+          <label>目標子項目<select data-transfer-item><option value="">${planId===current.id?'請選擇子項目':'不指派子項目'}</option>${(target?.items||[]).map(i=>`<option value="${esc(i.id)}" ${i.id===transferItem?'selected':''}>${esc(i.title)}</option>`).join('')}</select></label></div>
+        <div class="roster-action-row"><button type="button" class="outline" data-transfer-run>轉移選取設備</button></div>
+        <p class="form-sync-hint">轉到其他主項目會從目前清冊移出；轉到同主項目的另一個子項目，會從其他子項目的指派移出。</p></div>
+    </section>`;
   }
   function render(){
     const current=plan();
     if(!current){body.textContent='請先新增施工規劃，再建立設備清冊。';return;}
     const editable=current.can_manage,points=visiblePoints(),total=current.drawing_points?.length||0;
-    body.innerHTML=itemChips(current)+(editable?singleForm(current)+batchForm(current)+importPanel():'')+selectionBar(current)+
-      `<p>設備共 ${total} 筆${points.length!==total?`，符合篩選 ${points.length} 筆`:''}</p>
+    body.innerHTML=itemChips(current)+(editable?`<div class="roster-tools">${singleForm(current)+batchForm(current)+importPanel()}</div>`:'')+selectionBar(current)+
+      `<p class="roster-total">設備共 <b>${total}</b> 筆${points.length!==total?`，符合篩選 ${points.length} 筆`:''}</p>
       <div class="roster-table-scroll"><table class="roster-table"><thead><tr>${editable?'<th><span class="visually-hidden">選取</span></th>':''}<th>圖示</th><th>設備編號</th><th>名稱</th><th>類型／型號</th><th>設置區域</th><th>建築物</th><th>施工子項目</th>${editable?'<th>操作</th>':''}</tr></thead>
-      <tbody>${points.map(p=>{const rel=rosterRelations(current,p.code);return `<tr${selected.has(p.code)?' class="is-selected"':''}>${editable?`<td data-label="選取"><input type="checkbox" data-roster-pick="${esc(p.code)}" ${selected.has(p.code)?'checked':''} aria-label="選取 ${esc(p.code)}"></td>`:''}<td data-label="圖示"><img class="roster-icon" alt="" src="${esc(equipmentIconFor(p,null,current.content))}"></td><th scope="row" data-label="設備編號">${esc(p.code)}</th><td data-label="名稱">${esc(p.name||'')}${p.note?`<small>${esc(p.note)}</small>`:''}</td><td data-label="類型／型號">${esc([p.type,p.model].filter(Boolean).join('／'))}</td><td data-label="設置區域">${esc(p.location||'')}</td><td data-label="建築物">${esc(p.building||'')}</td><td data-label="施工子項目">${rel.items.length?rel.items.map(t=>`<span class="roster-chip">${esc(t)}</span>`).join(''):(current.items?.length?'<small>未指定（適用全部）</small>':'')}</td>${editable?`<td data-label="操作"><div class="construction-plan-actions"><button type="button" class="outline" data-roster-edit="${esc(p.code)}">修改</button><button type="button" class="outline danger" data-roster-delete="${esc(p.code)}">刪除</button></div></td>`:''}</tr>`;}).join('')||`<tr><td colspan="9">${total?'沒有符合篩選的設備。':'尚未建立設備清冊。'}</td></tr>`}</tbody></table></div>`;
+      <tbody>${points.map(p=>{const rel=rosterRelations(current,p.code);return `<tr${selected.has(p.code)?' class="is-selected"':''}>${editable?`<td data-label="選取"><input type="checkbox" data-roster-pick="${esc(p.code)}" ${selected.has(p.code)?'checked':''} aria-label="選取 ${esc(p.code)}"></td>`:''}<td data-label="圖示"><img class="roster-icon" alt="" src="${esc(equipmentIconFor(p,null,current.content))}"></td><th scope="row" data-label="設備編號">${esc(p.code)}</th><td data-label="名稱">${esc(p.name||'')}${p.note?`<small>${esc(p.note)}</small>`:''}</td><td data-label="類型／型號">${esc([p.type,p.model].filter(Boolean).join('／'))}</td><td data-label="設置區域">${esc(p.location||'')}</td><td data-label="建築物">${esc(p.building||'')}</td><td data-label="施工子項目">${rel.items.length?rel.items.map(t=>`<span class="roster-chip">${esc(t)}</span>`).join(''):(current.items?.length?`<small>${planUsesAssignment(current)?'未指派子項目':'未指定（適用全部）'}</small>`:'')}</td>${editable?`<td data-label="操作"><div class="construction-plan-actions"><button type="button" class="outline" data-roster-edit="${esc(p.code)}">修改</button><button type="button" class="outline danger" data-roster-delete="${esc(p.code)}">刪除</button></div></td>`:''}</tr>`;}).join('')||`<tr><td colspan="9">${total?'沒有符合篩選的設備。':'尚未建立設備清冊。'}</td></tr>`}</tbody></table></div>`;
     if(editing){
       const point=current.drawing_points.find(p=>p.code===editing),form=body.querySelector('[data-form="single"]');
       if(point&&form){for(const [key] of ROSTER_FIELDS)form.elements.namedItem(key).value=point[key]||'';form.elements.code.readOnly=true;form.elements.name.focus();}
@@ -210,18 +271,27 @@ async function openConstructionRoster(projectId){
   }
   const saveRoster=(current,points)=>apiRequest({operation:'save_construction_roster',payload:{plan_id:current.id,versions:versions(),points}});
   const assign=(item,codes)=>apiRequest({operation:'assign_construction_item_equipment',payload:{item_id:item.id,row_version:item.row_version,codes}});
-  picker.onchange=()=>{status.textContent='';selected.clear();itemFilter='';editing=null;importRows=null;render();};
+  picker.onchange=()=>{status.textContent='';selected.clear();itemFilter='';editing=null;importRows=null;transferPlan='';transferItem='';render();};
+  // 匯入的「對應工程圖」需要本案工程圖清單；沒有工程圖權限時仍可匯入清冊，只是不能指定工程圖。
+  async function projectDrawingRows(){
+    try{return (await projectDrawingContext(projectId)).drawings||[];}catch{return null;}
+  }
   search.oninput=()=>render();
   dialog.addEventListener('toggle',event=>{const panel=event.target.closest?.('[data-panel]');if(panel)panel.open?openPanels.add(panel.dataset.panel):openPanels.delete(panel.dataset.panel);},true);
   dialog.addEventListener('input',event=>{if(event.target.closest('[data-form="batch"]'))updateBatchPreview();});
   dialog.addEventListener('change',async event=>{
     const pick=event.target.closest('[data-roster-pick]');
-    if(pick){pick.checked?selected.add(pick.dataset.rosterPick):selected.delete(pick.dataset.rosterPick);pick.closest('tr').classList.toggle('is-selected',pick.checked);body.querySelector('.roster-selection b').textContent=selected.size;return;}
+    if(pick){pick.checked?selected.add(pick.dataset.rosterPick):selected.delete(pick.dataset.rosterPick);pick.closest('tr').classList.toggle('is-selected',pick.checked);body.querySelector('[data-selected-count]').textContent=selected.size;return;}
+    if(event.target.matches('[data-transfer-plan]')){transferPlan=event.target.value;transferItem='';render();return;}
+    if(event.target.matches('[data-transfer-item]')){transferItem=event.target.value;return;}
     if(event.target.closest('[data-form="batch"]'))updateBatchPreview();
     const file=event.target.closest('[data-roster-file]');
     if(file?.files[0]){
       const preview=body.querySelector('[data-roster-preview]');importRows=null;preview.textContent='正在讀取並檢查檔案…';
-      try{importRows=validateRosterImport(await readRosterFile(file.files[0]),{plans,current:plan()});preview.innerHTML=previewTable();}
+      try{const rows=await readRosterFile(file.files[0]),drawings=await projectDrawingRows();
+        importRows=validateRosterImport(rows,{plans,current:plan(),drawings});
+        if(!drawings&&importRows.some(r=>r.drawing))for(const r of importRows)if(r.drawing){r.errors.push('無法讀取本案工程圖，不能指定工程圖');r.action='錯誤';}
+        preview.innerHTML=previewTable();}
       catch(error){preview.textContent=error.message;}
       finally{file.value='';}
     }
@@ -300,6 +370,25 @@ async function openConstructionRoster(projectId){
       });
       return;
     }
+    if(target.hasAttribute('data-transfer-run')){
+      const {target:toPlan,planId}=transferTargets(current),toItem=toPlan?.items?.find(i=>i.id===transferItem);
+      if(!selected.size){status.textContent='請先勾選要轉移的設備。';return;}
+      if(planId===current.id&&!toItem){status.textContent='同一主項目內轉移，請選擇目標子項目。';return;}
+      const codes=[...selected];
+      const recorded=planId!==current.id?codes.filter(c=>rosterRelations(current,c).records.length):[];
+      if(recorded.length){status.textContent=`已有施工紀錄的設備不能轉移到其他主項目：${recorded.slice(0,10).join('、')}${recorded.length>10?' 等':''}`;return;}
+      const leaving=planId===current.id?[...new Set(codes.flatMap(c=>rosterRelations(current,c).items))].filter(t=>t!==toItem.title):[];
+      const message=planId===current.id
+        ?`將 ${codes.length} 台設備轉到子項目「${toItem.title}」？${leaving.length?`\n會從這些子項目移出：${leaving.join('、')}`:''}`
+        :`將 ${codes.length} 台設備從「${current.content}」轉到「${toPlan.content}」${toItem?`並指派「${toItem.title}」`:''}？\n設備會從「${current.content}」清冊與其子項目指派移出；設備資料（名稱、類型、區域等）保留。`;
+      if(!confirm(message))return;
+      void run(async()=>{
+        await apiRequest({operation:'transfer_construction_equipment',payload:{project_id:projectId,from_plan_id:current.id,to_plan_id:planId,to_item_id:toItem?.id||null,codes}});
+        selected.clear();
+        return planId===current.id?`已將 ${codes.length} 台設備轉到「${toItem.title}」。`:`已將 ${codes.length} 台設備轉到「${toPlan.content}」${toItem?`／「${toItem.title}」`:''}。`;
+      });
+      return;
+    }
     if(target.hasAttribute('data-roster-template')){
       try{
         const rows=(current.drawing_points||[]).map(p=>[p.code,p.name||'',p.type||'',p.model||'',p.location||'',p.building||'',current.content,rosterRelations(current,p.code).items.join('、'),'',p.note||'']);
@@ -330,8 +419,17 @@ async function openConstructionRoster(projectId){
           if(!item)continue;
           await assign(item,[...new Set([...itemAssignmentBase(fresh,item),...codes])]);assigned++;await load(plan()?.id);
         }
+        // 工程圖指定：重新讀取工程圖版本，加入檔案列出的設備。
+        const byDrawing=new Map();
+        for(const r of rows)for(const d of r.drawings||[])byDrawing.set(d.id,{plan:d.construction_plan_id,codes:[...(byDrawing.get(d.id)?.codes||[]),r.point.code]});
+        let drawn=0;
+        for(const [id,{plan:owner,codes}] of byDrawing){
+          const latest=(await apiRequest({method:'GET',scope:'construction_drawings',planId:owner})).drawings?.find(d=>d.id===id);
+          if(!latest)throw Error('工程圖已被刪除或變更，請重新匯入工程圖指定。');
+          await apiRequest({operation:'assign_construction_drawing_equipment',payload:{asset_id:id,row_version:latest.row_version,codes:[...new Set([...(latest.drawing_codes||[]),...codes])]}});drawn++;
+        }
         importRows=null;
-        return `匯入完成：更新 ${messages.length} 筆施工規劃清冊、${assigned} 個子項目指派。`;
+        return `匯入完成：更新 ${messages.length} 筆施工規劃清冊、${assigned} 個子項目指派${drawn?`、${drawn} 張工程圖指定設備`:''}。`;
       });
     }
   };

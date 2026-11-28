@@ -179,9 +179,38 @@
 .v2-gantt-today { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:#c0392b; z-index:1; pointer-events:none; }
 @media(max-width:650px){ .v2-gantt { --v2-gantt-label:150px; padding:8px; } .v2-gantt-legend { margin-left:0; } .v2-gantt-label { padding:2px 6px; } .v2-gantt-row.is-item .v2-gantt-label { padding-left:14px; } }
 
-/* 施工規劃清冊 */
-.roster-v2 { width:min(72rem,96vw); }
-.roster-top { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:8px 0; }
+/* 施工規劃清冊：沿用網站對話框（modal-card）的標題列、底色與間距；內容區捲動，標題與狀態列固定。 */
+.matrix-import-dialog.roster-v2 { width:min(80rem,calc(100vw - 24px)); height:min(92dvh,62rem); max-height:calc(100dvh - 24px); padding:0; overflow:hidden; display:flex; flex-direction:column; border:0; border-radius:10px; background:var(--surface,#fffdf7); box-shadow:0 24px 80px #303b3433; }
+.roster-v2:not([open]) { display:none; }
+.roster-head { flex:0 0 auto; display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:20px 24px 16px; background:#f4f3ea; border-bottom:1px solid var(--line,#cbd2c5); }
+.roster-head h2 { margin:0; font:600 25px/1.4 var(--interface-display,inherit); letter-spacing:.025em; }
+.roster-head p { margin:4px 0 0; color:#66715b; }
+.roster-close { flex:none; width:44px; min-height:44px; padding:0; border:0; border-radius:5px; background:transparent; color:#66715b; font-size:24px; line-height:1; cursor:pointer; }
+.roster-close:hover { background:#e5e8da; }
+.roster-scroll { flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; padding:16px 24px 20px; }
+.matrix-import-dialog .roster-status { flex:0 0 auto; margin:0; padding:10px 24px; border-top:1px solid var(--line,#cbd2c5); background:#fbfcf8; color:#285244; min-height:1.6em; }
+.roster-status:empty { display:none; }
+.roster-tools { display:grid; gap:8px; margin:12px 0; }
+.roster-tools .roster-panel { margin:0; }
+.roster-actions { display:grid; grid-template-columns:repeat(auto-fit,minmax(18rem,1fr)); gap:12px; margin:12px 0; }
+.roster-action-group { display:grid; align-content:start; gap:10px; padding:12px 14px; border:1px solid #dfe5dc; border-radius:8px; background:#f6f9f4; }
+.roster-action-group h3 { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin:0; font-weight:700; }
+.roster-count { font-weight:400; color:#285244; }
+.roster-action-row { display:flex; flex-wrap:wrap; align-items:end; gap:8px; }
+.roster-action-row > label { display:grid; gap:4px; flex:1 1 11rem; min-width:0; }
+.roster-action-row select, .roster-action-row input { width:100%; min-height:40px; box-sizing:border-box; }
+.roster-action-row button { min-height:40px; }
+.roster-action-group .form-sync-hint { margin:0; }
+.roster-range { display:flex; align-items:center; gap:6px; }
+.roster-range input { flex:1 1 0; min-width:0; }
+.roster-total { margin:12px 0 6px; }
+.roster-import-summary { display:grid; gap:4px; margin:8px 0; padding:10px 12px; border:1px solid #dfe5dc; border-radius:6px; background:#fff; }
+.roster-import-summary p { margin:0; }
+.roster-table-scroll.is-preview { max-height:40vh; }
+.roster-v2 .roster-table-scroll { max-height:min(62dvh,42rem); overflow:auto; border:1px solid #e3e8e1; border-radius:6px; }
+.roster-v2 .roster-table thead th { background:#f4f3ea; }
+.roster-top { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:0 0 8px; }
+.roster-top select, .roster-top input { width:100%; min-height:44px; box-sizing:border-box; }
 .roster-item-chips { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
 .roster-item-chips button { display:inline-flex; flex-direction:column; align-items:flex-start; min-height:44px; text-align:left; }
 .roster-item-chips button small { font-size:.78em; color:#58685f; }
@@ -216,6 +245,13 @@
   .roster-table th[data-label="設備編號"] { grid-column:3; font-size:1.05em; }
   .roster-table td[data-label]:not([data-label="選取"]):not([data-label="圖示"]):not([data-label="操作"])::before { content:attr(data-label) "："; color:#5d6b62; font-size:.85em; }
   .roster-selection input { width:6rem; }
+  .matrix-import-dialog.roster-v2 { width:100vw; max-width:100vw; height:100dvh; max-height:100dvh; margin:0; border-radius:0; }
+  .roster-v2 .outline-file { max-width:100%; box-sizing:border-box; flex-wrap:wrap; } .roster-v2 .outline-file input { max-width:100%; }
+  .roster-head { padding:14px 16px 12px; } .roster-head h2 { font-size:21px; }
+  .roster-scroll { padding:12px 14px 16px; }
+  .matrix-import-dialog .roster-status { padding:8px 14px; }
+  .roster-actions { grid-template-columns:1fr; }
+  .roster-v2 .roster-table-scroll { border:0; max-height:none; }
 }
 
 /* 工程圖檢視：工程圖為主要操作核心，設備清單為可收合的輔助面板 */
@@ -279,5 +315,23 @@
   .drawing-side-panel { max-height:calc(100dvh - 90px); }
 }
 .construction-matrix [data-cell-status="unassigned"] { color:#9aa59d; background:#f6f7f4; }
+/* 工程圖：承攬類型頁籤、整合後的點位示意圖與本圖設備指定 */
+.drawing-service-tabs { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 12px; }
+.drawing-service-tabs button { display:inline-flex; flex-direction:column; align-items:flex-start; min-height:44px; text-align:left; }
+.drawing-service-tabs button small { color:#58685f; }
+.drawing-service-tabs [aria-selected="true"] { background:#285244; color:#fff; border-color:#285244; }
+.drawing-service-tabs [aria-selected="true"] small { color:#e3f0ea; }
+.drawing-overview-filter { display:inline-flex; flex-wrap:wrap; gap:4px; }
+.drawing-overview-filter [aria-pressed="true"] { background:#285244; color:#fff; border-color:#285244; }
+.drawing-overview-group { margin:0 0 12px; border:1px solid #dfe5dc; border-radius:8px; overflow:hidden; background:#fff; }
+.drawing-overview-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px; background:#f4f3ea; border-bottom:1px solid #dfe5dc; }
+.drawing-overview-head h4 { margin:0; } .drawing-overview-head h4 small { margin-left:8px; font-weight:400; color:#58685f; }
+.drawing-overview-group .drawing-grid { grid-template-columns:repeat(auto-fill,minmax(5.8rem,1fr)); }
+.link-button { padding:0; min-height:0; border:0; background:none; color:#1f5c8a; text-decoration:underline; cursor:pointer; }
+.drawing-note-places { margin:.3rem 0; }
+.drawing-assign-body { display:grid; gap:8px; padding:4px 0 10px; }
+.drawing-assign-body p { margin:0; color:#285244; }
+.drawing-assign-body label { display:grid; gap:4px; max-width:28rem; }
+.drawing-assign-body small { color:#5d6b62; }
 .roster-v2 :is(.roster-top,.roster-editor,.roster-selection) label:not(.construction-item-check), .drawing-filter-bar label, .drawing-device-search label, .drawing-side-panel label, .drawing-edit label { display:grid; gap:4px; }
 .roster-v2 .roster-editor { grid-template-columns:repeat(auto-fill,minmax(12rem,1fr)); }
