@@ -73,19 +73,24 @@ function drawingIcon(code,row){const {point,plan}=drawingPoint(code);return equi
 // 工程圖顯示的設備：有指定（drawing_codes）時只顯示指定的設備與圖上已定位的設備；
 // 未指定（null）時顯示所屬規劃清冊中符合工程圖承攬類型的設備（例如廣播圖不顯示攝影機），
 // 設備類型無法判斷承攬類型時仍顯示，圖上已定位的設備一定顯示。
+// 同一台設備（同案同編號）只在一張工程圖上定位：已在其他工程圖設定位置的設備，不再出現在這張圖，避免重複定位。
+function markedElsewhere(row,code){
+  return drawingImageRows().some(other=>other.id!==row?.id&&Object.hasOwn(other.drawing_markers||{},code));
+}
 function drawingCodes(row){
-  const roster=(drawingPlan(row)?.drawing_points||[]).map(p=>p.code);
+  const roster=(drawingPlan(row)?.drawing_points||[]).map(p=>p.code),marked=code=>Object.hasOwn(row?.drawing_markers||{},code);
+  const available=code=>marked(code)||!markedElsewhere(row,code);
   if(!Array.isArray(row?.drawing_codes)){
     const service=drawingServiceList().find(s=>s.id===row?.contract_service_type_id);
-    if(!service||!equipmentIconKey(`${service.code||''} ${service.name||''}`))return roster;
-    return roster.filter(code=>{const ids=typeServiceIds(code);return Object.hasOwn(row.drawing_markers||{},code)||!ids.size||ids.has(service.id);});
+    if(!service||!equipmentIconKey(`${service.code||''} ${service.name||''}`))return roster.filter(available);
+    return roster.filter(code=>{const ids=typeServiceIds(code);return marked(code)||available(code)&&(!ids.size||ids.has(service.id));});
   }
-  const shown=new Set([...row.drawing_codes,...Object.keys(row.drawing_markers||{})]);
-  return roster.filter(code=>shown.has(code));
+  const shown=new Set(row.drawing_codes);
+  return roster.filter(code=>marked(code)||shown.has(code)&&available(code));
 }
 function drawingAssigned(row,code){
   if(!drawingPlan(row)?.drawing_points?.some(p=>p.code===code))return false;
-  return Object.hasOwn(row.drawing_markers||{},code)||Array.isArray(row.drawing_codes)&&row.drawing_codes.includes(code);
+  return Object.hasOwn(row.drawing_markers||{},code)||Array.isArray(row.drawing_codes)&&row.drawing_codes.includes(code)&&!markedElsewhere(row,code);
 }
 // 設備已配置的工程圖：圖上有定位，或工程圖已指定顯示此設備（不受承攬類型篩選影響）。
 function drawingPlacements(code){
@@ -548,6 +553,7 @@ function suggestDrawingCodes(row){
   const service=row.contract_service_type_id;
   return (drawingPlan(row)?.drawing_points||[]).filter(p=>{
     const ids=typeServiceIds(p.code);if(service&&ids.size&&!ids.has(service))return false;
+    if(!Object.hasOwn(row.drawing_markers||{},p.code)&&markedElsewhere(row,p.code))return false;
     const place=[p.location,p.name].map(v=>String(v||'').toLowerCase()).join(' ');
     return words.every(w=>place.includes(w))&&(!c.building||!p.building||String(p.building).toLowerCase().includes(String(c.building).toLowerCase()));
   }).map(p=>p.code);
@@ -558,7 +564,7 @@ function drawingAssignPanel(row){
     <p data-drawing-assign-summary></p>
     <label>設備編號區間<span class="roster-range"><input data-assign-from placeholder="CAM10" maxlength="80" aria-label="起始編號"><span aria-hidden="true">～</span><input data-assign-to placeholder="CAM50" maxlength="80" aria-label="結束編號"></span></label>
     <div class="construction-plan-actions"><button type="button" class="primary" data-drawing-assign="add">加入本圖</button><button type="button" class="outline" data-drawing-assign="remove">自本圖移出</button>${suggestion.length?`<button type="button" class="outline" data-drawing-assign="suggest">依樓層帶入（${suggestion.length} 台）</button>`:''}<button type="button" class="outline" data-drawing-assign="reset">改為顯示清冊全部</button></div>
-    <small>例如 1F 平面圖指定 CAM10～CAM50，2F 平面圖指定 CAM60～CAM88；其他樓層的設備不會顯示在本圖，可翻頁到對應工程圖查看。圖上已定位的設備會保留。</small></div></details>`;
+    <small>例如 1F 平面圖指定 CAM10～CAM50，2F 平面圖指定 CAM60～CAM88；其他樓層的設備不會顯示在本圖，可翻頁到對應工程圖查看。圖上已定位的設備會保留；已在其他工程圖定位的設備不會出現在本圖。</small></div></details>`;
 }
 function paintDrawingMarkers(view) {
   updateGalleryPointList(view);
@@ -784,6 +790,14 @@ document.addEventListener('click',async event=>{
         picked=equipmentCodeRange(roster,from,to);
         if(!picked.length){showToast('區間內沒有清冊設備。');return;}
       }else if(mode==='suggest')picked=suggestDrawingCodes(view.row);
+      // 已在其他工程圖定位的設備不加入本圖，避免同一台設備在兩張圖上重複定位。
+      const elsewhere=mode==='remove'?[]:picked.filter(code=>!Object.hasOwn(view.row.drawing_markers||{},code)&&markedElsewhere(view.row,code));
+      if(elsewhere.length){
+        picked=picked.filter(code=>!elsewhere.includes(code));
+        const where=elsewhere.slice(0,6).map(code=>`${code}（${drawingTitle(drawingImageRows().find(r=>r.id!==view.row.id&&Object.hasOwn(r.drawing_markers||{},code)))}）`).join('、');
+        if(!picked.length){showToast(`這些設備已在其他工程圖定位，不能再加入本圖：${where}${elsewhere.length>6?' 等':''}`,'指定本圖設備');return;}
+        showToast(`已略過 ${elsewhere.length} 台已在其他工程圖定位的設備：${where}${elsewhere.length>6?' 等':''}`,'指定本圖設備');
+      }
       const codes=mode==='reset'?null:mode==='remove'?(explicit?current:roster).filter(c=>!picked.includes(c)):[...new Set([...current,...picked])];
       const title=drawingTitle(view.row);
       const message=mode==='reset'?`「${title}」改為顯示「${drawingPlan(view.row)?.content}」清冊全部 ${roster.length} 台設備？`
