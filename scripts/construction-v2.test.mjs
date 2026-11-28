@@ -104,8 +104,24 @@ test('drawing device lists: explicit codes plus markers, legacy drawings show th
   assert.deepEqual([...c.drawingCodes(f1)],['CAM10','CAM11'],'explicitly listed devices positioned elsewhere are hidden too');
   assert.equal(c.drawingAssigned(f1,'CAM60'),false);
   vm.runInContext("constructionDrawingContext.drawings[0].drawing_codes=['CAM10'];constructionDrawingContext.drawings.pop()",c);
-  assert.deepEqual([...c.unplacedCodes(vm.runInContext('constructionDrawingContext.plans',c))],['CAM60','SPK1'],'legacy drawings do not count as placement');
-  assert.deepEqual([...c.deviceServiceIds('CAM10')],['mon']);assert.deepEqual([...c.deviceServiceIds('SPK1')],['pa']);assert.deepEqual([...c.deviceServiceIds('CAM60')],[]);
+  assert.deepEqual([...c.unplacedCodes(vm.runInContext('constructionDrawingContext.plans',c))],['SPK1'],'devices shown on a drawing (including one without its own list) are placed');
+  assert.deepEqual([...c.deviceServiceIds('CAM10')],['mon']);assert.deepEqual([...c.deviceServiceIds('SPK1')],['pa']);assert.deepEqual([...c.deviceServiceIds('CAM60')],['mon'],'service follows the drawing it shows on');
+});
+test('point overview groups exactly the devices each drawing shows (鳳山高中: 14 cameras on a drawing without its own list)',()=>{
+  const c=load('../construction-v2.js','../construction-drawings.js');
+  vm.runInContext(`constructionDrawingFilter.service='';constructionDrawingContext={plans:[
+      {id:'pipe',content:'綜合大樓監視器配管拉線',drawing_points:Array.from({length:14},(_,i)=>({code:'CAM'+String(i+1).padStart(2,'0'),type:'監視攝影機'})),items:[]},
+      {id:'peace',content:'和平樓&信義樓監視器安裝',drawing_points:Array.from({length:10},(_,i)=>({code:'CAM'+(i+15),type:'監視攝影機'})),items:[]}],
+    contract_service_types:[{id:'mon',code:'monitoring',name:'監控系統'}],
+    drawings:[{id:'img',construction_plan_id:'pipe',original_name:'IMG_3280.jpeg',contract_service_type_id:'mon',drawing_codes:null,drawing_markers:{}}]};`,c);
+  const [row]=vm.runInContext('constructionDrawingContext.drawings',c),plans=vm.runInContext('constructionDrawingContext.plans',c);
+  const shown=[...c.drawingCodes(row)];assert.equal(shown.length,14);
+  for(const code of shown){assert.equal(c.drawingAssigned(row,code),true);assert.equal(c.drawingPlacements(code).length,1);}
+  assert.deepEqual([...c.unplacedCodes(plans)],Array.from({length:10},(_,i)=>'CAM'+(i+15)),'only devices of plans without drawings wait for a drawing');
+  // 同一輪計算中新增其他工程圖的定位，下一次查詢必須立即反映（不可沿用舊結果）。
+  vm.runInContext(`globalThis.queueMicrotask=fn=>Promise.resolve().then(fn);constructionDrawingContext.drawings.push({id:'other',construction_plan_id:'pipe',original_name:'2F.png',contract_service_type_id:'mon',drawing_codes:null,drawing_markers:{CAM03:{x:.5,y:.5}}})`,c);
+  assert.equal(c.drawingCodes(row).includes('CAM03'),false,'a device positioned on another drawing disappears immediately');
+  assert.equal(c.drawingAssigned(row,'CAM03'),false);
 });
 test('roster import validates headers, duplicate codes, unknown plans and sub-items before writing',()=>{
   const c=load('../construction-v2.js','../construction-equipment.js','../construction-roster.js');

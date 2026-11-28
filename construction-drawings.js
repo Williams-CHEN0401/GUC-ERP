@@ -77,7 +77,9 @@ function drawingIcon(code,row){const {point,plan}=drawingPoint(code);return equi
 function markedElsewhere(row,code){
   return drawingImageRows().some(other=>other.id!==row?.id&&Object.hasOwn(other.drawing_markers||{},code));
 }
+// 不做快取：工程圖或定位資料一變更，下一次查詢就必須反映（重複計算由呼叫端各自彙整一次）。
 function drawingCodes(row){
+  if(!row)return [];
   const roster=(drawingPlan(row)?.drawing_points||[]).map(p=>p.code),marked=code=>Object.hasOwn(row?.drawing_markers||{},code);
   const available=code=>marked(code)||!markedElsewhere(row,code);
   if(!Array.isArray(row?.drawing_codes)){
@@ -88,11 +90,12 @@ function drawingCodes(row){
   const shown=new Set(row.drawing_codes);
   return roster.filter(code=>marked(code)||shown.has(code)&&available(code));
 }
+// 點位示意圖、待配置、設備搜尋與承攬類型都以「工程圖檢視實際顯示的設備」（drawingCodes）為唯一依據，
+// 避免工程圖上看得到設備、點位示意圖卻列為待配置（例如尚未指定設備、依所屬規劃顯示的工程圖）。
 function drawingAssigned(row,code){
-  if(!drawingPlan(row)?.drawing_points?.some(p=>p.code===code))return false;
-  return Object.hasOwn(row.drawing_markers||{},code)||Array.isArray(row.drawing_codes)&&row.drawing_codes.includes(code)&&!markedElsewhere(row,code);
+  return drawingCodes(row).includes(code);
 }
-// 設備已配置的工程圖：圖上有定位，或工程圖已指定顯示此設備（不受承攬類型篩選影響）。
+// 設備已配置的工程圖（不受承攬類型篩選影響）。
 function drawingPlacements(code){
   return drawingImageRows().filter(row=>drawingAssigned(row,code));
 }
@@ -121,12 +124,13 @@ function projectCodes(){
 }
 // 同一案有多種承攬類型（例如監視、廣播）時，以頁籤分開查看工程圖與點位示意圖。
 function drawingServiceTabs(){
-  const rows=drawingImageRows(),codes=projectCodes(),ids=new Set([...rows.map(r=>r.contract_service_type_id).filter(Boolean),...codes.flatMap(c=>[...deviceServiceIds(c)])]);
+  const rows=drawingImageRows(),codes=projectCodes(),byCode=new Map(codes.map(c=>[c,deviceServiceIds(c)]));
+  const ids=new Set([...rows.map(r=>r.contract_service_type_id).filter(Boolean),...[...byCode.values()].flatMap(s=>[...s])]);
   const services=drawingServiceList().filter(s=>ids.has(s.id));
   if(services.length<2)return '';
   const current=constructionDrawingFilter.service;
   const tab=(id,label,pages,devices)=>`<button type="button" class="outline" role="tab" data-drawing-service="${esc(id)}" aria-selected="${current===id}">${esc(label)}<small>${pages} 張圖・${devices} 台</small></button>`;
-  return `<div class="drawing-service-tabs" role="tablist" aria-label="依承攬類型查看">${tab('','全部承攬類型',rows.length,codes.length)}${services.map(s=>tab(s.id,s.name,rows.filter(r=>r.contract_service_type_id===s.id).length,codes.filter(c=>deviceServiceIds(c).has(s.id)).length)).join('')}</div>`;
+  return `<div class="drawing-service-tabs" role="tablist" aria-label="依承攬類型查看">${tab('','全部承攬類型',rows.length,codes.length)}${services.map(s=>tab(s.id,s.name,rows.filter(r=>r.contract_service_type_id===s.id).length,codes.filter(c=>byCode.get(c).has(s.id)).length)).join('')}</div>`;
 }
 function drawingDeviceSearchField(){
   return `<div class="drawing-device-search"><label>搜尋設備並定位<input type="search" data-device-search placeholder="設備編號、名稱、類型、施工區域、施工項目" autocomplete="off"></label><ul class="device-search-results" data-device-results hidden></ul></div>`;
@@ -518,7 +522,7 @@ function showDrawingGrid(_row,{waiting=false}={}) {
   activeDrawingAnnotation=view;
   drawPager(null);
   host.hidden=false;
-  const groups=waiting?[]:drawingPages().map(row=>({row,codes:codes.filter(code=>drawingAssigned(row,code))})).filter(g=>g.codes.length)
+  const groups=waiting?[]:drawingPages().map(row=>{const shown=new Set(drawingCodes(row));return {row,codes:codes.filter(code=>shown.has(code))};}).filter(g=>g.codes.length)
     .sort((a,b)=>drawingTitle(a.row).localeCompare(drawingTitle(b.row),'zh-Hant',{numeric:true}));
   const section=(title,meta,list,action)=>`<section class="drawing-overview-group"><div class="drawing-overview-head"><h4>${esc(title)}<small>${esc(meta)}</small></h4>${action}</div>${drawingPointGrid(list,progress,null)}</section>`;
   host.innerHTML=`<div class="construction-drawing-toolbar"><h3>點位示意圖</h3><div class="drawing-overview-filter" role="group" aria-label="顯示範圍"><button type="button" class="outline" data-overview-mode="all" aria-pressed="${!waiting}">全部設備（${codes.length}）</button><button type="button" class="outline" data-overview-mode="waiting" aria-pressed="${waiting}">待配置（${unplaced.length}）</button></div><button type="button" class="outline" data-marker-close>收合示意圖</button></div>
