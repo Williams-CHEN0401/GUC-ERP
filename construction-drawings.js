@@ -85,7 +85,7 @@ function searchDrawingDevices(keyword){
   const found=new Map();
   for(const plan of constructionDrawingContext?.plans||[]){
     for(const point of plan.drawing_points||[]){
-      const items=(plan.items||[]).filter(item=>!Array.isArray(item.equipment_codes)||item.equipment_codes.includes(point.code)).map(i=>i.title);
+      const items=(plan.items||[]).filter(item=>itemAppliesTo(item,point.code,plan)).map(i=>i.title);
       const haystack=[point.code,point.name,point.type,point.model,point.location,point.building,plan.content,...items].map(v=>String(v||'').toLowerCase());
       if(!haystack.some(v=>v.includes(keyword)))continue;
       const entry=found.get(point.code)||{point,plans:[]};entry.plans.push(plan.content);found.set(point.code,entry);
@@ -624,7 +624,7 @@ async function openMarkerNote(view,code,pos){
     const visible=(data.construction_plans||[]).filter(p=>p.drawing_points?.some(pt=>pt.code===code));
     const point=visible[0]?.drawing_points.find(pt=>pt.code===code)||{code};
     note.innerHTML=`<div><strong>${esc(code)}</strong> <button type="button" class="outline" data-note-close aria-label="關閉註解">×</button></div>${[point.name,point.type,point.model,point.location,point.building].filter(Boolean).length?`<p>${esc([point.name,point.type,point.model,point.location,point.building].filter(Boolean).join(' · '))}</p>`:''}`+
-      visible.map(p=>`<strong>${esc(p.content)}</strong><ul>${(p.items||[]).filter(i=>!Array.isArray(i.equipment_codes)||i.equipment_codes.includes(code)||(p.equipment_state||[]).some(e=>e.code===code&&e.item===i.id)).map(i=>{
+      visible.map(p=>`<strong>${esc(p.content)}</strong><ul>${(p.items||[]).filter(i=>itemAppliesTo(i,code,p)||(p.equipment_state||[]).some(e=>e.code===code&&e.item===i.id)).map(i=>{
         const record=(p.equipment_state||[]).find(e=>e.code===code&&e.item===i.id);
         return `<li>${esc(i.title)}　${esc(equipmentStates[record?.status]||'未填報')}${record?.log_date?`（${esc(record.log_date)}）`:''}</li>`;
       }).join('')||'<li>未指派施工子項目</li>'}</ul>`).join('');

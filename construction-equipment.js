@@ -61,7 +61,7 @@ function equipmentMatrix(plan) {
   const rows=(plan.drawing_points||[]).map(p=>`<tr><th scope="row">${esc(p.code)}</th><td>${esc(p.name||"")}</td><td>${esc(p.location)}</td>${plan.items.map((item,index)=>{
     const record=cells.get(JSON.stringify([p.code,item.id]));
     // 子項目已指定設備時，未指派的設備不計入該工項（保留已存在的歷史紀錄）。
-    if(!record && Array.isArray(item.equipment_codes) && !item.equipment_codes.includes(p.code))return '<td data-cell-status="unassigned" title="未指派至此子項目">—</td>';
+    if(!record && !itemAppliesTo(item,p.code,plan))return '<td data-cell-status="unassigned" title="未指派至此子項目">—</td>';
     const status=record?.status||'pending';
     if (status!=='na') totals[index].applicable++;
     if (status==='done') totals[index].done++;
@@ -111,8 +111,8 @@ function renderEquipmentChecklist(editor, preferredItem) {
     return;
   }
   // 依「工程案場 → 主項目 → 子項目 → 對應設備」篩選：子項目已指派設備時只列出指派的設備。
-  const activeItem=plan.items.find(item=>item.id===active),assigned=Array.isArray(activeItem?.equipment_codes)?new Set(activeItem.equipment_codes):null;
-  hint.textContent=allowed?(assigned?`此子項目已指派 ${assigned.size} 台設備；勾選本次施作的設備，再分別選擇進度。`:'此子項目未指定設備，列出本規劃清冊全部設備；勾選本次施作的設備，再分別選擇進度。'):'設備進度僅供檢視。';
+  const activeItem=plan.items.find(item=>item.id===active),assigned=itemCoversAll(plan,activeItem)?null:new Set(itemEquipmentCodes(plan,activeItem));
+  hint.textContent=allowed?(!assigned?'此子項目未指定設備，列出本規劃清冊全部設備；勾選本次施作的設備，再分別選擇進度。':assigned.size?`此子項目已指派 ${assigned.size} 台設備；勾選本次施作的設備，再分別選擇進度。`:'此子項目尚未指派設備；需要填報設備進度時，請先在設備清冊指派。'):'設備進度僅供檢視。';
   // Older logs can refer to equipment that no longer appears in the active roster.
   const points=new Map(plan.drawing_points.filter(point=>!assigned||assigned.has(point.code)||records.has(point.code)).map(point=>[point.code,point]));
   for (const code of records.keys()) if (!points.has(code)) points.set(code,{code});

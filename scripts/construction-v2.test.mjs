@@ -33,11 +33,30 @@ test('acceptance 1: equipment icons follow the site contract service icons and f
   assert.equal(c.equipmentIconFor({},null,'設備安裝'),'/assets/equipment-icons/default.svg');
   for(const key of ['monitoring','audio','phone','network','barrier','emergency','access'])assert.ok(readFileSync(new URL(`../assets/equipment-icons/${key}.png`,import.meta.url)).length>1000);
 });
-test('acceptance 5/6: item assignment narrows equipment, unassigned items keep the legacy whole roster',()=>{
+test('acceptance 5/6: once any sub-item is assigned, unassigned sub-items cover no equipment',()=>{
   const c=load('../construction-v2.js'),plan={drawing_points:[{code:'CAM10'},{code:'CAM11'},{code:'CAM30'}],items:[{id:'office',equipment_codes:['CAM10','CAM11','GONE']},{id:'parking',equipment_codes:null}]};
   assert.deepEqual([...c.itemEquipmentCodes(plan,plan.items[0])],['CAM10','CAM11']);
-  assert.deepEqual([...c.itemEquipmentCodes(plan,plan.items[1])],['CAM10','CAM11','CAM30']);
-  assert.equal(c.itemAppliesTo(plan.items[0],'CAM30'),false);assert.equal(c.itemAppliesTo(plan.items[1],'CAM30'),true);
+  assert.deepEqual([...c.itemEquipmentCodes(plan,plan.items[1])],[]);
+  assert.equal(c.itemAppliesTo(plan.items[0],'CAM30',plan),false);assert.equal(c.itemAppliesTo(plan.items[1],'CAM10',plan),false);
+});
+test('legacy plans without any assignment keep every sub-item on the whole roster',()=>{
+  const c=load('../construction-v2.js'),plan={drawing_points:[{code:'A'},{code:'B'}],items:[{id:'x',equipment_codes:null},{id:'y'}]};
+  assert.deepEqual([...c.itemEquipmentCodes(plan,plan.items[1])],['A','B']);assert.equal(c.itemAppliesTo(plan.items[0],'B',plan),true);
+});
+test('device note on the drawing grid lists only sub-items assigned to that device',()=>{
+  const c=load('../construction-v2.js');
+  const plan={drawing_points:[{code:'B1F'},{code:'1F'}],equipment_state:[],items:[{id:'net1',title:'1號梯網路配線',equipment_codes:['B1F','1F']},{id:'net2',title:'2號梯網路配線',equipment_codes:null},{id:'hub',title:'校史室集線器安裝',equipment_codes:null}]};
+  assert.deepEqual(plan.items.filter(i=>c.itemAppliesTo(i,'B1F',plan)).map(i=>i.title),['1號梯網路配線']);
+});
+test('Gantt keeps labels to one compact line and drops the long explanation',()=>{
+  const c=load('../construction-v2.js');
+  const plan={id:'p',content:'行政大樓讀卡機施工',construction_date:'2026-11-12',drawing_points:[],equipment_state:[],items:[{id:'i',title:'網路配線',start_day:1,planned_days:4,log_dates:['2026-11-14']}]};
+  const html=c.constructionScheduleGantt([plan],{key:'k'});
+  assert.doesNotMatch(html,/form-sync-hint|預計完成日期＝/);
+  assert.match(html,/<small>11\/12～11\/15・4天<\/small>/);
+  assert.match(html,/class="v2-gantt-period"[^>]*>2026\/11</);
+  assert.doesNotMatch(html,/<b>11\/1[0-9]<\/b>/);
+  assert.match(html,/實際 2026-11-14～—/);
 });
 test('schedule status, overdue and progress use equipment cells when assigned',()=>{
   const c=load('../construction-v2.js');
@@ -47,7 +66,7 @@ test('schedule status, overdue and progress use equipment cells when assigned',(
   assert.equal(c.itemSchedule(plan,{id:'i',start_day:1,planned_days:1,is_completed:true,completed_at:'2020-01-01T10:00:00Z',log_dates:[]}).status,'done');
 });
 test('matrix marks cells outside a sub-item assignment and keeps their totals out',()=>{
-  const c=load('../construction-equipment.js');
+  const c=load('../construction-v2.js','../construction-equipment.js');
   const html=c.equipmentMatrix({items:[{id:'i',title:'總務處大樓配管施工',equipment_codes:['A']}],drawing_points:[{code:'A',location:''},{code:'B',location:''}],equipment_state:[{code:'A',item:'i',status:'done'}]});
   assert.match(html,/data-cell-status="unassigned"/);assert.match(html,/1／1/);
 });

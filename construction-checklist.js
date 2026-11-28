@@ -50,7 +50,7 @@ document.addEventListener('input',event=>{
 function constructionChecklist(plan){
  if(!plan.items?.length)return "";
  return `<ul class="construction-checklist" aria-label="施工子項目">${plan.items.map(item=>{
-  const s=itemSchedule(plan,item),assigned=Array.isArray(item.equipment_codes)?`指派設備 ${item.equipment_codes.length} 台`:(plan.drawing_points?.length?'適用本規劃全部設備':'');
+  const s=itemSchedule(plan,item),assigned=Array.isArray(item.equipment_codes)?`指派設備 ${item.equipment_codes.length} 台`:!plan.drawing_points?.length?'':itemCoversAll(plan,item)?'適用本規劃全部設備':'未指派設備';
   return `<li class="${item.is_completed?"is-complete":""}" data-schedule-status="${s.status}"><div><label class="construction-item-check"><input type="checkbox" data-complete-construction-item="${esc(item.id)}" data-plan-id="${esc(plan.id)}" ${item.is_completed?"checked":""} ${plan.can_complete_items?"":"disabled"}><strong>${esc(item.title)}</strong></label><small>${SCHEDULE_STATUS[s.status]} · 預計 ${esc(s.start)}～${esc(s.end)}（${s.days} 天）· 實際 ${esc(s.actualStart||'未開始')}～${esc(s.actualEnd||'—')} · 已執行 ${Number(item.worked_days||0)} 天 · 進度 ${s.progress}%${s.equipment.applicable?`（設備 ${s.equipment.done}／${s.equipment.applicable}）`:''}${assigned?` · ${assigned}`:''}</small></div>${plan.can_create_log?`<button type="button" class="outline" data-construction-log="${esc(plan.id)}" data-construction-item="${esc(item.id)}" aria-label="填寫 ${esc(item.title)} 工作日誌">填寫日誌</button>`:""}</li>`;
  }).join("")}</ul>`;
 }
