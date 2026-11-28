@@ -81,6 +81,15 @@ test('roster import follows the file main item, finds a header below a title row
   assert.match(result[2].errors.join(),/找不到施工主項目「設備安裝」/);
   const noPlan=c.validateRosterImport([['設備編號'],['A1']],{plans,current:plans[1]});assert.equal(noPlan.planColumn,false);assert.equal(noPlan[0].plan.id,'two');
 });
+test('roster import keeps blank cells and fills area/building from the same device in another main item (土庫國小廣播喇叭)',()=>{
+  const c=load('../construction-v2.js','../construction-equipment.js','../construction-roster.js');
+  const plans=[{id:'pipe',content:'配管作業',can_manage:true,drawing_points:[{code:'SPK-C-01',location:'1F',building:'行政大樓',type:'廣播喇叭'}],items:[]},
+    {id:'install',content:'設備安裝',can_manage:true,drawing_points:[{code:'SPK-C-01',location:'',building:'行政大樓',type:'廣播喇叭',name:'喇叭'}],items:[]}];
+  const r=c.validateRosterImport([['設備編號','設備名稱','設置區域','所屬建築物','對應施工主項目'],['SPK-C-01','','','','設備安裝'],['SPK-C-09','新喇叭','','','設備安裝']],{plans,current:plans[1]});
+  assert.equal(r[0].point.location,'1F','blank area takes the value from 配管作業');assert.equal(r[0].point.building,'行政大樓');assert.equal(r[0].point.name,'喇叭','blank cell keeps the existing value');
+  assert.equal(r[0].action,'更新');assert.equal(r[1].point.location,'');
+  assert.equal(c.rosterSiblingValue(plans,plans[1],'SPK-C-01','location'),'1F');
+});
 test('roster import links devices to drawings by title within the drawing owner roster',()=>{
   const c=load('../construction-v2.js','../construction-equipment.js','../construction-roster.js');
   const plans=[{id:'p',content:'配管作業',can_manage:true,drawing_points:[{code:'CAM10',location:''}],items:[]},{id:'q',content:'設備安裝',can_manage:true,drawing_points:[],items:[]}];

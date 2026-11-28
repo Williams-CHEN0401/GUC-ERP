@@ -315,6 +315,11 @@
   .drawing-side-panel { max-height:calc(100dvh - 90px); }
 }
 .construction-matrix [data-cell-status="unassigned"] { color:#9aa59d; background:#f6f7f4; }
+/* 工程圖視窗分頁：工程圖與點位／上傳工程圖 */
+.drawing-window-tabs { display:flex; gap:0; border-bottom:2px solid #dfe5dc; margin:4px 0 8px; }
+.drawing-window-tabs button { min-height:44px; padding:6px 18px; border:1px solid transparent; border-bottom:0; border-radius:6px 6px 0 0; background:transparent; margin-bottom:-2px; }
+.drawing-window-tabs [aria-selected="true"] { background:#fff; border-color:#dfe5dc; border-bottom:2px solid #fff; color:#285244; font-weight:700; }
+.drawing-tab-panel[hidden] { display:none !important; }
 /* 工程圖：承攬類型頁籤、整合後的點位示意圖與本圖設備指定 */
 .drawing-service-tabs { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 12px; }
 .drawing-service-tabs button { display:inline-flex; flex-direction:column; align-items:flex-start; min-height:44px; text-align:left; }

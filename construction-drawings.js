@@ -27,11 +27,24 @@ function updateConstructionDrawingPathHint() {
 function constructionDrawingFields() {
   const context = constructionDrawingContext;
   const project = byId(state.projects, context?.project_id);
-  return `<section class="span-2 construction-drawing-heading"><h3>${esc(project?.code || '')}｜${esc(project?.name || '')}</h3>${globalThis.GUC_PUBLIC_CONFIG?.constructionDrawingsIsolated ? '<p class="nas-upload-guard"><b>隔離測試：上傳檔案只保留在測試服務，不會寫入正式 NAS。</b></p>' : ''}</section>
-    <section class="span-2"><div class="construction-drawing-toolbar"><h3>已上傳工程圖</h3><button type="button" class="outline" data-drawing-reload>重新讀取</button></div>${drawingDeviceSearchField()}<p id="constructionDrawingStatus" role="status" aria-live="polite"></p><div id="drawingServiceTabs"></div><div id="drawingPager"></div><div id="drawingAnnotationViewer" hidden></div><div id="constructionDrawingList"></div></section>
-    ${context?.can_upload ? `<section class="span-2 construction-drawing-upload"><h3>上傳工程圖</h3>${drawingUploadPlanField()}${constructionDrawingContextFields()}<label class="attachment-dropzone"><span>選擇工程圖（可多選）</span><input name="drawingFiles" type="file" multiple required accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.dwg,.dxf"><small>每次最多 ${MAX_WORKLOG_ATTACHMENT_FILES} 個檔案，每個最多 ${formatBytes(MAX_ATTACHMENT_BYTES)}，合計最多 ${formatBytes(MAX_WORKLOG_ATTACHMENT_FILES * MAX_ATTACHMENT_BYTES)}。同名檔案會詢問覆蓋、另存或取消。</small><output id="constructionDrawingFileSummary">尚未選擇檔案</output></label><label>工程圖說明<textarea name="drawingDescription" maxlength="1000" rows="2"></textarea></label><div id="attachmentUploadProgress" class="attachment-upload-progress" role="status" aria-live="polite" hidden></div><div class="construction-drawing-toolbar"><button type="submit" class="primary">檢查並上傳工程圖</button><button type="button" class="outline" data-drawing-new-batch hidden>選擇其他檔案</button></div></section>` : '<p class="span-2 form-sync-hint">您可查看與下載此施工規劃的工程圖；上傳由具管理權限的人員操作。</p>'}
+  // 同一視窗分成「工程圖與點位」「上傳工程圖」兩個分頁；沒有上傳權限時只顯示檢視。
+  const tabs = context?.can_upload ? `<nav class="span-2 drawing-window-tabs" role="tablist" aria-label="工程圖視窗"><button type="button" role="tab" class="outline" data-drawing-tab="view" aria-selected="true">工程圖與點位</button><button type="button" role="tab" class="outline" data-drawing-tab="upload" aria-selected="false">上傳工程圖</button></nav>` : '';
+  return `<section class="span-2 construction-drawing-heading"><h3>${esc(project?.code || '')}｜${esc(project?.name || '')}</h3>${globalThis.GUC_PUBLIC_CONFIG?.constructionDrawingsIsolated ? '<p class="nas-upload-guard"><b>隔離測試：上傳檔案只保留在測試服務，不會寫入正式 NAS。</b></p>' : ''}</section>${tabs}
+    <section class="span-2 drawing-tab-panel" data-drawing-pane="view" role="tabpanel"><div class="construction-drawing-toolbar"><h3>已上傳工程圖</h3><button type="button" class="outline" data-drawing-reload>重新讀取</button></div>${drawingDeviceSearchField()}<p id="constructionDrawingStatus" role="status" aria-live="polite"></p><div id="drawingServiceTabs"></div><div id="drawingPager"></div><div id="drawingAnnotationViewer" hidden></div><div id="constructionDrawingList"></div></section>
+    ${context?.can_upload ? `<section class="span-2 construction-drawing-upload drawing-tab-panel" data-drawing-pane="upload" role="tabpanel" hidden><h3>上傳工程圖</h3>${drawingUploadPlanField()}${constructionDrawingContextFields()}<label class="attachment-dropzone"><span>選擇工程圖（可多選）</span><input name="drawingFiles" type="file" multiple required accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.dwg,.dxf"><small>每次最多 ${MAX_WORKLOG_ATTACHMENT_FILES} 個檔案，每個最多 ${formatBytes(MAX_ATTACHMENT_BYTES)}，合計最多 ${formatBytes(MAX_WORKLOG_ATTACHMENT_FILES * MAX_ATTACHMENT_BYTES)}。同名檔案會詢問覆蓋、另存或取消。</small><output id="constructionDrawingFileSummary">尚未選擇檔案</output></label><label>工程圖說明<textarea name="drawingDescription" maxlength="1000" rows="2"></textarea></label><div id="attachmentUploadProgress" class="attachment-upload-progress" role="status" aria-live="polite" hidden></div><div class="construction-drawing-toolbar"><button type="submit" class="primary">檢查並上傳工程圖</button><button type="button" class="outline" data-drawing-new-batch hidden>選擇其他檔案</button></div></section>` : '<p class="span-2 form-sync-hint">您可查看與下載此施工規劃的工程圖；上傳由具管理權限的人員操作。</p>'}
     <div class="span-2"><button type="button" class="outline" data-construction-project="${esc(context?.project_id || '')}">返回施工規劃</button></div>`;
 }
+
+function showConstructionDrawingTab(name) {
+  for (const tab of document.querySelectorAll('#modalForm [data-drawing-tab]')) tab.setAttribute('aria-selected', String(tab.dataset.drawingTab === name));
+  for (const panel of document.querySelectorAll('#modalForm [data-drawing-pane]')) panel.hidden = panel.dataset.drawingPane !== name;
+}
+document.addEventListener('click', event => {
+  const tab = event.target.closest('#modalForm [data-drawing-tab]');
+  if (!tab) return;
+  event.preventDefault();
+  showConstructionDrawingTab(tab.dataset.drawingTab);
+});
 
 function constructionDrawingStoredName(row) {
   return row.stored_name || row.nas_path?.split('/').pop() || row.original_name || row.title || '工程圖';
@@ -318,6 +331,7 @@ async function refreshConstructionDrawings() {
 function restoreConstructionDrawingBatch(form) {
   const batch = constructionDrawingBatches.get(constructionDrawingContext?.construction_plan_id);
   if (!batch || !form.elements.drawingFiles) return;
+  showConstructionDrawingTab('upload');
   form._nasBatch = batch;
   form.elements.drawingFiles.disabled = true;
   form.elements.drawingContractServiceId.value = batch.serviceTypeId;
@@ -403,6 +417,7 @@ async function uploadConstructionDrawings(form) {
     form.querySelector('[type="submit"]').textContent = '檢查並上傳工程圖';
     form.querySelector('[data-drawing-new-batch]').hidden = true;
     document.querySelector('#constructionDrawingFileSummary').textContent = '尚未選擇檔案';
+    showConstructionDrawingTab('view');
     showToast(`${result.uploaded.length} 份工程圖已上傳、校驗並保存${result.failed.length ? `，${result.failed.length} 份已取消` : ''}。${reloadError ? '清單暫時無法讀取，請按「重新讀取」，毋須重傳。' : ''}`);
   } finally { if (currentSession()) setAttachmentFormUploading(form,false); }
 }
@@ -498,7 +513,7 @@ document.addEventListener('change',async event=>{
   if (form.classList.contains('busy') || form._nasBatch || form.elements.drawingFiles?.files.length) {
     showToast('請先完成目前的檔案上傳，再切換所屬規劃。'); return;
   }
-  try { await openProjectDrawings(context.project_id,planId); } catch(error){showToast(error.message);}
+  try { await openProjectDrawings(context.project_id,planId); showConstructionDrawingTab('upload'); } catch(error){showToast(error.message);}
 });
 
 let activeDrawingAnnotation = null;
