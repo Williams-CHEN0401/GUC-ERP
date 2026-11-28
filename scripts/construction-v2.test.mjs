@@ -70,6 +70,39 @@ test('matrix marks cells outside a sub-item assignment and keeps their totals ou
   const html=c.equipmentMatrix({items:[{id:'i',title:'總務處大樓配管施工',equipment_codes:['A']}],drawing_points:[{code:'A',location:''},{code:'B',location:''}],equipment_state:[{code:'A',item:'i',status:'done'}]});
   assert.match(html,/data-cell-status="unassigned"/);assert.match(html,/1／1/);
 });
+test('roster import follows the file main item, finds a header below a title row and keeps parenthesised names distinct',()=>{
+  const c=load('../construction-v2.js','../construction-equipment.js','../construction-roster.js');
+  const plans=[{id:'one',content:'設備安裝（一樓）',can_manage:true,drawing_points:[],items:[]},{id:'two',content:'設備安裝（二樓）',can_manage:true,drawing_points:[],items:[{id:'i2',title:'二樓攝影機安裝'}]}];
+  const rows=[['土庫國小二樓設備清冊'],['設備編號','設備名稱','施工主項目（請填寫）','子項目'],['CAM2F-09','二樓攝影機','設備安裝 （二樓）','二樓攝影機安裝'],['CAM1F-01','一樓','',''],['X','x','設備安裝','']];
+  const result=c.validateRosterImport(rows,{plans,current:plans[0]});
+  assert.equal(result.headerRow,2);assert.equal(result.planColumn,true);
+  assert.equal(result[0].plan.id,'two');assert.equal(result[0].items[0].id,'i2');assert.equal(result[0].line,3);
+  assert.equal(result[1].plan.id,'one','blank main item falls back to the selected one');
+  assert.match(result[2].errors.join(),/找不到施工主項目「設備安裝」/);
+  const noPlan=c.validateRosterImport([['設備編號'],['A1']],{plans,current:plans[1]});assert.equal(noPlan.planColumn,false);assert.equal(noPlan[0].plan.id,'two');
+});
+test('roster import links devices to drawings by title within the drawing owner roster',()=>{
+  const c=load('../construction-v2.js','../construction-equipment.js','../construction-roster.js');
+  const plans=[{id:'p',content:'配管作業',can_manage:true,drawing_points:[{code:'CAM10',location:''}],items:[]},{id:'q',content:'設備安裝',can_manage:true,drawing_points:[],items:[]}];
+  const drawings=[{id:'d1',title:'1F 平面圖',original_name:'1f.png',construction_plan_id:'p'}];
+  const r=c.validateRosterImport([['設備編號','對應施工主項目','對應工程圖'],['CAM10','配管作業','1F平面圖'],['CAM20','設備安裝','1F 平面圖'],['CAM30','配管作業','2F 平面圖']],{plans,current:plans[0],drawings});
+  assert.equal(r[0].drawings[0].id,'d1');assert.match(r[1].errors.join(),/不在該清冊內/);assert.match(r[2].errors.join(),/找不到工程圖/);
+});
+test('drawing device lists: explicit codes plus markers, legacy drawings show the whole roster, services inferred from type',()=>{
+  const c=load('../construction-v2.js','../construction-drawings.js');
+  vm.runInContext(`constructionDrawingContext={plans:[{id:'p',content:'監視配管',drawing_points:[{code:'CAM10',type:'監視攝影機'},{code:'CAM11'},{code:'CAM60'},{code:'SPK1',type:'廣播喇叭'}],items:[]}],
+    contract_service_types:[{id:'mon',code:'monitoring',name:'監視系統'},{id:'pa',code:'broadcast',name:'廣播系統'}],
+    drawings:[{id:'f1',construction_plan_id:'p',original_name:'1F.png',contract_service_type_id:'mon',drawing_codes:['CAM10'],drawing_markers:{CAM11:{x:.5,y:.5}}},
+      {id:'f2',construction_plan_id:'p',original_name:'2F.png',contract_service_type_id:'mon',drawing_codes:null,drawing_markers:{}}]};`,c);
+  const [f1,f2]=vm.runInContext('constructionDrawingContext.drawings',c);
+  assert.deepEqual([...c.drawingCodes(f1)],['CAM10','CAM11']);
+  assert.deepEqual([...c.drawingCodes(f2)],['CAM10','CAM11','CAM60'],'an unassigned monitoring drawing hides broadcast speakers but keeps untyped devices');
+  vm.runInContext("constructionDrawingContext.drawings.push({id:'f3',construction_plan_id:'p',original_name:'2F廣播.png',contract_service_type_id:'pa',drawing_codes:null,drawing_markers:{CAM60:{x:.1,y:.1}}})",c);
+  assert.deepEqual([...c.drawingCodes(vm.runInContext('constructionDrawingContext.drawings[2]',c))],['CAM11','CAM60','SPK1'],'broadcast drawing hides cameras; positioned devices always stay');
+  vm.runInContext('constructionDrawingContext.drawings.pop()',c);
+  assert.deepEqual([...c.unplacedCodes(vm.runInContext('constructionDrawingContext.plans',c))],['CAM60','SPK1'],'legacy drawings do not count as placement');
+  assert.deepEqual([...c.deviceServiceIds('CAM10')],['mon']);assert.deepEqual([...c.deviceServiceIds('SPK1')],['pa']);assert.deepEqual([...c.deviceServiceIds('CAM60')],[]);
+});
 test('roster import validates headers, duplicate codes, unknown plans and sub-items before writing',()=>{
   const c=load('../construction-v2.js','../construction-equipment.js','../construction-roster.js');
   const plans=[{id:'p',content:'配管作業',can_manage:true,drawing_points:[{code:'CAM10',location:'1F',name:'舊名'}],items:[{id:'o',title:'總務處大樓配管施工'}]}];

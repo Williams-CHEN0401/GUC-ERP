@@ -1169,6 +1169,15 @@ async function change(operation: string, payload: Row, user: AppUser | null) {
     if(!uuid(payload.item_id)||!Number.isInteger(payload.row_version)||!(payload.codes===null||Array.isArray(payload.codes)&&payload.codes.every((code:unknown)=>typeof code==="string")))throw Error("請重新核對子項目與設備。");
     return rpc("assign_construction_item_equipment_v1",{p_actor_user_id:user.id,p_item_id:payload.item_id,p_payload:{row_version:payload.row_version,codes:payload.codes}});
   }
+  if(operation==="transfer_construction_equipment"){
+    if(!user || !hasConstructionPermission(user,'construction_plans','UPDATE'))throw Error("沒有管理設備清冊的權限。");
+    if(!uuid(payload.project_id)||!uuid(payload.from_plan_id)||!uuid(payload.to_plan_id)||(payload.to_item_id&&!uuid(payload.to_item_id))||!Array.isArray(payload.codes)||!payload.codes.every((code:unknown)=>typeof code==="string"))throw Error("請重新核對要轉移的設備。");
+    return rpc("transfer_construction_equipment_v1",{p_actor_user_id:user.id,p_project_id:payload.project_id,p_payload:{from_plan_id:payload.from_plan_id,to_plan_id:payload.to_plan_id,to_item_id:payload.to_item_id||null,codes:payload.codes}});
+  }
+  if(operation==="assign_construction_drawing_equipment"){
+    if(!uuid(payload.asset_id)||!Number.isInteger(payload.row_version)||!(payload.codes===null||Array.isArray(payload.codes)&&payload.codes.every((code:unknown)=>typeof code==="string")))throw new Error("請重新讀取工程圖。");
+    return rpc("assign_construction_drawing_equipment_v1",{p_actor_user_id:user!.id,p_asset_id:payload.asset_id,p_payload:{row_version:payload.row_version,codes:payload.codes}});
+  }
   if(operation==="manage_construction_drawing"){
     if(!uuid(payload.asset_id)||!Number.isInteger(payload.row_version)||!(payload.action==="update"||payload.action==="archive"))throw new Error("請重新讀取工程圖。");
     return rpc("manage_construction_drawing_v1",{p_actor_user_id:user!.id,p_asset_id:payload.asset_id,p_payload:payload});

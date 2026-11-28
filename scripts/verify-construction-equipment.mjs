@@ -116,6 +116,19 @@ try {
     // 工作管理第二版：子項目指派、批次建立與工程圖管理。
     await db.exec(await sql('20261127140000_construction_equipment_v2.sql'));
     f.additionalRpcs.push('assign_construction_item_equipment_v1','batch_construction_roster_v1','manage_construction_drawing_v1');
+    // 工作管理第三版：設備轉移與工程圖指定顯示設備。另建第二個施工主項目與第二種承攬類型，供轉移與分類查看。
+    await db.exec(await sql('20261128120000_construction_roster_transfer_drawing_devices.sql'));
+    f.additionalRpcs.push('assign_construction_drawing_equipment_v1','transfer_construction_equipment_v1');
+    const secondPlan=await rpc('save_construction_plan_v1',planUsers.owner,JSON.stringify({id:randomUUID(),project_id:plan.project_id,construction_date:latest.construction_date,content:'設備安裝（二樓）',status:'pending',planned_days:5,notes:'隔離示範：轉移與分類測試',assignee_user_ids:[planUsers.A],items:[{id:randomUUID(),title:'二樓攝影機安裝',sort_order:0,start_day:1,planned_days:3},{id:randomUUID(),title:'二樓廣播喇叭安裝',sort_order:1,start_day:2,planned_days:3}],drawing_points:[...Array.from({length:8},(_,i)=>({code:'CAM2F-'+String(i+1).padStart(2,'0'),name:'二樓攝影機 '+(i+1),type:'監視攝影機',location:'2F'})),...Array.from({length:4},(_,i)=>({code:'SPK-'+String(i+1).padStart(2,'0'),name:'二樓廣播喇叭 '+(i+1),type:'廣播喇叭',location:'2F'}))]}),false);
+    const customer=(await db.query('select customer_id from projects where id=$1',[plan.project_id])).rows[0].customer_id;
+    const services=(await db.query('select id,name from contract_service_types where is_active order by sort_order,name')).rows;
+    console.log('preview services',JSON.stringify(services.map(s=>s.name)),'second plan',secondPlan?.id||'');
+    for(const [code,name,order] of [['surveillance','監視系統（隔離）',91],['broadcast','廣播系統（隔離）',92]]){
+      if(services.some(s=>s.name===name))continue;
+      const id=randomUUID();
+      await db.query('insert into contract_service_types(id,code,name,is_active,sort_order) values($1,$2,$3,true,$4)',[id,code,name,order]).catch(e=>console.log('service type',e.message));
+      await db.query('insert into customer_contract_services(customer_id,service_type_id,is_active) values($1,$2,true)',[customer,id]).catch(e=>console.log('service link',e.message));
+    }
     f.server.listen(Number(process.env.PROGRESS_PORT||4635),'127.0.0.1',()=>console.log('Isolated preview listening'));
     await new Promise(resolve=>f.server.once('close',resolve));
   }
