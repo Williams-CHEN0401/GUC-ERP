@@ -77,7 +77,18 @@ function drawingIcon(code,row){const {point,plan}=drawingPoint(code);return equi
 function markedElsewhere(row,code){
   return drawingImageRows().some(other=>other.id!==row?.id&&Object.hasOwn(other.drawing_markers||{},code));
 }
+// 同一次畫面計算內重複查詢時共用結果；資料變更都在非同步操作之後，快取在本輪結束即清除。
+let drawingCodesCache=null;
 function drawingCodes(row){
+  if(!row)return [];
+  if(typeof queueMicrotask==='function'){
+    if(!drawingCodesCache){drawingCodesCache=new Map();queueMicrotask(()=>{drawingCodesCache=null;});}
+    if(drawingCodesCache.has(row))return drawingCodesCache.get(row);
+    const codes=computeDrawingCodes(row);drawingCodesCache.set(row,codes);return codes;
+  }
+  return computeDrawingCodes(row);
+}
+function computeDrawingCodes(row){
   const roster=(drawingPlan(row)?.drawing_points||[]).map(p=>p.code),marked=code=>Object.hasOwn(row?.drawing_markers||{},code);
   const available=code=>marked(code)||!markedElsewhere(row,code);
   if(!Array.isArray(row?.drawing_codes)){
@@ -88,11 +99,12 @@ function drawingCodes(row){
   const shown=new Set(row.drawing_codes);
   return roster.filter(code=>marked(code)||shown.has(code)&&available(code));
 }
+// 點位示意圖、待配置、設備搜尋與承攬類型都以「工程圖檢視實際顯示的設備」（drawingCodes）為唯一依據，
+// 避免工程圖上看得到設備、點位示意圖卻列為待配置（例如尚未指定設備、依所屬規劃顯示的工程圖）。
 function drawingAssigned(row,code){
-  if(!drawingPlan(row)?.drawing_points?.some(p=>p.code===code))return false;
-  return Object.hasOwn(row.drawing_markers||{},code)||Array.isArray(row.drawing_codes)&&row.drawing_codes.includes(code)&&!markedElsewhere(row,code);
+  return drawingCodes(row).includes(code);
 }
-// 設備已配置的工程圖：圖上有定位，或工程圖已指定顯示此設備（不受承攬類型篩選影響）。
+// 設備已配置的工程圖（不受承攬類型篩選影響）。
 function drawingPlacements(code){
   return drawingImageRows().filter(row=>drawingAssigned(row,code));
 }
@@ -518,7 +530,7 @@ function showDrawingGrid(_row,{waiting=false}={}) {
   activeDrawingAnnotation=view;
   drawPager(null);
   host.hidden=false;
-  const groups=waiting?[]:drawingPages().map(row=>({row,codes:codes.filter(code=>drawingAssigned(row,code))})).filter(g=>g.codes.length)
+  const groups=waiting?[]:drawingPages().map(row=>{const shown=new Set(drawingCodes(row));return {row,codes:codes.filter(code=>shown.has(code))};}).filter(g=>g.codes.length)
     .sort((a,b)=>drawingTitle(a.row).localeCompare(drawingTitle(b.row),'zh-Hant',{numeric:true}));
   const section=(title,meta,list,action)=>`<section class="drawing-overview-group"><div class="drawing-overview-head"><h4>${esc(title)}<small>${esc(meta)}</small></h4>${action}</div>${drawingPointGrid(list,progress,null)}</section>`;
   host.innerHTML=`<div class="construction-drawing-toolbar"><h3>點位示意圖</h3><div class="drawing-overview-filter" role="group" aria-label="顯示範圍"><button type="button" class="outline" data-overview-mode="all" aria-pressed="${!waiting}">全部設備（${codes.length}）</button><button type="button" class="outline" data-overview-mode="waiting" aria-pressed="${waiting}">待配置（${unplaced.length}）</button></div><button type="button" class="outline" data-marker-close>收合示意圖</button></div>
