@@ -1,0 +1,48 @@
+# Merge after the existing compose.yaml and compose.https.yaml.
+# Production keeps this service and the two published ports in compose.https.yaml,
+# so existing start/update commands preserve the customer survey.
+services:
+  feedback:
+    image: ${FEEDBACK_IMAGE:?Set an immutable, verified feedback image reference}
+    env_file:
+      - path: ./private-customer-feedback/runtime.env
+        format: raw
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      SUPABASE_REST_URL: http://supabase-envoy:8000/rest/v1
+      SUPABASE_AUTH_URL: http://supabase-envoy:8000/auth/v1
+      GUC_GATEWAY_URL: http://guc-supabase-functions:9000/inventory-gateway
+      FEEDBACK_ALLOWED_ORIGINS: https://guc-erp.theworkpc.com:8888,https://125.229.116.234:8888
+      FEEDBACK_COOKIE_SECURE: "true"
+      FEEDBACK_VERSION: ${FEEDBACK_VERSION:?Set the source commit}
+    networks:
+      - default
+      - feedback-supabase
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+  https:
+    ports:
+      - "192.168.17.213:8888:8888"
+      - "127.0.0.1:8888:8888"
+networks:
+  feedback-supabase:
+    external: true
+    name: guc-supabase_default
