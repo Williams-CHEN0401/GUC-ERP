@@ -118,6 +118,10 @@ test('point overview groups exactly the devices each drawing shows (鳳山高中
   const shown=[...c.drawingCodes(row)];assert.equal(shown.length,14);
   for(const code of shown){assert.equal(c.drawingAssigned(row,code),true);assert.equal(c.drawingPlacements(code).length,1);}
   assert.deepEqual([...c.unplacedCodes(plans)],Array.from({length:10},(_,i)=>'CAM'+(i+15)),'only devices of plans without drawings wait for a drawing');
+  // 同一輪計算中新增其他工程圖的定位，下一次查詢必須立即反映（不可沿用舊結果）。
+  vm.runInContext(`globalThis.queueMicrotask=fn=>Promise.resolve().then(fn);constructionDrawingContext.drawings.push({id:'other',construction_plan_id:'pipe',original_name:'2F.png',contract_service_type_id:'mon',drawing_codes:null,drawing_markers:{CAM03:{x:.5,y:.5}}})`,c);
+  assert.equal(c.drawingCodes(row).includes('CAM03'),false,'a device positioned on another drawing disappears immediately');
+  assert.equal(c.drawingAssigned(row,'CAM03'),false);
 });
 test('roster import validates headers, duplicate codes, unknown plans and sub-items before writing',()=>{
   const c=load('../construction-v2.js','../construction-equipment.js','../construction-roster.js');

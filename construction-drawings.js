@@ -77,18 +77,9 @@ function drawingIcon(code,row){const {point,plan}=drawingPoint(code);return equi
 function markedElsewhere(row,code){
   return drawingImageRows().some(other=>other.id!==row?.id&&Object.hasOwn(other.drawing_markers||{},code));
 }
-// 同一次畫面計算內重複查詢時共用結果；資料變更都在非同步操作之後，快取在本輪結束即清除。
-let drawingCodesCache=null;
+// 不做快取：工程圖或定位資料一變更，下一次查詢就必須反映（重複計算由呼叫端各自彙整一次）。
 function drawingCodes(row){
   if(!row)return [];
-  if(typeof queueMicrotask==='function'){
-    if(!drawingCodesCache){drawingCodesCache=new Map();queueMicrotask(()=>{drawingCodesCache=null;});}
-    if(drawingCodesCache.has(row))return drawingCodesCache.get(row);
-    const codes=computeDrawingCodes(row);drawingCodesCache.set(row,codes);return codes;
-  }
-  return computeDrawingCodes(row);
-}
-function computeDrawingCodes(row){
   const roster=(drawingPlan(row)?.drawing_points||[]).map(p=>p.code),marked=code=>Object.hasOwn(row?.drawing_markers||{},code);
   const available=code=>marked(code)||!markedElsewhere(row,code);
   if(!Array.isArray(row?.drawing_codes)){
@@ -133,12 +124,13 @@ function projectCodes(){
 }
 // 同一案有多種承攬類型（例如監視、廣播）時，以頁籤分開查看工程圖與點位示意圖。
 function drawingServiceTabs(){
-  const rows=drawingImageRows(),codes=projectCodes(),ids=new Set([...rows.map(r=>r.contract_service_type_id).filter(Boolean),...codes.flatMap(c=>[...deviceServiceIds(c)])]);
+  const rows=drawingImageRows(),codes=projectCodes(),byCode=new Map(codes.map(c=>[c,deviceServiceIds(c)]));
+  const ids=new Set([...rows.map(r=>r.contract_service_type_id).filter(Boolean),...[...byCode.values()].flatMap(s=>[...s])]);
   const services=drawingServiceList().filter(s=>ids.has(s.id));
   if(services.length<2)return '';
   const current=constructionDrawingFilter.service;
   const tab=(id,label,pages,devices)=>`<button type="button" class="outline" role="tab" data-drawing-service="${esc(id)}" aria-selected="${current===id}">${esc(label)}<small>${pages} 張圖・${devices} 台</small></button>`;
-  return `<div class="drawing-service-tabs" role="tablist" aria-label="依承攬類型查看">${tab('','全部承攬類型',rows.length,codes.length)}${services.map(s=>tab(s.id,s.name,rows.filter(r=>r.contract_service_type_id===s.id).length,codes.filter(c=>deviceServiceIds(c).has(s.id)).length)).join('')}</div>`;
+  return `<div class="drawing-service-tabs" role="tablist" aria-label="依承攬類型查看">${tab('','全部承攬類型',rows.length,codes.length)}${services.map(s=>tab(s.id,s.name,rows.filter(r=>r.contract_service_type_id===s.id).length,codes.filter(c=>byCode.get(c).has(s.id)).length)).join('')}</div>`;
 }
 function drawingDeviceSearchField(){
   return `<div class="drawing-device-search"><label>搜尋設備並定位<input type="search" data-device-search placeholder="設備編號、名稱、類型、施工區域、施工項目" autocomplete="off"></label><ul class="device-search-results" data-device-results hidden></ul></div>`;
