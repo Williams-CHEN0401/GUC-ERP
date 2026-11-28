@@ -71,10 +71,15 @@ function drawingPoint(code){
 }
 function drawingIcon(code,row){const {point,plan}=drawingPoint(code);return equipmentIconFor(point,drawingService(row),drawingPlan(row)?.content||plan?.content);}
 // 工程圖顯示的設備：有指定（drawing_codes）時只顯示指定的設備與圖上已定位的設備；
-// 未指定（null，舊資料）時沿用所屬規劃的全部設備。
+// 未指定（null）時顯示所屬規劃清冊中符合工程圖承攬類型的設備（例如廣播圖不顯示攝影機），
+// 設備類型無法判斷承攬類型時仍顯示，圖上已定位的設備一定顯示。
 function drawingCodes(row){
   const roster=(drawingPlan(row)?.drawing_points||[]).map(p=>p.code);
-  if(!Array.isArray(row?.drawing_codes))return roster;
+  if(!Array.isArray(row?.drawing_codes)){
+    const service=drawingServiceList().find(s=>s.id===row?.contract_service_type_id);
+    if(!service||!equipmentIconKey(`${service.code||''} ${service.name||''}`))return roster;
+    return roster.filter(code=>{const ids=typeServiceIds(code);return Object.hasOwn(row.drawing_markers||{},code)||!ids.size||ids.has(service.id);});
+  }
   const shown=new Set([...row.drawing_codes,...Object.keys(row.drawing_markers||{})]);
   return roster.filter(code=>shown.has(code));
 }
@@ -93,12 +98,15 @@ function unplacedCodes(plans){
 function drawingServiceList(){
   return constructionDrawingContext?.contract_service_types||[];
 }
-function deviceServiceIds(code){
-  const ids=new Set(drawingPlacements(code).map(row=>row.contract_service_type_id).filter(Boolean));
-  if(ids.size)return ids;
-  const key=equipmentIconKey(drawingPoint(code).point.type);
+// 依設備類型對應的承攬類型（例如「廣播喇叭」→ 廣播系統）。
+function typeServiceIds(code){
+  const ids=new Set(),key=equipmentIconKey(drawingPoint(code).point.type);
   if(key)for(const s of drawingServiceList())if(equipmentIconKey(`${s.code||''} ${s.name||''}`)===key)ids.add(s.id);
   return ids;
+}
+function deviceServiceIds(code){
+  const ids=new Set(drawingPlacements(code).map(row=>row.contract_service_type_id).filter(Boolean));
+  return ids.size?ids:typeServiceIds(code);
 }
 function serviceMatchesCode(code){
   const service=constructionDrawingFilter.service;return !service||deviceServiceIds(code).has(service);
@@ -524,17 +532,22 @@ function updateGalleryPointList(view){
   const keyword=(list.querySelector('[data-panel-search]')?.value||'').trim().toLowerCase();
   const match=code=>{if(!keyword)return true;const {point}=drawingPoint(code);return [point.code,point.name,point.type,point.location,point.building].some(v=>String(v||'').toLowerCase().includes(keyword));};
   const roster=(drawingPlan(view.row)?.drawing_points||[]).length;
-  list.querySelector('[data-panel-count]').textContent=`本圖 ${view.codes.length} 台${Array.isArray(view.row.drawing_codes)?`（清冊 ${roster} 台）`:'（未指定，顯示清冊全部）'}・已定位 ${located.length}`;
+  const filtered=!Array.isArray(view.row.drawing_codes)&&view.codes.length<roster;
+  list.querySelector('[data-panel-count]').textContent=`本圖 ${view.codes.length} 台（${Array.isArray(view.row.drawing_codes)?`清冊 ${roster} 台`:filtered?`未指定，依承攬類型篩選清冊 ${roster} 台`:'未指定，顯示清冊全部'}）・已定位 ${located.length}`;
   list.querySelector('[data-panel-located]').innerHTML=located.filter(match).length?drawingPointGrid(located.filter(match),view.progress,view.row):'<p class="form-sync-hint">本圖尚未定位設備。</p>';
   list.querySelector('[data-panel-waiting]').innerHTML=waiting.filter(match).length?drawingPointGrid(waiting.filter(match),view.progress,view.row):'<p class="form-sync-hint">本圖設備都已定位。</p>';
   const assign=view.host.querySelector('[data-drawing-assign-summary]');
-  if(assign)assign.textContent=Array.isArray(view.row.drawing_codes)?`已指定 ${view.codes.length} 台設備顯示在本圖。`:`尚未指定：本圖顯示「${drawingPlan(view.row)?.content||''}」清冊全部 ${roster} 台。`;
+  if(assign)assign.textContent=Array.isArray(view.row.drawing_codes)?`已指定 ${view.codes.length} 台設備顯示在本圖。`
+    :filtered?`尚未指定：本圖依承攬類型「${drawingService(view.row)?.name||''}」顯示「${drawingPlan(view.row)?.content||''}」清冊中的 ${view.codes.length} 台（類型不符的設備不顯示）。`
+    :`尚未指定：本圖顯示「${drawingPlan(view.row)?.content||''}」清冊全部 ${roster} 台。`;
 }
 // 依工程圖分類（建築物／樓層）建議本圖設備：設備的建築物、設置區域含相同文字。
 function suggestDrawingCodes(row){
   const c=row.drawing_category||{},words=[c.floor,c.area].filter(Boolean).map(w=>String(w).toLowerCase());
   if(!words.length)return [];
+  const service=row.contract_service_type_id;
   return (drawingPlan(row)?.drawing_points||[]).filter(p=>{
+    const ids=typeServiceIds(p.code);if(service&&ids.size&&!ids.has(service))return false;
     const place=[p.location,p.name].map(v=>String(v||'').toLowerCase()).join(' ');
     return words.every(w=>place.includes(w))&&(!c.building||!p.building||String(p.building).toLowerCase().includes(String(c.building).toLowerCase()));
   }).map(p=>p.code);

@@ -95,7 +95,11 @@ test('drawing device lists: explicit codes plus markers, legacy drawings show th
     drawings:[{id:'f1',construction_plan_id:'p',original_name:'1F.png',contract_service_type_id:'mon',drawing_codes:['CAM10'],drawing_markers:{CAM11:{x:.5,y:.5}}},
       {id:'f2',construction_plan_id:'p',original_name:'2F.png',contract_service_type_id:'mon',drawing_codes:null,drawing_markers:{}}]};`,c);
   const [f1,f2]=vm.runInContext('constructionDrawingContext.drawings',c);
-  assert.deepEqual([...c.drawingCodes(f1)],['CAM10','CAM11']);assert.deepEqual([...c.drawingCodes(f2)],['CAM10','CAM11','CAM60','SPK1']);
+  assert.deepEqual([...c.drawingCodes(f1)],['CAM10','CAM11']);
+  assert.deepEqual([...c.drawingCodes(f2)],['CAM10','CAM11','CAM60'],'an unassigned monitoring drawing hides broadcast speakers but keeps untyped devices');
+  vm.runInContext("constructionDrawingContext.drawings.push({id:'f3',construction_plan_id:'p',original_name:'2F廣播.png',contract_service_type_id:'pa',drawing_codes:null,drawing_markers:{CAM60:{x:.1,y:.1}}})",c);
+  assert.deepEqual([...c.drawingCodes(vm.runInContext('constructionDrawingContext.drawings[2]',c))],['CAM11','CAM60','SPK1'],'broadcast drawing hides cameras; positioned devices always stay');
+  vm.runInContext('constructionDrawingContext.drawings.pop()',c);
   assert.deepEqual([...c.unplacedCodes(vm.runInContext('constructionDrawingContext.plans',c))],['CAM60','SPK1'],'legacy drawings do not count as placement');
   assert.deepEqual([...c.deviceServiceIds('CAM10')],['mon']);assert.deepEqual([...c.deviceServiceIds('SPK1')],['pa']);assert.deepEqual([...c.deviceServiceIds('CAM60')],[]);
 });
