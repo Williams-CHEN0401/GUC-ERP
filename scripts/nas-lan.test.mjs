@@ -5,6 +5,40 @@ import vm from 'node:vm';
 import nasApi from '../api/nas.mjs';
 import { createNasMemoryFixture } from './nas-memory-fixture.mjs';
 
+test('HTTPS browsers with SubtleCrypto on local Docker production also upload large photos in one direct request', async () => {
+  const names = ['VERCEL_ENV', 'NAS_WEBDAV_URL', 'NAS_WEBDAV_USERNAME', 'NAS_WEBDAV_PASSWORD', 'NAS_WEBDAV_ROOT'];
+  const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  const savedFetch = globalThis.fetch;
+  Object.assign(process.env, { VERCEL_ENV: 'production', NAS_WEBDAV_URL: 'https://nas.fixture.test', NAS_WEBDAV_USERNAME: 'fixture', NAS_WEBDAV_PASSWORD: 'fixture-only', NAS_WEBDAV_ROOT: '/GUC-ERP' });
+  const context = vm.createContext({ FormData, File, Blob, Uint8Array, crypto, GUC_PUBLIC_CONFIG: { localProduction: true } });
+  vm.runInContext(readFileSync(new URL('../attachment-upload.js', import.meta.url), 'utf8'), context);
+  const fixture = createNasMemoryFixture();
+  globalThis.fetch = fixture.fetch;
+  const modes = [], timeouts = [];
+  try {
+    const files = [new File([Buffer.alloc(9 * 1024 * 1024, 41)], 'phone-a.jpg'), new File([Buffer.alloc(6 * 1024 * 1024, 42)], 'phone-b.jpg')];
+    const result = await context.transferNasFiles({ files, context: fixture.context, progress() {}, conflictChoice: () => 'rename', register: async () => {}, request: async (body, timeout) => {
+      modes.push(body.get('mode'));if (body.get('mode') === 'upload') timeouts.push(timeout);
+      const response = await nasApi.fetch(new Request('https://guc-erp.fixture.test:8080/api/nas', { method: 'POST', headers: { Authorization: 'Bearer test' }, body }));
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      return data;
+    } });
+    assert.equal(result.failed.length, 0);
+    assert.equal(result.uploaded.length, 2);
+    // One prepare plus one request per photo; no begin/chunk/complete round trips.
+    assert.deepEqual(modes.slice().sort(), ['prepare_batch', 'upload', 'upload']);
+    // NAS receives each photo exactly once: no staged chunks written and read back.
+    assert.equal(fixture.calls.filter(call => call.method === 'GET').length, 0);
+    assert.equal(fixture.calls.filter(call => call.method === 'PUT').reduce((sum, call) => sum + call.bytes, 0), 15 * 1024 * 1024);
+    assert.ok(timeouts.every(ms => ms >= 120_000 && ms <= 300_000));
+    for (const [index, row] of result.uploaded.entries()) assert.deepEqual(fixture.files.get(row.nas_path), Buffer.from(await files[index].arrayBuffer()));
+  } finally {
+    globalThis.fetch = savedFetch;
+    for (const name of names) if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name];
+  }
+});
+
 test('HTTP LAN browser uploads files over 4 MiB through authenticated Docker direct upload', async () => {
   const names = ['VERCEL_ENV', 'NAS_WEBDAV_URL', 'NAS_WEBDAV_USERNAME', 'NAS_WEBDAV_PASSWORD', 'NAS_WEBDAV_ROOT'];
   const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));

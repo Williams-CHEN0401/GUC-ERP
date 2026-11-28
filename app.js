@@ -949,21 +949,18 @@ async function handleModalSubmit(event){event.preventDefault();const form=event.
     if(PREVIEW_MODE){const logDate=today(),site=state.sites.find((row)=>row.customerId===customer.id&&row.contractServiceTypeId===contractService.id),rows=files.map((file)=>({id:uid(),siteId:site?.id||"",site_id:site?.id||"",customerId:customer.id,contractServiceTypeId:contractService.id,contract_service_type_id:contractService.id,projectId:project.id,project_id:project.id,work_log_id:"",log_date:logDate,title:file.name,description:data.description||"",asset_type:data.attachmentType||"photo",original_name:file.name,mime_type:file.type||"application/octet-stream",file_size:file.size,nas_path:attachmentTargetPath(customer,contractService,project,file.name),upload_status:"preview",uploaded_by:state.currentUser?.username||"預覽",uploaded_at:new Date().toISOString(),sha256:"0".repeat(64)}));applyPreviewMutation("preview_attachment_upload",{rows});showToast(`${rows.length} 個附件已完成完整 NAS 路徑安全模擬；未寫入 NAS。`);}
     else{
       const result=await uploadAttachmentsToNas(data,customer,contractService,project,files);
-      let refreshFailed=false;
+      // The attachment rows are already saved; refresh the list (worklogs ≈3.5 MB) in the background
+      // instead of holding the dialog open until the full reload finishes.
       if(result.uploaded.length){
-        const scope=modal.dataset.workLogId?'worklogs':'sites';
-        try{
-          const snapshot=await loadScope(scope,{force:true,silent:true});
-          refreshFailed=!snapshot||Boolean(snapshot.errors?.length);
-        }catch{refreshFailed=true;}
+        const scope=modal.dataset.workLogId?'worklogs':'sites',refreshFailed=()=>showToast('附件已保存，但清單暫時無法更新，請重新整理查看。','清單未更新');
+        loadScope(scope,{force:true,silent:true}).then(snapshot=>{if(!snapshot||snapshot.errors?.length)refreshFailed();},refreshFailed);
       }
       if(result.failed.length){
         form.querySelector('button[type="submit"]').textContent='只重試失敗檔案';
         throw new Error(`${result.uploaded.length} 個成功；${result.failed.map(row=>row.name+'：'+row.error).join('；')}。成功的檔案已保留，請只重試失敗檔案。`);
       }
       const folder=result.upload_folder||NAS_TARGET_ROOT;
-      const refreshNote=refreshFailed?'。清單暫時無法更新，請重新整理查看。':'';
-      showToast(`${result.uploaded.length} 個附件已上傳並驗證；資料夾：${folder}${refreshNote}`);
+      showToast(`${result.uploaded.length} 個附件已上傳並驗證；資料夾：${folder}`);
     }
     form.classList.remove('busy');
   }

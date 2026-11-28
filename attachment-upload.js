@@ -76,10 +76,10 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
     let uploadTicket = '';
     const item = fileProgress[fileIndex];
     const notify = message => emit('uploading', `已處理 ${completed}／${files.length} 個檔案。${message}`);
-    const send = async (body, offset, bytes, final = false) => {
+    const send = async (body, offset, bytes, final = false, timeout = 120_000) => {
       item.state = 'uploading';notify(`正在傳送 ${file.name}`);
       const report = fraction => { item.loaded = Math.max(item.loaded, Math.min(file.size, offset + Math.floor(bytes * fraction)));if(final && fraction===1)item.state='verifying';notify(final && fraction===1?'正在等待 NAS 寫入與校驗…':`正在傳送 ${file.name}`); };
-      const result = await request(body,120_000,report);report(1);return result;
+      const result = await request(body,timeout,report);report(1);return result;
     };
     try {
       if(item.nasRows){
@@ -98,9 +98,10 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
       const conflict = preflight.conflicts?.[0];
       const action = choices.has(fileIndex) ? choices.get(fileIndex) : conflict ? await conflictChoice(conflict) : 'new';
       if (action === 'cancel') { item.state='skipped';return { failed: { name: file.name, error: '已取消此檔案', skipped: true } }; }
-      // Local Docker accepts the full file. HTTP LAN browsers lack SubtleCrypto
-      // needed by chunk hashing, so use the existing authenticated direct upload.
-      const localDirect = globalThis.GUC_PUBLIC_CONFIG?.localProduction === true && !globalThis.crypto?.subtle;
+      // Local Docker production accepts the whole file (server limit 82 MiB) in one
+      // authenticated request: one Gateway check, one NAS write, no browser hashing and
+      // no chunk read-back. Chunking only works around hosted (Vercel) payload limits.
+      const localDirect = globalThis.GUC_PUBLIC_CONFIG?.localProduction === true;
       const large = file.size > NAS_BROWSER_DIRECT_BYTES && !localDirect;
       const body = bodyFor(large ? 'begin_file' : 'upload');
       body.append("preflight_ticket",preflight.preflight_ticket);
@@ -133,7 +134,8 @@ async function transferNasFiles({ files, context, description = '', attachmentTy
       } else {
         body.append('conflict_actions', JSON.stringify({ [conflict?.name || file.name]: action }));
         body.append('files', file, file.name);notify(`正在傳送 ${file.name}`);
-        result = await send(body,0,file.size,true);
+        // Whole-file requests on slow mobile uplinks: allow ~50 KB/s, capped at the server's 300 s request limit.
+        result = await send(body,0,file.size,true,Math.max(120_000,Math.min(300_000,Math.ceil(file.size/50))));
       }
       uploadFolder = result.upload_folder || uploadFolder;
       if (!result.uploaded?.length) throw new Error(result.failed?.[0]?.error || '附件未能完成寫入，請重試。');

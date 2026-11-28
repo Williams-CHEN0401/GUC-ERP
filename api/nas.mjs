@@ -546,7 +546,8 @@ async function handleChunkUpload({ config, form, mode, user, authorization, cust
   if (tailBytes && (!tail || typeof tail.arrayBuffer !== "function" || tail.size !== tailBytes)) throw new HttpError(409, "照片最後一段不完整，請重新上傳。", "CHUNK_TAIL_INVALID");
   if (!tailBytes && tail) throw new HttpError(400, "照片分段格式不正確。", "CHUNK_TAIL_INVALID");
   const contextStartedAt = Date.now();
-  const finalContext=await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
+  // checkedContext was resolved for this same request moments ago; avoid a second identical Gateway lookup.
+  const finalContext=checkedContext||await resolveUploadContext(customerId, contractServiceTypeId, projectId, authorization,workLogId,constructionPlanId);
   requireOverwritePermission(ticket.conflict, finalContext);
   if(ticket.conflict==="overwrite"&&finalContext.protectedPaths.includes(`${ticket.target_folder}/${constructionPlanId ? drawingFileName(ticket.name) : safePart(ticket.name)}`))throw new HttpError(409,"此檔案已屬於其他工作日誌，請選擇另存新檔。","WORK_LOG_FILE_CONFLICT");
   const contextMs = elapsedMs(contextStartedAt), readStartedAt = Date.now();
