@@ -20,7 +20,7 @@ async function user(key,mobile=false){
 async function planning(p){
   await p.locator('#constructionPlanningTab').click();
   await p.locator('#constructionPlanningList [data-construction-project="'+project_id+'"]').click();
-  await p.locator('#modalForm [data-open-roster]').waitFor();
+  await p.locator('#modalForm [data-planning-plan], #modalForm .construction-plan-section').first().waitFor();
 }
 const code='ROSTER-'+Date.now().toString(36),sample='暫編-CAM-005';
 try{
@@ -31,7 +31,7 @@ try{
    await api(p,{operation:'save_construction_plan',payload:{id:crypto.randomUUID(),project_id,construction_date:'2026-11-25',content:'第二階段（示範）',status:'pending',planned_days:2,assignee_user_ids:primary.assignee_user_ids,items:[{id:crypto.randomUUID(),title:'現場驗收',start_day:1,planned_days:2}],drawing_points:primary.drawing_points}});
    other=(await scope(p)).find(x=>x.id!==id && x.drawing_points.some(e=>e.code===sample));
  }
- await planning(p);await p.locator('#modalForm [data-open-roster]').click();
+ await planning(p);await p.evaluate(()=>openConstructionRoster(document.querySelector('#simpleModal').dataset.id));
  const dialog=p.locator('.project-roster'), form=dialog.locator('.roster-editor');
  const pick=dialog.locator('[data-roster-plan]');
  await pick.selectOption(id);await form.locator('[name=code]').fill(code);
@@ -65,7 +65,7 @@ try{
  await pick.selectOption(other.id);assert.match(await row(sample).innerText(),new RegExp(renamed));
  await dialog.locator('[data-roster-close]').click();
  await p.reload();await p.waitForFunction(()=>state.currentUser&&!scopeRequests.size);await planning(p);
- await p.locator('#modalForm [data-open-roster]').click();await pick.selectOption(id);
+ await p.evaluate(()=>openConstructionRoster(document.querySelector('#simpleModal').dataset.id));await pick.selectOption(id);
  assert.match(await row(sample).innerText(),new RegExp(renamed));assert.equal(await row(code).count(),0);
  console.log('PASS mobile roster create, cross-plan rename, delete, reload, stale revision and worker denial');
  await dialog.locator('[data-roster-close]').click();

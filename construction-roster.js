@@ -38,6 +38,16 @@ function rosterRelations(plan,code){
   const records=(plan.equipment_state||[]).filter(e=>e.code===code);
   return {items,records};
 }
+// 同一台設備（同案同編號）在其他施工主項目已填的欄位值；設置區域依主項目保存，空白時沿用其他主項目的值。
+function rosterSiblingValue(plans,plan,code,key){
+  for(const other of plans||[]){
+    if(other.id===plan?.id)continue;
+    const value=other.drawing_points?.find(p=>p.code===code)?.[key];
+    if(value)return value;
+  }
+  return '';
+}
+function rosterTypeLabel(point){return String(point.type||'').trim()||'未填類型';}
 function rosterMatches(point,keyword,plan){
   if(!keyword)return true;
   const items=(plan.items||[]).filter(item=>Array.isArray(item.equipment_codes)&&item.equipment_codes.includes(point.code)).map(i=>i.title);
@@ -107,8 +117,16 @@ function validateRosterImport(rows,{plans,current,drawings=null}){
     else if(!plan.can_manage)errors.push(`沒有「${plan.content}」的清冊管理權限`);
     const existing=plan?.drawing_points?.find(p=>p.code.toLowerCase()===cell('code').toLowerCase());
     let point=null;
-    // 檔案沒有的欄位保留清冊原值；有欄位但留空則視為清除。
-    try{point=rosterPointFrom(Object.fromEntries(ROSTER_FIELDS.map(([key])=>[key,key!=='code'&&index[key]===undefined&&existing?existing[key]:cell(key)])),existing||{});}
+    // 檔案沒有的欄位或空白儲存格都保留清冊原值（不清除）；設置區域、建築物原值也空白時沿用同編號在其他主項目的值，
+    // 避免每次下載／上傳範本都要重新填寫。
+    const valueOf=key=>{
+      if(key==='code')return cell('code');
+      const value=index[key]===undefined?'':cell(key);
+      if(value)return value;
+      if(existing?.[key])return existing[key];
+      return ['location','building'].includes(key)?rosterSiblingValue(plans,plan,cell('code'),key):'';
+    };
+    try{point=rosterPointFrom(Object.fromEntries(ROSTER_FIELDS.map(([key])=>[key,valueOf(key)])),existing||{});}
     catch(error){errors.push(error.message);}
     if(existing&&point&&existing.code!==point.code)errors.push('設備編號大小寫與清冊不同');
     const key=(plan?.id||'')+'\0'+cell('code').toLowerCase();
@@ -149,13 +167,22 @@ async function openConstructionRoster(projectId){
   document.body.append(dialog);
   dialog.showModal();
   const status=dialog.querySelector('output'),picker=dialog.querySelector('[data-roster-plan]'),body=dialog.querySelector('[data-roster-body]'),search=dialog.querySelector('[data-roster-search]');
-  let plans=[],busy=false,editing=null,selected=new Set(),itemFilter='',importRows=null,openPanels=new Set(),transferPlan='',transferItem='';
+  let plans=[],busy=false,editing=null,selected=new Set(),itemFilter='',typeFilter='',importRows=null,openPanels=new Set(),transferPlan='',transferItem='';
   const plan=()=>plans.find(p=>p.id===picker.value);
   const versions=()=>Object.fromEntries(plans.map(p=>[p.id,p.row_version]));
   const visiblePoints=()=>{
     const current=plan(),keyword=search.value.trim().toLowerCase(),item=current?.items?.find(i=>i.id===itemFilter);
-    return (current?.drawing_points||[]).filter(p=>rosterMatches(p,keyword,current)&&(!item||itemAppliesTo(item,p.code,current)));
+    return (current?.drawing_points||[]).filter(p=>rosterMatches(p,keyword,current)&&(!item||itemAppliesTo(item,p.code,current))&&(!typeFilter||rosterTypeLabel(p)===typeFilter));
   };
+  // 設備類型篩選（例如只看廣播喇叭）；下載範本只匯出目前列表的設備。
+  // 本主項目空白時，顯示同一台設備在其他主項目的值（灰字），下載範本與匯入也會沿用。
+  function rosterCell(current,p,key){const sibling=p[key]?'':rosterSiblingValue(plans,current,p.code,key);return p[key]?esc(p[key]):sibling?`<small title="沿用其他主項目">${esc(sibling)}（沿用）</small>`:'';}
+  function typeChips(current){
+    const counts=new Map();for(const p of current.drawing_points||[])counts.set(rosterTypeLabel(p),(counts.get(rosterTypeLabel(p))||0)+1);
+    if(counts.size<2)return '';
+    if(typeFilter&&!counts.has(typeFilter))typeFilter='';
+    return `<div class="roster-item-chips" role="group" aria-label="依設備類型篩選"><button type="button" class="outline" data-roster-type-filter="" aria-pressed="${!typeFilter}">全部類型<small>${current.drawing_points.length} 台</small></button>${[...counts].map(([type,n])=>`<button type="button" class="outline" data-roster-type-filter="${esc(type)}" aria-pressed="${typeFilter===type}">${esc(type)}<small>${n} 台</small></button>`).join('')}</div>`;
+  }
   function itemChips(current){
     const items=current.items||[];
     if(!items.length)return '<p class="form-sync-hint">此施工規劃尚未建立子項目；可先在「修改規劃」新增子項目，再指派設備。</p>';
@@ -186,8 +213,9 @@ async function openConstructionRoster(projectId){
   }
   function importPanel(){
     return `<details class="roster-panel" data-panel="import" ${openPanels.has('import')?'open':''}><summary>Excel／CSV 匯入設備清冊</summary>
-      <p class="form-sync-hint">欄位：${ROSTER_TEMPLATE_HEADERS.join('、')}。只有「設備編號」必填。每列依「對應施工主項目」匯入到該主項目，空白時才加入目前選取的主項目；「對應施工子項目」「對應工程圖」可用「、」分隔多個。舊版「設備編號,位置,設備名稱」CSV 仍可使用。</p>
-      <div class="construction-plan-actions"><label class="outline-file">選擇檔案<input type="file" data-roster-file accept=".xlsx,.csv,.tsv,.txt"></label><button type="button" class="outline" data-roster-template>下載範本（含目前清冊）</button></div>
+      <p class="form-sync-hint">欄位：${ROSTER_TEMPLATE_HEADERS.join('、')}。只有「設備編號」必填。每列依「對應施工主項目」匯入到該主項目，空白時才加入目前選取的主項目；「對應施工子項目」「對應工程圖」可用「、」分隔多個。空白儲存格會保留清冊原值（不會清除），設置區域與建築物空白時沿用同一台設備在其他主項目的值。舊版「設備編號,位置,設備名稱」CSV 仍可使用。</p>
+      <div class="construction-plan-actions"><label class="outline-file">選擇檔案<input type="file" data-roster-file accept=".xlsx,.csv,.tsv,.txt"></label><button type="button" class="outline" data-roster-template>下載範本（目前列表 ${visiblePoints().length} 台）</button></div>
+      <p class="form-sync-hint">範本只包含目前列表的設備：可先用上方的設備類型、子項目或搜尋篩選（例如只下載廣播喇叭）。</p>
       <div data-roster-preview></div></details>`;
   }
   function previewTable(){
@@ -228,10 +256,10 @@ async function openConstructionRoster(projectId){
     const current=plan();
     if(!current){body.textContent='請先新增施工規劃，再建立設備清冊。';return;}
     const editable=current.can_manage,points=visiblePoints(),total=current.drawing_points?.length||0;
-    body.innerHTML=itemChips(current)+(editable?`<div class="roster-tools">${singleForm(current)+batchForm(current)+importPanel()}</div>`:'')+selectionBar(current)+
+    body.innerHTML=itemChips(current)+typeChips(current)+(editable?`<div class="roster-tools">${singleForm(current)+batchForm(current)+importPanel()}</div>`:'')+selectionBar(current)+
       `<p class="roster-total">設備共 <b>${total}</b> 筆${points.length!==total?`，符合篩選 ${points.length} 筆`:''}</p>
       <div class="roster-table-scroll"><table class="roster-table"><thead><tr>${editable?'<th><span class="visually-hidden">選取</span></th>':''}<th>圖示</th><th>設備編號</th><th>名稱</th><th>類型／型號</th><th>設置區域</th><th>建築物</th><th>施工子項目</th>${editable?'<th>操作</th>':''}</tr></thead>
-      <tbody>${points.map(p=>{const rel=rosterRelations(current,p.code);return `<tr${selected.has(p.code)?' class="is-selected"':''}>${editable?`<td data-label="選取"><input type="checkbox" data-roster-pick="${esc(p.code)}" ${selected.has(p.code)?'checked':''} aria-label="選取 ${esc(p.code)}"></td>`:''}<td data-label="圖示"><img class="roster-icon" alt="" src="${esc(equipmentIconFor(p,null,current.content))}"></td><th scope="row" data-label="設備編號">${esc(p.code)}</th><td data-label="名稱">${esc(p.name||'')}${p.note?`<small>${esc(p.note)}</small>`:''}</td><td data-label="類型／型號">${esc([p.type,p.model].filter(Boolean).join('／'))}</td><td data-label="設置區域">${esc(p.location||'')}</td><td data-label="建築物">${esc(p.building||'')}</td><td data-label="施工子項目">${rel.items.length?rel.items.map(t=>`<span class="roster-chip">${esc(t)}</span>`).join(''):(current.items?.length?`<small>${planUsesAssignment(current)?'未指派子項目':'未指定（適用全部）'}</small>`:'')}</td>${editable?`<td data-label="操作"><div class="construction-plan-actions"><button type="button" class="outline" data-roster-edit="${esc(p.code)}">修改</button><button type="button" class="outline danger" data-roster-delete="${esc(p.code)}">刪除</button></div></td>`:''}</tr>`;}).join('')||`<tr><td colspan="9">${total?'沒有符合篩選的設備。':'尚未建立設備清冊。'}</td></tr>`}</tbody></table></div>`;
+      <tbody>${points.map(p=>{const rel=rosterRelations(current,p.code);return `<tr${selected.has(p.code)?' class="is-selected"':''}>${editable?`<td data-label="選取"><input type="checkbox" data-roster-pick="${esc(p.code)}" ${selected.has(p.code)?'checked':''} aria-label="選取 ${esc(p.code)}"></td>`:''}<td data-label="圖示"><img class="roster-icon" alt="" src="${esc(equipmentIconFor(p,null,current.content))}"></td><th scope="row" data-label="設備編號">${esc(p.code)}</th><td data-label="名稱">${esc(p.name||'')}${p.note?`<small>${esc(p.note)}</small>`:''}</td><td data-label="類型／型號">${esc([p.type,p.model].filter(Boolean).join('／'))}</td><td data-label="設置區域">${rosterCell(current,p,'location')}</td><td data-label="建築物">${rosterCell(current,p,'building')}</td><td data-label="施工子項目">${rel.items.length?rel.items.map(t=>`<span class="roster-chip">${esc(t)}</span>`).join(''):(current.items?.length?`<small>${planUsesAssignment(current)?'未指派子項目':'未指定（適用全部）'}</small>`:'')}</td>${editable?`<td data-label="操作"><div class="construction-plan-actions"><button type="button" class="outline" data-roster-edit="${esc(p.code)}">修改</button><button type="button" class="outline danger" data-roster-delete="${esc(p.code)}">刪除</button></div></td>`:''}</tr>`;}).join('')||`<tr><td colspan="9">${total?'沒有符合篩選的設備。':'尚未建立設備清冊。'}</td></tr>`}</tbody></table></div>`;
     if(editing){
       const point=current.drawing_points.find(p=>p.code===editing),form=body.querySelector('[data-form="single"]');
       if(point&&form){for(const [key] of ROSTER_FIELDS)form.elements.namedItem(key).value=point[key]||'';form.elements.code.readOnly=true;form.elements.name.focus();}
@@ -330,6 +358,7 @@ async function openConstructionRoster(projectId){
     if(target.hasAttribute('data-roster-close')){dialog.close();return;}
     const current=plan();if(!current)return;
     if(target.hasAttribute('data-roster-item-filter')){itemFilter=target.dataset.rosterItemFilter;render();return;}
+    if(target.hasAttribute('data-roster-type-filter')){typeFilter=target.dataset.rosterTypeFilter;render();return;}
     if(!current.can_manage)return;
     if(target.hasAttribute('data-roster-edit')){editing=target.dataset.rosterEdit;openPanels.add('single');render();body.querySelector('[data-panel="single"]').scrollIntoView({block:'nearest'});return;}
     if(target.hasAttribute('data-roster-reset')){editing=null;render();return;}
@@ -391,8 +420,10 @@ async function openConstructionRoster(projectId){
     }
     if(target.hasAttribute('data-roster-template')){
       try{
-        const rows=(current.drawing_points||[]).map(p=>[p.code,p.name||'',p.type||'',p.model||'',p.location||'',p.building||'',current.content,rosterRelations(current,p.code).items.join('、'),'',p.note||'']);
-        await GucExcelExport.saveBytes(GucExcelExport.buildWorkbook(ROSTER_TEMPLATE_HEADERS.map(label=>({label})),rows.length?rows:[['CAM01','監視攝影機','監視攝影機','','1F','總務處大樓',current.content,'','','']],'設備清冊'),GucExcelExport.filenameFor((byId(state.projects,projectId)?.code||'施工規劃')+'_'+current.content+'_設備清冊'));
+        // 只匯出目前列表（設備類型、子項目、搜尋篩選後）；區域與建築物空白時帶入同一台設備在其他主項目的值。
+        const fill=(p,key)=>p[key]||rosterSiblingValue(plans,current,p.code,key);
+        const rows=visiblePoints().map(p=>[p.code,p.name||'',p.type||'',p.model||'',fill(p,'location'),fill(p,'building'),current.content,rosterRelations(current,p.code).items.join('、'),'',p.note||'']);
+        await GucExcelExport.saveBytes(GucExcelExport.buildWorkbook(ROSTER_TEMPLATE_HEADERS.map(label=>({label})),rows.length?rows:[['CAM01','監視攝影機','監視攝影機','','1F','總務處大樓',current.content,'','','']],'設備清冊'),GucExcelExport.filenameFor((byId(state.projects,projectId)?.code||'施工規劃')+'_'+current.content+(typeFilter?'_'+typeFilter:'')+'_設備清冊'));
       }catch(error){status.textContent=error.message;}
       return;
     }
@@ -437,7 +468,9 @@ async function openConstructionRoster(projectId){
   window.addEventListener('guc:session-changed',endSession);
   dialog.oncancel=event=>{if(busy)event.preventDefault();};
   dialog.onclose=()=>{window.removeEventListener('guc:session-changed',endSession);dialog.remove();
-    if(document.querySelector('#simpleModal.open') && document.querySelector('#modalForm [data-open-roster]')?.dataset.openRoster===projectId && state.currentUser)openConstructionPlans(projectId).catch(e=>showToast(e.message));
+    // 若此案的施工規劃視窗仍開著，重新讀取以反映清冊變更。
+    const modal=document.querySelector('#simpleModal.open');
+    if(modal?.dataset.type==='constructionPlanListModal'&&modal.dataset.id===projectId&&state.currentUser)openConstructionPlans(projectId).catch(e=>showToast(e.message));
   };
   try{await load();}catch(error){status.textContent=error.message;}
 }

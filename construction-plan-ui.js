@@ -44,7 +44,7 @@ function renderPlanningProjects(){
   return left.localeCompare(right)*(direction==='desc'?-1:1)||a.code.localeCompare(b.code);
  });
  const page=tablePage('planning',rows);
- document.querySelector('#constructionPlanningList').innerHTML=page.rows.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3><p>${esc(project.customer)} · ${esc(project.type)} · ${esc(project.owner||'未指派')}</p>${constructionPlanButton(project)}${projectDrawingsButton(project.id,orderedPlans)}${orderedPlans.filter(p=>p.project_id===project.id).map(constructionPlanningCard).join('')||'<p>尚無施工規劃</p>'}</article>`).join('')||'<p class="dashboard-empty">沒有符合篩選的施工規劃。</p>';
+ document.querySelector('#constructionPlanningList').innerHTML=page.rows.map(project=>`<article class="panel"><h3>${esc(project.code)}｜${esc(project.name)}</h3><p>${esc(project.customer)} · ${esc(project.type)} · ${esc(project.owner||'未指派')}</p>${constructionPlanButton(project)}${projectDrawingsButton(project.id,orderedPlans)}${projectRosterButton(project.id,orderedPlans)}${orderedPlans.filter(p=>p.project_id===project.id).map(constructionPlanningCard).join('')||'<p>尚無施工規劃</p>'}</article>`).join('')||'<p class="dashboard-empty">沒有符合篩選的施工規劃。</p>';
  renderPagination('planning','planningPagination',page.total);
 }
 function constructionPlanningCard(plan){
@@ -85,6 +85,10 @@ function canManageConstruction(project,action='UPDATE'){
 function projectDrawingsButton(projectId,plans){
  return plans.some(plan=>plan.project_id===projectId) ? `<button type="button" class="outline" data-project-drawings="${esc(projectId)}">工程圖</button>` : '';
 }
+// 施工規劃清冊入口放在「工作管理 > 施工規劃」各專案的「工程圖」按鈕旁。
+function projectRosterButton(projectId,plans){
+ return plans.some(plan=>plan.project_id===projectId) ? `<button type="button" class="outline" data-open-roster="${esc(projectId)}">施工規劃清冊</button>` : '';
+}
 function constructionPlanButton(project){return constructionEligible(project)&&canConstructionPermission('construction_plans')?`<button type="button" class="outline" data-construction-project="${esc(project.id)}">施工規劃</button>`:"";}
 function constructionPlanById(id){return (state.constructionPlans||[]).find(p=>p.id===id);}
 function constructionLogDefaults(){const plan=constructionPlanById(activeConstructionLogPlanId);return plan?{projectId:plan.project_id,log_date:workLogToday(),work_type:"工程施工",status:"in_progress",pending_content:"",completed_content:"",summary:"",workerIds:[],subcontractor_count:plan.subcontractor_count||0}:{};}
@@ -112,7 +116,7 @@ async function openConstructionPlans(projectId){
 function constructionPlanListFields(){
  const project=byId(state.projects,constructionViewProjectId),plans=(state.constructionPlans||[]).filter(p=>p.project_id===constructionViewProjectId).sort((a,b)=>a.construction_date.localeCompare(b.construction_date)||a.id.localeCompare(b.id));
  const customer=byId(state.customers,project?.customerId);
- return `<section class="span-2 construction-plan-section"><div class="panel-head"><div><h3>${esc(project?.code)}｜${esc(project?.name)}</h3><p>${esc(customer?.name)} · 負責人：${esc(project?.owner||"未設定")}</p></div>${projectDrawingsButton(project.id,plans)}<div class="construction-plan-actions"><button type="button" class="outline" data-open-roster="${esc(project.id)}">施工規劃清冊</button>${canManageConstruction(project,'CREATE')&&constructionEligible(project)?'<button type="button" class="primary" data-new-construction-plan>新增施工規劃</button>':""}</div></div>${constructionScheduleGantt(plans,{key:project.id,title:'工程排程甘特圖（主項目／子項目）'})}<p class="form-sync-hint">點選 ＋ 展開施工規劃，再按 − 收合。</p><div class="construction-plan-list">${plans.map(constructionPlanningCard).join("")||'<p class="dashboard-empty">尚未建立施工規劃。</p>'}</div></section>`;
+ return `<section class="span-2 construction-plan-section"><div class="panel-head"><div><h3>${esc(project?.code)}｜${esc(project?.name)}</h3><p>${esc(customer?.name)} · 負責人：${esc(project?.owner||"未設定")}</p></div>${projectDrawingsButton(project.id,plans)}<div class="construction-plan-actions">${canManageConstruction(project,'CREATE')&&constructionEligible(project)?'<button type="button" class="primary" data-new-construction-plan>新增施工規劃</button>':""}</div></div>${constructionScheduleGantt(plans,{key:project.id,title:'工程排程甘特圖（主項目／子項目）'})}<p class="form-sync-hint">點選 ＋ 展開施工規劃，再按 − 收合。</p><div class="construction-plan-list">${plans.map(constructionPlanningCard).join("")||'<p class="dashboard-empty">尚未建立施工規劃。</p>'}</div></section>`;
 }
 function constructionPlanEditFields(id){
  const plan=constructionPlanById(id)||{},project=byId(state.projects,constructionViewProjectId);
