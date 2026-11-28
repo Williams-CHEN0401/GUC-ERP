@@ -113,12 +113,12 @@ async function openConstructionRoster(projectId){
   const versions=()=>Object.fromEntries(plans.map(p=>[p.id,p.row_version]));
   const visiblePoints=()=>{
     const current=plan(),keyword=search.value.trim().toLowerCase(),item=current?.items?.find(i=>i.id===itemFilter);
-    return (current?.drawing_points||[]).filter(p=>rosterMatches(p,keyword,current)&&(!item||(Array.isArray(item.equipment_codes)?item.equipment_codes.includes(p.code):true)));
+    return (current?.drawing_points||[]).filter(p=>rosterMatches(p,keyword,current)&&(!item||itemAppliesTo(item,p.code,current)));
   };
   function itemChips(current){
     const items=current.items||[];
     if(!items.length)return '<p class="form-sync-hint">此施工規劃尚未建立子項目；可先在「修改規劃」新增子項目，再指派設備。</p>';
-    return `<div class="roster-item-chips" role="group" aria-label="依施工子項目篩選"><button type="button" class="outline" data-roster-item-filter="" aria-pressed="${!itemFilter}">全部設備</button>${items.map(item=>`<button type="button" class="outline" data-roster-item-filter="${esc(item.id)}" aria-pressed="${itemFilter===item.id}">${esc(item.title)}<small>${Array.isArray(item.equipment_codes)?`指派 ${item.equipment_codes.length} 台`:'適用全部'}</small></button>`).join('')}</div>`;
+    return `<div class="roster-item-chips" role="group" aria-label="依施工子項目篩選"><button type="button" class="outline" data-roster-item-filter="" aria-pressed="${!itemFilter}">全部設備</button>${items.map(item=>`<button type="button" class="outline" data-roster-item-filter="${esc(item.id)}" aria-pressed="${itemFilter===item.id}">${esc(item.title)}<small>${Array.isArray(item.equipment_codes)?`指派 ${item.equipment_codes.length} 台`:itemCoversAll(current,item)?'適用全部':'未指派'}</small></button>`).join('')}</div>`;
   }
   function singleForm(current){
     return `<details class="roster-panel" data-panel="single" ${openPanels.has('single')||editing?'open':''}><summary>${editing?'修改設備資料':'新增單筆設備'}</summary><form class="roster-editor" data-form="single">
@@ -284,12 +284,13 @@ async function openConstructionRoster(projectId){
       let codes;
       if(target.hasAttribute('data-assign-all')){
         if(!confirm(`「${item.title}」改為適用本規劃全部 ${current.drawing_points.length} 台設備？`))return;
-        codes=null;
+        // 其他子項目已指派設備時，未指派（null）代表不套用任何設備，因此改為明確指派清冊全部編號。
+        codes=current.items.some(i=>i.id!==item.id&&Array.isArray(i.equipment_codes))?current.drawing_points.map(p=>p.code):null;
       }else{
         if(!selected.size){status.textContent='請先勾選設備，或使用「依編號區間選取」。';return;}
-        const base=target.hasAttribute('data-assign-remove')&&!Array.isArray(item.equipment_codes)?current.drawing_points.map(p=>p.code):itemAssignmentBase(current,item);
+        const base=target.hasAttribute('data-assign-remove')&&itemCoversAll(current,item)?current.drawing_points.map(p=>p.code):itemAssignmentBase(current,item);
         codes=target.hasAttribute('data-assign-add')?[...new Set([...base,...selected])]:base.filter(c=>!selected.has(c));
-        const note=!Array.isArray(item.equipment_codes)&&target.hasAttribute('data-assign-add')?'\n此子項目目前適用全部設備，指派後填寫日誌只會列出指派的設備（已有紀錄的設備會保留）。':'';
+        const note=itemCoversAll(current,item)&&target.hasAttribute('data-assign-add')?'\n此子項目目前適用全部設備，指派後填寫日誌只會列出指派的設備（已有紀錄的設備會保留）。':'';
         if(!confirm(`${target.hasAttribute('data-assign-add')?'指派':'移出'} ${selected.size} 台設備${target.hasAttribute('data-assign-add')?'至':'自'}「${item.title}」？指派後共 ${codes.length} 台。${note}`))return;
       }
       void run(async()=>{
